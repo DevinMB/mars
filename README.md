@@ -92,6 +92,31 @@ readily echo a connection string at you.
 > must be re-entered. That is deliberate — a recoverable key is one an attacker with your
 > database can also recover.
 
+## Running jobs on specific machines
+
+A **target** is a Flink cluster MARS can send jobs to. Jobs name one, or name none
+and use the default.
+
+This is the only way placement works in Flink. A cluster's scheduler puts tasks in
+whatever slot is free, and there is no supported way to pin a job to a machine
+inside one cluster — slot sharing groups control placement *within* a job, and
+fine-grained resource management controls slot *sizing*. So choosing where a job
+runs means choosing which cluster receives it.
+
+- **More capacity, don't care where:** add workers to the cluster you have —
+  `docker compose up -d --scale taskmanager=3`.
+- **Choose where:** run a cluster on the other machine and register it as a target.
+  See [`remote-target/`](remote-target/).
+
+To try it on one host first:
+
+```bash
+docker compose --profile second-target up -d
+```
+
+then add a target pointing at `http://jobmanager-b:8081` and
+`http://sql-gateway-b:8083`.
+
 ## Scheduling
 
 - **Keep it running** (supervisor) — if a streaming job stops or fails, MARS starts it
