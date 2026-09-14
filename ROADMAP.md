@@ -9,7 +9,8 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   mentioning it, because `create_all` adds missing tables but never missing columns.
 - **Savepoint-aware restarts.** Cancel-with-savepoint and resume-from-savepoint through
   the console. Supervisor mode currently resubmits from scratch, which is wrong for any
-  job with meaningful state.
+  job with meaningful state. Now also a prerequisite for credential rotation, since
+  picking up a rotated password means restarting the jobs that hold the old one.
 - **GitOps export/import.** Round-trip every catalog entry, job and schedule as YAML so a
   deployment can be reviewed and version-controlled outside MARS.
 - **Connector health checks.** Manifests already declare `supportsHealthCheck`. Probing a
@@ -68,6 +69,76 @@ a migration plus a decision per job, whereas adding it while everything is `defa
 nullable column and a dropdown.
 
 Not blocking on the current single-cluster work, and nothing being built now forecloses it.
+
+## External secret stores — CyberArk, Vault, cloud key managers
+
+Requested so an organisation can keep credentials where it already keeps them, and
+have them rotated on its own schedule rather than MARS's.
+
+### What already fits
+
+The design does not need changing to accommodate this. Job SQL holds a reference,
+`${secret:couchdb_password}`, and the value is substituted only as the statement is
+handed to the gateway — the stored text, every saved version and anything rendered
+in the editor keep the placeholder. So where the value comes from is already an
+implementation detail behind one call. `SecretStore.resolve` is the seam.
+
+`SecretStore` becomes an interface with the current Fernet-in-SQLite
+implementation as `LocalSecretBackend`, alongside one backend per external store.
+External backends are **read-only from MARS**: the vault owns the value, and the
+Secrets page becomes a browser rather than an editor when one is configured.
+
+### What is actually hard: rotation
+
+Fetching a rotated value is easy. Surviving one is not.
+
+Resolution happens at submission, so a job **started after** a rotation picks up the
+new credential with no help. A job **already running** does not: Flink baked the
+credential into the table options when the job was submitted, and it holds that
+value until it restarts. So a rotation silently breaks every running job that used
+the old one, at whatever moment the old credential is revoked — which may be hours
+later, and will look like an unrelated connector failure.
+
+That is the feature, not a caveat to note in passing:
+
+- MARS already knows which jobs reference which secret; the delete-guard computes
+  exactly that today to refuse removing a secret still in use.
+- So it can detect a changed value and **offer to restart the jobs that depend on
+  it** — or do it automatically for jobs whose schedule says supervisor.
+- Restarts should be savepoint-aware, which is why that item is listed above this
+  one. Restarting a stateful job from scratch to pick up a password is a poor trade.
+
+Anything that skips this ships a feature that appears to work and fails later,
+somewhere else.
+
+### The rest of the design
+
+- **Caching.** A vault round trip per statement is too slow and too noisy in the
+  vault's audit log. Cache per secret with a short TTL, and treat a changed value as
+  the rotation signal above.
+- **MARS's own credential.** Reading a vault needs a credential, which cannot itself
+  live in the vault. That is an AppRole, a machine identity, a Kubernetes service
+  account, or a sidecar that injects a short-lived token — deployment-specific, and
+  the README has to be honest that this is the one secret that stays outside.
+- **Audit.** Vaults log who read what. MARS should pass the requesting identity
+  through rather than presenting every read as itself, or the audit trail says only
+  "mars" for everything.
+- **The instance key.** `/data/secret.key` encrypts the local store. A vault could
+  hold it instead, which removes the one file whose loss is unrecoverable — worth
+  supporting even for deployments that keep using the local backend.
+
+### Order of work
+
+1. Extract the `SecretBackend` interface; keep the local store as the default. No
+   behaviour change, and it is the only part that touches existing code.
+2. One external backend end to end — HashiCorp Vault is the usual first, since it
+   is easy to run locally for tests. CyberArk's Central Credential Provider and the
+   cloud key managers follow the same shape.
+3. Rotation detection and dependent-job restart, after savepoint-aware restarts
+   exist.
+
+Worth noting for sequencing: steps 1 and 2 are additive and could be done any time.
+Step 3 is where the value is, and it depends on savepoints.
 
 ## Later
 
