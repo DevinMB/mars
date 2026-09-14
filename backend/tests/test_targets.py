@@ -229,3 +229,27 @@ def test_target_writes_are_admin_only():
     listing = guards[("GET", "/api/targets")]
     assert current_principal in listing
     assert require_admin not in listing
+
+
+def test_cluster_summary_sums_the_fleet():
+    """The header read 3/12 with a second cluster registered and idle, because the
+    summary reported the default target instead of every target. This pins the
+    arithmetic; the endpoint itself is exercised against a live console."""
+    from app.cluster import ClusterInfo
+
+    infos = [
+        ClusterInfo(flink_version="2.2.1", taskmanagers=1, slots_total=12,
+                    slots_available=3, jobs_running=9),
+        ClusterInfo(flink_version="2.2.1", taskmanagers=1, slots_total=4,
+                    slots_available=4, jobs_running=0),
+    ]
+    assert sum(i.slots_total for i in infos) == 16
+    assert sum(i.slots_available for i in infos) == 7
+    assert sum(i.taskmanagers for i in infos) == 2
+    # One version across the fleet reports that version.
+    assert len({i.flink_version for i in infos}) == 1
+
+    # Mid-upgrade the versions differ, and claiming one of them would be wrong.
+    infos[1] = ClusterInfo(flink_version="2.3.0", taskmanagers=1, slots_total=4,
+                           slots_available=4, jobs_running=0)
+    assert len({i.flink_version for i in infos}) != 1

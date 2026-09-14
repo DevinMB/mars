@@ -221,9 +221,13 @@ class ValidateResponse(BaseModel):
 
 
 class ClusterOut(BaseModel):
+    """Capacity summed across every enabled execution target."""
+
     reachable: bool
     flink_version: str = ""
     taskmanagers: int = 0
     slots_total: int = 0
     slots_available: int = 0
     jobs_running: int = 0
+    targets_total: int = 0
+    targets_reachable: int = 0

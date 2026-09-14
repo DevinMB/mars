@@ -28,12 +28,42 @@ function ClusterDot() {
   }, [])
 
   if (!state) return null
+
+  // Slots are summed across every enabled target, so this reads as fleet capacity
+  // rather than the default cluster's. A partially reachable fleet is called out,
+  // because otherwise a shrinking number looks like busy rather than broken.
+  const total = state.targets_total || 0
+  const reachable = state.targets_reachable || 0
+  const partial = state.reachable && total > 1 && reachable < total
+
+  const title = !state.reachable
+    ? 'No execution target is reachable'
+    : partial
+      ? `${reachable} of ${total} targets reachable \u2014 capacity shown is only what answered`
+      : `Flink ${state.flink_version}` + (total > 1 ? ` across ${total} targets` : '')
+
   return (
-    <span className="flex items-center gap-1.5 text-xs text-slate-500" title={
-      state.reachable ? `Flink ${state.flink_version}` : 'Flink is not reachable'
-    }>
-      <span className={`w-2 h-2 rounded-full ${state.reachable ? 'bg-emerald-500' : 'bg-red-500'}`} />
-      {state.reachable ? `${state.slots_available}/${state.slots_total} slots` : 'Cluster down'}
+    <span className="flex items-center gap-1.5 text-[12px] text-slate-500" title={title}>
+      <span
+        className={`w-2 h-2 rounded-full ${
+          !state.reachable ? 'bg-red-500' : partial ? 'bg-accent-500' : 'bg-emerald-500'
+        }`}
+      />
+      {!state.reachable ? (
+        'No cluster'
+      ) : (
+        <>
+          <span className="tabular-nums">
+            {state.slots_available}/{state.slots_total}
+          </span>
+          <span>slots</span>
+          {total > 1 && (
+            <span className="text-slate-400">
+              · {partial ? `${reachable}/${total}` : total} targets
+            </span>
+          )}
+        </>
+      )}
     </span>
   )
 }
