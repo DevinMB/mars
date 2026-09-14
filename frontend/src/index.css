@@ -3,21 +3,45 @@
 @tailwind utilities;
 
 @layer base {
-  html { -webkit-font-smoothing: antialiased; }
-  body { @apply bg-slate-50 text-slate-900; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body { @apply bg-slate-50 text-slate-900 text-[14px]; }
+  /* Counts, offsets and durations line up in columns when they are tabular. */
+  th, td { font-variant-numeric: tabular-nums; }
 }
 
 @layer components {
+  /* Surfaces lean on hairline borders rather than shadow, which keeps dense
+     screens calm when several panels sit next to each other. */
   .card { @apply bg-white border border-slate-200 rounded-lg shadow-card; }
-  .btn { @apply inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium
-          transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
-  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
-  .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50; }
+
+  .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px]
+          font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40; }
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800; }
+  .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300
+                    hover:bg-slate-50 hover:border-slate-400; }
   .btn-danger { @apply btn bg-white text-red-700 border border-red-300 hover:bg-red-50; }
-  .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 text-sm
-           placeholder:text-slate-400 focus:outline-none focus:ring-2
-           focus:ring-brand-500/30 focus:border-brand-500; }
-  .label { @apply block text-sm font-medium text-slate-700 mb-1; }
-  .hint { @apply text-xs text-slate-500 mt-1; }
-  .mono { @apply font-mono text-[13px]; }
+
+  .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 text-[13px]
+           text-slate-900 placeholder:text-slate-400 transition-shadow
+           focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-500; }
+  .label { @apply block text-[13px] font-medium text-slate-700 mb-1; }
+  .hint { @apply text-[11px] text-slate-500 mt-1 leading-snug; }
+  .mono { @apply font-mono text-[12.5px]; }
+
+  /* Section labels: small, spaced, quiet. Used above field groups and table
+     sections so the eye can skip between them. */
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-wider text-slate-500; }
+  /* Section headings inside panels carry a short accent tick on the left. */
+  .eyebrow-accent { @apply eyebrow relative pl-2.5
+                     before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2
+                     before:h-2.5 before:w-0.5 before:rounded-full before:bg-accent-500/70; }
+
+  /* Dense list tables. */
+  .tbl { @apply w-full text-[13px]; }
+  .tbl thead tr { @apply text-left text-[11px] uppercase tracking-wider text-slate-500
+                   bg-slate-50 border-b border-slate-200; }
+  .tbl th { @apply px-4 py-2 font-semibold; }
+  .tbl td { @apply px-4 py-2.5 align-top; }
+  .tbl tbody tr { @apply border-b border-slate-100 last:border-0 hover:bg-slate-50/60; }
 }

@@ -103,9 +103,7 @@ export default function ConnectorForm({ connector, values, onChange, secretNames
         if (shown.length === 0) return null
         return (
           <fieldset key={group}>
-            <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
-              {group}
-            </legend>
+            <legend className="eyebrow-accent mb-3">{group}</legend>
             <div className="grid gap-4 sm:grid-cols-2">
               {shown.map((o) => (
                 <div key={o.key} className={o.type === 'text' ? 'sm:col-span-2' : ''}>

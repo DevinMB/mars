@@ -32,11 +32,14 @@ export default function Login() {
   return (
     <div className="min-h-screen grid place-items-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center gap-2.5 justify-center mb-8">
-          <span className="w-9 h-9 rounded-lg bg-brand-600 text-white grid place-items-center font-bold">M</span>
-          <div>
-            <div className="font-semibold text-slate-900 leading-tight">MARS</div>
-            <div className="text-xs text-slate-500">Stream pipelines for Apache Flink®</div>
+        <div className="flex flex-col items-center mb-8">
+          <img src="/icon-192.png" alt="MARS" className="w-16 h-16 rounded-2xl shadow-card mb-3" />
+          <div className="text-center">
+            <div className="text-lg font-semibold text-slate-900 tracking-tight leading-tight">
+              MARS
+            </div>
+            <div className="text-[12px] text-slate-500">Marsden Apache Real-time Streaming</div>
+            <div className="mx-auto mt-2 h-0.5 w-10 rounded-full bg-accent-500/70" />
           </div>
         </div>
 

@@ -46,21 +46,32 @@ export default function Layout({ children }) {
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14 gap-4">
-            <div className="flex items-center gap-6 min-w-0">
-              <NavLink to="/jobs" className="flex items-center gap-2 shrink-0">
-                <span className="w-7 h-7 rounded-md bg-brand-600 text-white grid place-items-center
-                                 font-bold text-sm">M</span>
-                <span className="font-semibold text-slate-900">MARS</span>
+          <div className="flex items-stretch justify-between h-16 gap-4">
+            <div className="flex items-stretch gap-6 min-w-0">
+              <NavLink to="/jobs" className="flex items-center gap-2.5 shrink-0 self-center">
+                <img src="/icon-48.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
+                <span className="leading-none">
+                  <span className="block text-[15px] font-semibold text-slate-900 tracking-tight">
+                    MARS
+                  </span>
+                  <span className="hidden lg:block text-[10.5px] text-slate-500 mt-1
+                                   whitespace-nowrap">
+                    Marsden Apache Real-time Streaming
+                  </span>
+                </span>
               </NavLink>
-              <nav className="flex items-center gap-1 overflow-x-auto">
+              <nav className="flex items-stretch gap-1 overflow-x-auto overflow-y-hidden
+                              [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {NAV.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     className={({ isActive }) =>
-                      `px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
-                        isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
+                      `flex items-center px-3 text-[13px] font-medium whitespace-nowrap
+                       border-b-2 -mb-px transition-colors ${
+                        isActive
+                          ? 'text-slate-900 border-accent-500'
+                          : 'text-slate-500 border-transparent hover:text-slate-900 hover:border-slate-300'
                       }`
                     }
                   >
@@ -69,7 +80,7 @@ export default function Layout({ children }) {
                 ))}
               </nav>
             </div>
-            <div className="flex items-center gap-4 shrink-0">
+            <div className="flex items-center gap-4 shrink-0 self-center">
               <ClusterDot />
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-600 hidden sm:inline">{user?.username}</span>
@@ -86,8 +97,8 @@ export default function Layout({ children }) {
       </header>
 
       {user?.must_change_password && (
-        <div className="bg-amber-50 border-b border-amber-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 text-sm text-amber-900">
+        <div className="bg-accent-50 border-b border-accent-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 text-[13px] text-accent-900">
             This account still uses its generated password.{' '}
             <NavLink to="/account" className="underline font-medium">Change it now</NavLink>.
           </div>
@@ -97,8 +108,13 @@ export default function Layout({ children }) {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">{children}</main>
 
       <footer className="border-t border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 text-xs text-slate-400">
-          MARS — stream pipelines for Apache Flink®
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2
+                        text-[11px] text-slate-400">
+          <img src="/icon-16.png" alt="" className="w-3.5 h-3.5 rounded-sm opacity-70" />
+          <span>
+            <span className="text-slate-500 font-medium">MARS</span>
+            {' '}· Marsden Apache Real-time Streaming · stream pipelines for Apache Flink®
+          </span>
         </div>
       </footer>
     </div>

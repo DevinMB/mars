@@ -1,9 +1,29 @@
 """Request and response shapes for the MARS API."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PlainSerializer, field_validator
+
+
+def _as_utc_iso(dt: datetime) -> str:
+    """Serialises a datetime as unambiguous UTC.
+
+    Everything is stored in UTC, but SQLite does not preserve tzinfo, so values
+    come back naive. Emitting them bare produces strings like
+    "2026-09-14T21:20:15", and a browser reads a timezone-less string as *local*
+    time -- which put every timestamp four hours in the future for a UTC-4 client
+    and made the console report jobs as having last run "in the future" with a
+    duration of 0s. Attaching the zone here fixes it for every endpoint at once.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+# Use this instead of a bare datetime in any response model.
+UtcDatetime = Annotated[datetime, PlainSerializer(_as_utc_iso, return_type=str)]
 
 
 class LoginRequest(BaseModel):
@@ -32,7 +52,7 @@ class SecretOut(BaseModel):
     name: str
     description: str | None
     created_by: str | None
-    updated_at: datetime
+    updated_at: UtcDatetime
     # The value is never returned. Not to admins, not to anyone.
 
 
@@ -67,7 +87,7 @@ class CatalogEntryOut(BaseModel):
     description: str | None
     sql_text: str
     options: dict[str, str]
-    updated_at: datetime
+    updated_at: UtcDatetime
     used_by: list[str] = Field(default_factory=list)
 
 
@@ -92,8 +112,8 @@ class RunOut(BaseModel):
     job_version: int
     flink_job_id: str | None
     state: str
-    started_at: datetime
-    ended_at: datetime | None
+    started_at: UtcDatetime
+    ended_at: UtcDatetime | None
     error_summary: str | None
     restarts: int = 0
     triggered_by_schedule: bool
@@ -119,8 +139,8 @@ class ScheduleOut(BaseModel):
     cron_expr: str | None
     timezone_name: str
     enabled: bool
-    last_fire_at: datetime | None
-    next_fire_at: datetime | None
+    last_fire_at: UtcDatetime | None
+    next_fire_at: UtcDatetime | None
 
 
 class JobOut(BaseModel):
@@ -132,7 +152,7 @@ class JobOut(BaseModel):
     catalog_refs: list[str]
     enabled: bool
     version: int
-    updated_at: datetime
+    updated_at: UtcDatetime
     latest_run: RunOut | None = None
     schedule: ScheduleOut | None = None
     # Live state from the cluster, when it is reachable.

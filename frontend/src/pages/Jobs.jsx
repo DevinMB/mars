@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { relativeTime, duration } from '../lib/format'
 import { Alert, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
+import SearchInput from '../components/SearchInput'
 
 export default function Jobs() {
   const [jobs, setJobs] = useState(null)
   const [error, setError] = useState(null)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -27,12 +29,35 @@ export default function Jobs() {
   if (error) return <Alert level="danger" title="Could not load jobs">{error}</Alert>
   if (!jobs) return <Spinner label="Loading jobs" />
 
+  // Filter over name, description and current state, so "failed" or "restarting"
+  // narrows to what needs attention as readily as a name does.
+  const q = query.trim().toLowerCase()
+  const shown = !q
+    ? jobs
+    : jobs.filter(
+        (j) =>
+          j.name.toLowerCase().includes(q) ||
+          (j.description || '').toLowerCase().includes(q) ||
+          (j.latest_run?.state || '').toLowerCase().includes(q) ||
+          j.job_type.toLowerCase().includes(q),
+      )
+
   return (
     <>
       <PageHeader
         title="Jobs"
         subtitle={jobs.length ? `${jobs.length} job${jobs.length === 1 ? '' : 's'}` : null}
-        actions={<Link to="/jobs/new" className="btn-primary">New job</Link>}
+        actions={
+          <>
+            {jobs.length > 6 && (
+              <div className="w-56">
+                <SearchInput value={query} onChange={setQuery}
+                             placeholder="Filter jobs…" count={shown.length} />
+              </div>
+            )}
+            <Link to="/jobs/new" className="btn-primary">New job</Link>
+          </>
+        }
       />
 
       {jobs.length === 0 ? (
@@ -45,23 +70,19 @@ export default function Jobs() {
         </EmptyState>
       ) : (
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-2.5 font-semibold">Job</th>
-                <th className="px-4 py-2.5 font-semibold">State</th>
-                <th className="px-4 py-2.5 font-semibold">Type</th>
-                <th className="px-4 py-2.5 font-semibold">Last run</th>
-                <th className="px-4 py-2.5 font-semibold">For</th>
-                <th className="px-4 py-2.5 font-semibold">Schedule</th>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Job</th><th>State</th><th>Type</th>
+                <th>Last run</th><th>For</th><th>Schedule</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {jobs.map((job) => {
+            <tbody>
+              {shown.map((job) => {
                 const run = job.latest_run
                 return (
                   <tr key={job.id} className="hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
+                    <td className="">
                       <Link to={`/jobs/${encodeURIComponent(job.name)}`}
                             className="font-medium text-slate-900 hover:text-brand-700">
                         {job.name}
@@ -75,7 +96,7 @@ export default function Jobs() {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="">
                       <StatePill state={run?.state} />
                       {run?.restarts > 0 && (
                         <span className="ml-2 text-xs text-amber-700">
@@ -83,12 +104,12 @@ export default function Jobs() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{job.job_type}</td>
-                    <td className="px-4 py-3 text-slate-600">{relativeTime(run?.started_at)}</td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className=" text-slate-600">{job.job_type}</td>
+                    <td className=" text-slate-600">{relativeTime(run?.started_at)}</td>
+                    <td className=" text-slate-600">
                       {run ? duration(run.started_at, run.ended_at) : '—'}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className=" text-slate-600">
                       {job.schedule
                         ? job.schedule.mode === 'cron'
                           ? <code className="mono text-xs">{job.schedule.cron_expr}</code>

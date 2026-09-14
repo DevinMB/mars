@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import ColumnEditor from '../components/ColumnEditor'
 import ConnectorForm from '../components/ConnectorForm'
+import ConnectorPicker from '../components/ConnectorPicker'
 import { Alert, CodeBlock, Field, PageHeader, Spinner } from '../components/ui'
 
 export default function CatalogEditor() {
@@ -119,13 +120,12 @@ export default function CatalogEditor() {
             </Field>
 
             <Field label="Connector" required>
-              <select className="input" value={connectorId} disabled={!!editing}
-                      onChange={(e) => setConnectorId(e.target.value)}>
-                <option value="">Choose a connector…</option>
-                {available.map((c) => (
-                  <option key={c.connector} value={c.connector}>{c.displayName}</option>
-                ))}
-              </select>
+              <ConnectorPicker
+                connectors={available}
+                value={connectorId}
+                onChange={setConnectorId}
+                disabled={!!editing}
+              />
             </Field>
           </div>
 

@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 
 export function PageHeader({ title, subtitle, actions, back }) {
+  // The title carries a short accent rule: enough to tie pages to the brand
+  // without competing with the primary action button beside it.
   return (
     <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
       <div className="min-w-0">
@@ -9,8 +11,11 @@ export function PageHeader({ title, subtitle, actions, back }) {
             ← {back.label}
           </Link>
         )}
-        <h1 className="text-2xl font-semibold text-slate-900 truncate">{title}</h1>
-        {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
+        <h1 className="text-[22px] font-semibold text-slate-900 tracking-tight truncate">
+          {title}
+        </h1>
+        <div className="mt-1.5 h-0.5 w-8 rounded-full bg-accent-500/60" />
+        {subtitle && <p className="text-[13px] text-slate-500 mt-1.5">{subtitle}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
     </div>
@@ -55,6 +60,7 @@ export function Badge({ children, tone = 'slate' }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600',
     blue: 'bg-brand-50 text-brand-700',
+    accent: 'bg-accent-50 text-accent-800 ring-1 ring-inset ring-accent-200',
     amber: 'bg-amber-50 text-amber-800',
   }
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${tones[tone]}`}>{children}</span>

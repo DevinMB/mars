@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import SqlEditor from '../components/SqlEditor'
+import TablePicker from '../components/TablePicker'
 import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 
 export default function JobEditor() {
@@ -129,37 +130,11 @@ export default function JobEditor() {
               Their definitions are replayed each time the job runs.
             </p>
 
-            {entries.length === 0 && (
-              <p className="text-xs text-slate-500">
-                Nothing in the catalog yet. Define a source and a sink first.
-              </p>
-            )}
-
-            {[['Sources', sources], ['Sinks', sinks]].map(([label, rows]) =>
-              rows.length ? (
-                <div key={label} className="mb-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-                    {label}
-                  </div>
-                  <div className="space-y-1.5">
-                    {rows.map((e) => (
-                      <label key={e.id} className="flex items-start gap-2 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={refs.includes(e.name)}
-                          onChange={() => toggleRef(e.name)}
-                          className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
-                        />
-                        <span className="min-w-0">
-                          <span className="mono text-slate-800">{e.name}</span>
-                          <span className="block text-xs text-slate-500">{e.connector}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : null,
-            )}
+            <TablePicker
+              entries={entries}
+              selected={refs}
+              onToggle={toggleRef}
+            />
           </div>
         </aside>
       </div>
