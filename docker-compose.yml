@@ -1,0 +1,85 @@
+# MARS - stream pipelines for Apache Flink(R)
+#
+#   cp .env.example .env && docker compose up -d
+#
+# Brings up a Flink session cluster, a SQL Gateway, and the MARS console.
+name: mars
+
+services:
+  jobmanager:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: mars/flink:0.1.0
+    container_name: mars-jobmanager
+    command: jobmanager
+    restart: unless-stopped
+    ports:
+      - "${MARS_FLINK_UI_PORT:-8081}:8081"
+    volumes:
+      - ./flink/conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
+      - flink-state:/flink-state
+    environment:
+      - TZ=${TZ:-UTC}
+    # mem_limit, not deploy.resources.limits: the latter is Swarm-only and is
+    # silently ignored by docker compose.
+    mem_limit: 1280m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/overview || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks: [mars]
+
+  taskmanager:
+    image: mars/flink:0.1.0
+    container_name: mars-taskmanager
+    command: taskmanager
+    restart: unless-stopped
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+    volumes:
+      - ./flink/conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
+      - flink-state:/flink-state
+    environment:
+      - TZ=${TZ:-UTC}
+    mem_limit: 2816m
+    cpus: 1.0
+    networks: [mars]
+
+  sql-gateway:
+    image: mars/flink:0.1.0
+    container_name: mars-sql-gateway
+    restart: unless-stopped
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+    command: >
+      /opt/flink/bin/sql-gateway.sh start-foreground
+      -Dsql-gateway.endpoint.rest.address=0.0.0.0
+      -Dsql-gateway.endpoint.rest.bind-address=0.0.0.0
+      -Drest.address=jobmanager
+      -Drest.port=8081
+    volumes:
+      - ./flink/conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
+    environment:
+      - TZ=${TZ:-UTC}
+    mem_limit: 768m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/v1/info || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [mars]
+
+volumes:
+  flink-state:
+
+networks:
+  mars:
+    name: mars
