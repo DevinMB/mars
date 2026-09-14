@@ -54,6 +54,10 @@ class ScheduleMode(str, enum.Enum):
 class RunState(str, enum.Enum):
     SUBMITTING = "submitting"
     RUNNING = "running"
+    # Flink keeps restarting the job's tasks. It is not healthy, and reporting it
+    # as RUNNING hides the single most common way a stream job fails: it starts
+    # fine, then cannot reach something it needs.
+    RESTARTING = "restarting"
     FINISHED = "finished"
     FAILED = "failed"
     CANCELED = "canceled"
@@ -194,6 +198,9 @@ class JobRun(Base):
     # The one-line summary, with the full trace kept beside it.
     error_summary: Mapped[str | None] = mapped_column(String(512))
     error_detail: Mapped[str | None] = mapped_column(Text)
+    # How many times the cluster has been seen restarting this job. A number that
+    # keeps climbing is a restart loop, not a transient blip.
+    restarts: Mapped[int] = mapped_column(Integer, default=0)
     # True when the scheduler started this rather than a person.
     triggered_by_schedule: Mapped[bool] = mapped_column(Boolean, default=False)
     submitted_by: Mapped[str | None] = mapped_column(String(64))

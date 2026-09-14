@@ -1,0 +1,427 @@
+"""Jobs: create, edit, validate, run, cancel, and inspect history."""
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.orm import Session
+
+from ..auth import Principal
+from ..cluster import FlinkClusterClient
+from ..db import get_session
+from ..deps import current_principal, get_cluster, get_submitter, require_writer
+from ..guards import check_job
+from ..models import CatalogEntry, Job, JobRun, JobVersion, RunState, Schedule
+from ..schemas import (
+    JobIn,
+    JobOut,
+    RunOut,
+    ScheduleIn,
+    ScheduleOut,
+    ValidateResponse,
+    WarningOut,
+)
+from ..submitter import JobSubmitter, SubmissionError
+
+router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+# States in which a job occupies a slot and must not be started a second time.
+_ACTIVE = (RunState.RUNNING.value, RunState.SUBMITTING.value, RunState.RESTARTING.value)
+
+
+def _refs(job: Job) -> list[str]:
+    try:
+        v = json.loads(job.catalog_refs or "[]")
+        return [str(x) for x in v] if isinstance(v, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def _run_out(run: JobRun | None) -> RunOut | None:
+    if run is None:
+        return None
+    return RunOut(
+        id=run.id,
+        job_version=run.job_version,
+        flink_job_id=run.flink_job_id,
+        state=run.state,
+        started_at=run.started_at,
+        ended_at=run.ended_at,
+        error_summary=run.error_summary,
+        restarts=run.restarts,
+        triggered_by_schedule=run.triggered_by_schedule,
+        submitted_by=run.submitted_by,
+    )
+
+
+def _schedule_out(s: Schedule | None) -> ScheduleOut | None:
+    if s is None:
+        return None
+    return ScheduleOut(
+        mode=s.mode,
+        cron_expr=s.cron_expr,
+        timezone_name=s.timezone_name,
+        enabled=s.enabled,
+        last_fire_at=s.last_fire_at,
+        next_fire_at=s.next_fire_at,
+    )
+
+
+def _out(job: Job) -> JobOut:
+    latest = job.runs[0] if job.runs else None
+    return JobOut(
+        id=job.id,
+        name=job.name,
+        description=job.description,
+        job_type=job.job_type,
+        sql_text=job.sql_text,
+        catalog_refs=_refs(job),
+        enabled=job.enabled,
+        version=job.version,
+        updated_at=job.updated_at,
+        latest_run=_run_out(latest),
+        schedule=_schedule_out(job.schedule),
+    )
+
+
+def _get(db: Session, name: str) -> Job:
+    job = db.query(Job).filter(Job.name == name).one_or_none()
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"No job named '{name}'")
+    return job
+
+
+def _validate_refs(db: Session, refs: list[str]) -> None:
+    if not refs:
+        return
+    known = {
+        n for (n,) in db.query(CatalogEntry.name).filter(CatalogEntry.name.in_(refs)).all()
+    }
+    missing = [r for r in refs if r not in known]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown catalog entries: {', '.join(missing)}",
+        )
+
+
+@router.get("", response_model=list[JobOut])
+async def list_jobs(
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    cluster: FlinkClusterClient = Depends(get_cluster),
+) -> list[JobOut]:
+    jobs = db.query(Job).order_by(Job.name).all()
+    out = [_out(j) for j in jobs]
+
+    # Overlay what the cluster currently reports, so a job that died overnight is
+    # not still shown as running.
+    try:
+        live = {o.job_id: o for o in await cluster.list_jobs()}
+    except Exception:
+        return out
+
+    for item in out:
+        fid = item.latest_run.flink_job_id if item.latest_run else None
+        if fid and fid in live:
+            item.live_state = live[fid].state
+    return out
+
+
+@router.get("/{name}", response_model=JobOut)
+def get_job(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> JobOut:
+    return _out(_get(db, name))
+
+
+@router.post("", response_model=JobOut, status_code=status.HTTP_201_CREATED)
+def create_job(
+    body: JobIn,
+    principal: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> JobOut:
+    if db.query(Job).filter(Job.name == body.name).count():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A job named '{body.name}' already exists.",
+        )
+    _validate_refs(db, body.catalog_refs)
+
+    job = Job(
+        name=body.name,
+        description=body.description,
+        job_type=body.job_type,
+        sql_text=body.sql_text,
+        catalog_refs=json.dumps(body.catalog_refs),
+        created_by=principal.username,
+        version=1,
+    )
+    db.add(job)
+    db.flush()
+    db.add(
+        JobVersion(
+            job_id=job.id,
+            version=1,
+            sql_text=job.sql_text,
+            catalog_refs=job.catalog_refs,
+            note=body.note or "Created",
+            created_by=principal.username,
+        )
+    )
+    db.commit()
+    return _out(job)
+
+
+@router.put("/{name}", response_model=JobOut)
+def update_job(
+    name: str,
+    body: JobIn,
+    principal: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> JobOut:
+    job = _get(db, name)
+    _validate_refs(db, body.catalog_refs)
+
+    new_refs = json.dumps(body.catalog_refs)
+    changed = body.sql_text != job.sql_text or new_refs != job.catalog_refs
+
+    job.description = body.description
+    job.job_type = body.job_type
+    job.sql_text = body.sql_text
+    job.catalog_refs = new_refs
+
+    # Only a change to what actually runs earns a new version; renaming the
+    # description should not fill the history with noise.
+    if changed:
+        job.version += 1
+        db.add(
+            JobVersion(
+                job_id=job.id,
+                version=job.version,
+                sql_text=job.sql_text,
+                catalog_refs=job.catalog_refs,
+                note=body.note,
+                created_by=principal.username,
+            )
+        )
+    db.commit()
+    return _out(job)
+
+
+@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+async def delete_job(
+    name: str,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    submitter: JobSubmitter = Depends(get_submitter),
+) -> None:
+    job = _get(db, name)
+    running = [
+        r for r in job.runs
+        if r.state in _ACTIVE
+    ]
+    if running:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This job is still running. Cancel it before deleting.",
+        )
+    db.delete(job)
+    db.commit()
+
+
+@router.get("/{name}/script")
+def preview_script(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    submitter: JobSubmitter = Depends(get_submitter),
+) -> dict:
+    """The exact statements that will be sent, with secrets still as placeholders."""
+    job = _get(db, name)
+    try:
+        return {"statements": submitter.build_script(db, job)}
+    except SubmissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{name}/validate", response_model=ValidateResponse)
+async def validate_job(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    submitter: JobSubmitter = Depends(get_submitter),
+) -> ValidateResponse:
+    job = _get(db, name)
+    warnings = [
+        WarningOut(level=w.level, code=w.code, message=w.message) for w in check_job(db, job)
+    ]
+    try:
+        await submitter.validate(db, job)
+    except SubmissionError as exc:
+        return ValidateResponse(
+            ok=False, error=exc.summary, detail=exc.detail, warnings=warnings
+        )
+    return ValidateResponse(ok=True, warnings=warnings)
+
+
+@router.post("/{name}/run", response_model=RunOut, status_code=status.HTTP_202_ACCEPTED)
+async def run_job(
+    name: str,
+    principal: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    submitter: JobSubmitter = Depends(get_submitter),
+) -> RunOut:
+    job = _get(db, name)
+    if not job.enabled:
+        raise HTTPException(status_code=409, detail="This job is disabled.")
+
+    already = [
+        r for r in job.runs
+        if r.state in _ACTIVE
+    ]
+    if already:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This job is already running. Running a second copy would duplicate "
+                "its output; cancel the current run first."
+            ),
+        )
+
+    try:
+        run = await submitter.submit(db, job, submitted_by=principal.username)
+    except SubmissionError as exc:
+        raise HTTPException(status_code=400, detail=exc.summary) from exc
+    return _run_out(run)  # type: ignore[return-value]
+
+
+@router.post("/{name}/cancel", status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+async def cancel_job(
+    name: str,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    submitter: JobSubmitter = Depends(get_submitter),
+) -> None:
+    job = _get(db, name)
+    active = next(
+        (r for r in job.runs
+         if r.state in _ACTIVE),
+        None,
+    )
+    if active is None:
+        raise HTTPException(status_code=409, detail="This job is not running.")
+    await submitter.cancel(db, active)
+
+
+@router.get("/{name}/runs", response_model=list[RunOut])
+def list_runs(
+    name: str,
+    limit: int = 50,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> list[RunOut]:
+    job = _get(db, name)
+    return [_run_out(r) for r in job.runs[: max(1, min(limit, 200))]]  # type: ignore[misc]
+
+
+@router.get("/{name}/runs/{run_id}")
+def get_run(
+    name: str,
+    run_id: int,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> dict:
+    job = _get(db, name)
+    run = next((r for r in job.runs if r.id == run_id), None)
+    if run is None:
+        raise HTTPException(status_code=404, detail="No such run for this job")
+    out = _run_out(run).model_dump()  # type: ignore[union-attr]
+    out["error_detail"] = run.error_detail
+    return out
+
+
+@router.get("/{name}/versions")
+def list_versions(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> list[dict]:
+    job = _get(db, name)
+    return [
+        {
+            "version": v.version,
+            "sql_text": v.sql_text,
+            "catalog_refs": json.loads(v.catalog_refs or "[]"),
+            "note": v.note,
+            "created_at": v.created_at,
+            "created_by": v.created_by,
+        }
+        for v in job.versions
+    ]
+
+
+@router.put("/{name}/schedule", response_model=ScheduleOut)
+def set_schedule(
+    name: str,
+    body: ScheduleIn,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> ScheduleOut:
+    job = _get(db, name)
+
+    if body.mode == "cron":
+        if not body.cron_expr:
+            raise HTTPException(status_code=400, detail="A cron schedule needs an expression.")
+        try:
+            from croniter import croniter
+
+            if not croniter.is_valid(body.cron_expr):
+                raise ValueError
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{body.cron_expr}' is not a valid cron expression.",
+            ) from exc
+        if job.job_type == "streaming":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "A streaming job runs continuously, so a cron schedule would keep "
+                    "starting copies of it. Use supervisor mode to keep it running."
+                ),
+            )
+
+    sched = job.schedule or Schedule(job_id=job.id)
+    sched.mode = body.mode
+    sched.cron_expr = body.cron_expr
+    sched.timezone_name = body.timezone_name
+    sched.enabled = body.enabled
+    db.add(sched)
+    db.commit()
+    return _schedule_out(sched)  # type: ignore[return-value]
+
+
+@router.delete("/{name}/schedule", status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+def clear_schedule(
+    name: str,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> None:
+    job = _get(db, name)
+    if job.schedule is None:
+        raise HTTPException(status_code=404, detail="This job has no schedule.")
+    db.delete(job.schedule)
+    db.commit()

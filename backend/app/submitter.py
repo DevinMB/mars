@@ -200,6 +200,14 @@ class JobSubmitter:
                 continue
 
             new_state = _map_state(o.state)
+
+            if new_state == RunState.RESTARTING.value:
+                # Count every poll that catches it restarting, and explain why as
+                # soon as the cluster has an exception to give us.
+                run.restarts += 1
+                if not run.error_summary:
+                    run.error_summary = await self._fetch_failure(db, run.flink_job_id)
+
             if new_state != run.state:
                 run.state = new_state
                 if new_state in (
@@ -225,8 +233,14 @@ class JobSubmitter:
             return None
         if detail is None or not detail.exception:
             return None
-        first = detail.exception.strip().splitlines()[0]
-        return self._store.redact(db, first)[:500]
+        # During a restart loop rootException is often momentarily empty, so take
+        # the first line that names a real cause rather than the first line at all.
+        lines = [ln.strip() for ln in detail.exception.strip().splitlines() if ln.strip()]
+        first = next(
+            (ln for ln in lines if "Exception" in ln or "Error" in ln),
+            lines[0] if lines else "",
+        )
+        return self._store.redact(db, first)[:500] or None
 
 
 def _catalog_refs(job: Job) -> list[str]:
@@ -246,7 +260,12 @@ def _fail(run: JobRun, summary: str, detail: str = "") -> None:
 
 def _map_state(flink_state: str) -> str:
     s = (flink_state or "").upper()
-    if s in ("RUNNING", "RESTARTING", "CREATED", "INITIALIZING"):
+    if s in ("RESTARTING", "FAILING", "RECONCILING"):
+        # Deliberately not RUNNING: Flink reports RESTARTING while a job loops on
+        # a failure it cannot recover from, and calling that "running" makes the
+        # console lie about the most common real-world failure.
+        return RunState.RESTARTING.value
+    if s in ("RUNNING", "CREATED", "INITIALIZING"):
         return RunState.RUNNING.value
     if s == "FINISHED":
         return RunState.FINISHED.value
