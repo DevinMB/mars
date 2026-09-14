@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import TargetForm from '../components/TargetForm'
 import { Alert, Badge, PageHeader, Spinner } from '../components/ui'
 
 function Stat({ label, value, tone = 'slate' }) {
@@ -18,7 +20,7 @@ function Stat({ label, value, tone = 'slate' }) {
 // differently: a session cluster's scheduler puts tasks in whatever slot is free,
 // and there is no supported way to pin a job to a machine within one. Choosing where
 // a job runs means choosing which cluster receives it.
-function TargetCard({ target }) {
+function TargetCard({ target, canManage, onEdit, onRemove }) {
   const labels = Object.entries(target.labels || {})
   return (
     <div className="card p-4">
@@ -33,12 +35,24 @@ function TargetCard({ target }) {
             <p className="text-[12px] text-slate-500 mt-0.5">{target.description}</p>
           )}
         </div>
-        <span className="flex items-center gap-1.5 text-[12px] shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
+        <span className="flex items-center gap-1.5 text-[12px]">
           <span className={`w-2 h-2 rounded-full ${target.reachable ? 'bg-emerald-500' : 'bg-red-500'}`} />
           <span className={target.reachable ? 'text-slate-600' : 'text-red-700'}>
             {target.reachable ? `Flink ${target.flink_version}` : 'unreachable'}
           </span>
         </span>
+        {canManage && (
+          <span className="flex items-center gap-2 text-[12px]">
+            <button onClick={() => onEdit(target)}
+                    className="text-brand-600 hover:text-brand-700">Edit</button>
+            {!target.is_default && (
+              <button onClick={() => onRemove(target)}
+                      className="text-slate-400 hover:text-red-600">Remove</button>
+            )}
+          </span>
+        )}
+        </div>
       </div>
 
       <dl className="grid grid-cols-3 gap-3 mt-3 text-[12px]">
@@ -72,9 +86,17 @@ function TargetCard({ target }) {
 }
 
 export default function Cluster() {
+  const { user } = useAuth()
+  // Targets decide where jobs run and what URL they are submitted to, so only an
+  // administrator may change them. The API enforces this; hiding the controls
+  // keeps the page honest about what this account can actually do.
+  const canManage = user?.role === 'admin'
+
   const [targets, setTargets] = useState(null)
   const [connectors, setConnectors] = useState([])
   const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null)   // target being edited
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -90,6 +112,19 @@ export default function Cluster() {
     const id = setInterval(load, 10000)
     return () => { alive = false; clearInterval(id) }
   }, [])
+
+  const reload = async () => {
+    try { setTargets(await api.targets()) } catch (err) { setError(err.message) }
+  }
+
+  const remove = async (target) => {
+    if (!confirm(`Remove target "${target.name}"? Jobs running on it keep running, `
+                 + 'but MARS will lose track of them.')) return
+    try {
+      await api.deleteTarget(target.name)
+      await reload()
+    } catch (err) { setError(err.message) }
+  }
 
   if (error && !targets) return <Alert level="danger" title="Could not load targets">{error}</Alert>
   if (!targets) return <Spinner label="Reading clusters" />
@@ -107,7 +142,24 @@ export default function Cluster() {
             ? 'One execution target. Add another to run jobs on separate hardware.'
             : `${targets.length} execution targets, ${up.length} reachable`
         }
+        actions={
+          canManage && !adding && !editing ? (
+            <button className="btn-primary" onClick={() => setAdding(true)}>Add target</button>
+          ) : null
+        }
       />
+
+      {error && (
+        <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>
+      )}
+
+      {canManage && (adding || editing) && (
+        <TargetForm
+          initial={editing}
+          onSaved={async () => { setAdding(false); setEditing(null); await reload() }}
+          onCancel={() => { setAdding(false); setEditing(null) }}
+        />
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <Stat label="Targets" value={`${up.length} / ${targets.length}`}
@@ -125,7 +177,15 @@ export default function Cluster() {
         there is no supported way to pin a job to one machine inside a cluster.
       </p>
       <div className="grid gap-3 lg:grid-cols-2 mb-8">
-        {targets.map((t) => <TargetCard key={t.name} target={t} />)}
+        {targets.map((t) => (
+          <TargetCard
+            key={t.name}
+            target={t}
+            canManage={canManage}
+            onEdit={(x) => { setAdding(false); setEditing(x) }}
+            onRemove={remove}
+          />
+        ))}
       </div>
 
       <div className="card overflow-hidden">

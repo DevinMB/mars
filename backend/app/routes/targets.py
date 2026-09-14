@@ -12,7 +12,7 @@ from ..auth import Principal
 from ..db import get_session
 from ..deps import current_principal, get_targets, require_admin
 from ..models import Job, Target
-from ..schemas import TargetIn, TargetOut
+from ..schemas import TargetIn, TargetOut, TargetProbeIn, TargetProbeOut
 from ..targets import TargetRegistry, labels_of
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
@@ -62,6 +62,65 @@ async def list_targets(
 
     live = await asyncio.gather(*(probe(t) for t in rows))
     return [_out(db, t, l) for t, l in zip(rows, live)]
+
+
+@router.post("/probe", response_model=TargetProbeOut)
+async def probe_target(
+    body: TargetProbeIn,
+    # Admin-only, like the writes it precedes. This endpoint makes the server fetch
+    # a URL the caller chose, so a lesser role could otherwise use it to probe the
+    # internal network from inside it.
+    _: Principal = Depends(require_admin),
+    registry: TargetRegistry = Depends(get_targets),
+) -> TargetProbeOut:
+    """Checks a URL pair from the console before it is saved.
+
+    Adding a cluster otherwise means saving a guess and finding out at the first
+    submission. The two failures look different and are worth telling apart: an
+    unreachable REST endpoint is usually a firewall or a wrong port, while a REST
+    endpoint that answers alongside a gateway that does not usually means the
+    gateway was never started.
+    """
+    import httpx
+
+    from ..cluster import FlinkClusterClient
+
+    flink_ok, flink_detail, version, slots = False, "", None, None
+    try:
+        info = await FlinkClusterClient(body.flink_rest_url.rstrip("/"), timeout=6).info()
+        flink_ok, version, slots = True, info.flink_version, info.slots_total
+        flink_detail = f"Flink {info.flink_version}, {info.slots_total} slots"
+    except Exception as exc:
+        flink_detail = _reason(exc)
+
+    gateway_ok, gateway_detail = False, ""
+    try:
+        async with httpx.AsyncClient(timeout=6) as c:
+            r = await c.get(body.gateway_url.rstrip("/") + "/v1/info")
+            r.raise_for_status()
+            gateway_ok = True
+            gateway_detail = r.json().get("productName", "reachable")
+    except Exception as exc:
+        gateway_detail = _reason(exc)
+
+    return TargetProbeOut(
+        flink_ok=flink_ok, flink_detail=flink_detail,
+        gateway_ok=gateway_ok, gateway_detail=gateway_detail,
+        flink_version=version, slots_total=slots,
+    )
+
+
+def _reason(exc: Exception) -> str:
+    """A sentence an operator can act on, rather than a class name."""
+    text = str(exc) or exc.__class__.__name__
+    lowered = text.lower()
+    if "name or service not known" in lowered or "nodename nor servname" in lowered:
+        return "Host not found. Check the hostname, or use an IP address."
+    if "connection refused" in lowered:
+        return "Connection refused. Nothing is listening on that port."
+    if "timed out" in lowered or "timeout" in lowered:
+        return "Timed out. Reachable names but no answer -- usually a firewall."
+    return text[:160]
 
 
 @router.post("", response_model=TargetOut, status_code=status.HTTP_201_CREATED)

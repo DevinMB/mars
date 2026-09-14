@@ -68,6 +68,8 @@ export const api = {
   // targets
   targets: () => request('/api/targets'),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),
+  probeTarget: (flink_rest_url, gateway_url) =>
+    request('/api/targets/probe', { method: 'POST', body: { flink_rest_url, gateway_url } }),
   updateTarget: (name, body) => request(`/api/targets/${encodeURIComponent(name)}`, { method: 'PUT', body }),
   deleteTarget: (name) => request(`/api/targets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 

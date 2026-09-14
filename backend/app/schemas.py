@@ -189,6 +189,22 @@ class TargetOut(BaseModel):
     slots_available: int | None = None
 
 
+class TargetProbeIn(BaseModel):
+    flink_rest_url: str
+    gateway_url: str
+
+
+class TargetProbeOut(BaseModel):
+    """What a URL pair looks like from the console, before anything is saved."""
+
+    flink_ok: bool
+    flink_detail: str
+    gateway_ok: bool
+    gateway_detail: str
+    flink_version: str | None = None
+    slots_total: int | None = None
+
+
 class WarningOut(BaseModel):
     """A non-blocking caution shown next to a job before it is run."""
 

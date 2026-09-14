@@ -194,3 +194,38 @@ async def test_unscoped_reconcile_still_works_for_one_cluster(db, registry):
                              store=SecretStore(key=Fernet.generate_key()))
     await submitter.refresh_states(db)
     assert db.query(JobRun).one().state == RunState.FINISHED.value
+
+
+# -- who may change the fleet ----------------------------------------------
+
+
+def test_target_writes_are_admin_only():
+    """Pins the guards rather than trusting they stay put.
+
+    A target decides where jobs run and what URL they are submitted to, so an
+    editor being able to add one would let them redirect work to a cluster of their
+    choosing. The probe is included because it makes the server fetch a URL the
+    caller picked, which is a way to scan an internal network from inside it.
+    """
+    from app.deps import require_admin, current_principal
+    from app.routes import targets as mod
+
+    guards = {}
+    for route in mod.router.routes:
+        deps = [d.call for d in route.dependant.dependencies]
+        guards[(sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path)] = deps
+
+    admin_only = [
+        ("POST", "/api/targets"),
+        ("PUT", "/api/targets/{name}"),
+        ("DELETE", "/api/targets/{name}"),
+        ("POST", "/api/targets/probe"),
+    ]
+    for key in admin_only:
+        assert key in guards, f"{key} is missing from the router"
+        assert require_admin in guards[key], f"{key[0]} {key[1]} must require an administrator"
+
+    # Reading the fleet is fine for anyone signed in; the job list shows it anyway.
+    listing = guards[("GET", "/api/targets")]
+    assert current_principal in listing
+    assert require_admin not in listing
