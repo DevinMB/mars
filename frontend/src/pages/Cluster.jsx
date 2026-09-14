@@ -156,6 +156,7 @@ export default function Cluster() {
       {canManage && (adding || editing) && (
         <TargetForm
           initial={editing}
+          targetCount={targets.length}
           onSaved={async () => { setAdding(false); setEditing(null); await reload() }}
           onCancel={() => { setAdding(false); setEditing(null) }}
         />

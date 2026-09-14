@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
+import DeployHelp from './DeployHelp'
 import { Alert, Field } from './ui'
 
 // Adding a cluster without a way to check it means saving a guess and finding out
 // at the first submission, so the form probes both URLs before it will save.
-export default function TargetForm({ initial, onSaved, onCancel }) {
+export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1 }) {
   const editing = Boolean(initial)
   const [name, setName] = useState(initial?.name || '')
   const [description, setDescription] = useState(initial?.description || '')
@@ -88,6 +89,11 @@ export default function TargetForm({ initial, onSaved, onCancel }) {
       </h2>
 
       {error && <div className="mb-3"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
+
+      {/* Only when adding: editing a target means one already exists. Opened by
+          default while there is a single target, since that reader has not done
+          this before. */}
+      {!editing && <DeployHelp defaultOpen={targetCount <= 1} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
