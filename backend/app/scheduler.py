@@ -23,13 +23,20 @@ from croniter import croniter
 from .db import session_scope
 from .models import Job, RunState, Schedule, ScheduleMode, utcnow
 from .submitter import JobSubmitter, SubmissionError
+from .targets import TargetRegistry, UnknownTargetError
 
 log = logging.getLogger(__name__)
 
 
 class Scheduler:
-    def __init__(self, submitter: JobSubmitter, tick_seconds: int = 20) -> None:
+    def __init__(
+        self,
+        submitter: JobSubmitter,
+        targets: TargetRegistry | None = None,
+        tick_seconds: int = 20,
+    ) -> None:
         self._submitter = submitter
+        self._targets = targets
         self._tick = tick_seconds
         self._task: asyncio.Task | None = None
         self._stopping = asyncio.Event()
@@ -68,7 +75,7 @@ class Scheduler:
     async def tick(self) -> None:
         """One pass: reconcile run states, then act on due schedules."""
         with session_scope() as db:
-            await self._submitter.refresh_states(db)
+            await self._reconcile(db)
 
         with session_scope() as db:
             schedules = (
@@ -86,6 +93,28 @@ class Scheduler:
 
         for job_id, mode in due:
             await self._fire(job_id, mode)
+
+    async def _reconcile(self, db) -> None:
+        """Asks each cluster about the jobs placed on it.
+
+        One query per target rather than one for everything: a run belongs to the
+        cluster its job names, and asking the wrong cluster returns "no such job",
+        which would mark a healthy run as lost.
+        """
+        if self._targets is None:
+            await self._submitter.refresh_states(db)
+            return
+
+        default = self._targets.ensure_default(db)
+        for target in self._targets.all_enabled(db):
+            submitter = self._targets.submitter(target)
+            try:
+                await submitter.refresh_states(db, target_name=target.name)
+                if target.id == default.id:
+                    # Jobs that name no target run on the default one.
+                    await submitter.refresh_states(db, target_name=None)
+            except Exception as exc:
+                log.warning("Could not reconcile target '%s': %s", target.name, exc)
 
     def _should_fire(self, db, sched: Schedule, job: Job) -> bool:
         if _is_active(job):
@@ -126,8 +155,15 @@ class Scheduler:
             if _is_active(job):
                 return
 
+            submitter = self._submitter
+            if self._targets is not None:
+                try:
+                    submitter = self._targets.for_job_submitter(db, job)
+                except UnknownTargetError as exc:
+                    log.error("Scheduler cannot place job '%s': %s", job.name, exc)
+                    return
             try:
-                await self._submitter.submit(db, job, submitted_by="scheduler", by_schedule=True)
+                await submitter.submit(db, job, submitted_by="scheduler", by_schedule=True)
                 log.info("Scheduler started job '%s' (%s)", job.name, mode)
             except SubmissionError as exc:
                 # The failure is already recorded against a JobRun; the schedule

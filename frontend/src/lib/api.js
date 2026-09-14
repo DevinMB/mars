@@ -65,6 +65,12 @@ export const api = {
   deleteCatalog: (name) => request(`/api/catalog/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   checkCatalog: (name) => request(`/api/catalog/${encodeURIComponent(name)}/check`, { method: 'POST' }),
 
+  // targets
+  targets: () => request('/api/targets'),
+  createTarget: (body) => request('/api/targets', { method: 'POST', body }),
+  updateTarget: (name, body) => request(`/api/targets/${encodeURIComponent(name)}`, { method: 'PUT', body }),
+  deleteTarget: (name) => request(`/api/targets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
   // jobs
   jobs: () => request('/api/jobs'),
   job: (name) => request(`/api/jobs/${encodeURIComponent(name)}`),

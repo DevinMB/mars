@@ -73,7 +73,7 @@ export default function Jobs() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Job</th><th>State</th><th>Type</th>
+                <th>Job</th><th>State</th><th>Runs on</th><th>Type</th>
                 <th>Last run</th><th>For</th><th>Schedule</th>
               </tr>
             </thead>
@@ -104,7 +104,14 @@ export default function Jobs() {
                         </span>
                       )}
                     </td>
-                    <td className=" text-slate-600">{job.job_type}</td>
+                    <td className="text-slate-600">
+                      {job.target_name ? (
+                        <span className="mono text-[12px] text-slate-700">{job.target_name}</span>
+                      ) : (
+                        <span className="text-slate-400">default</span>
+                      )}
+                    </td>
+                    <td className="text-slate-600">{job.job_type}</td>
                     <td className=" text-slate-600">{relativeTime(run?.started_at)}</td>
                     <td className=" text-slate-600">
                       {run ? duration(run.started_at, run.ended_at) : '—'}

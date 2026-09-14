@@ -162,19 +162,40 @@ class JobSubmitter:
         run.ended_at = utcnow()
         db.commit()
 
-    async def refresh_states(self, db: Session) -> int:
-        """Reconciles MARS's view of runs with what the cluster reports.
+    async def refresh_states(self, db: Session, target_name: str | None = ...) -> int:
+        """Reconciles MARS's view of runs with what this cluster reports.
 
         Without this, a job that failed overnight still reads as running in the
-        console, which is exactly the kind of quiet lie that makes an operator
-        stop trusting a dashboard.
+        console, which is exactly the kind of quiet lie that makes an operator stop
+        trusting a dashboard.
+
+        ``target_name`` scopes the reconcile to jobs placed on one target. That
+        matters once there is more than one cluster: asking the default cluster
+        about a job running elsewhere gets "no such job", and the run would be
+        marked lost while it is running perfectly well somewhere else. Passing the
+        sentinel default reconciles everything, which is correct only in a
+        single-cluster deployment.
         """
-        active = (
+        query = (
             db.query(JobRun)
-            .filter(JobRun.state.in_([RunState.RUNNING.value, RunState.SUBMITTING.value]))
+            .filter(
+                JobRun.state.in_(
+                    [
+                        RunState.RUNNING.value,
+                        RunState.SUBMITTING.value,
+                        RunState.RESTARTING.value,
+                    ]
+                )
+            )
             .filter(JobRun.flink_job_id.isnot(None))
-            .all()
         )
+        if target_name is not ...:
+            query = query.join(Job, JobRun.job_id == Job.id)
+            if target_name is None:
+                query = query.filter(Job.target_name.is_(None))
+            else:
+                query = query.filter(Job.target_name == target_name)
+        active = query.all()
         if not active:
             return 0
 

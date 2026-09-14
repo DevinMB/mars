@@ -15,6 +15,7 @@ from .registry import ConnectorRegistry
 from .secrets import SecretStore
 from .settings import settings
 from .submitter import JobSubmitter
+from .targets import TargetRegistry
 
 
 @lru_cache
@@ -48,7 +49,19 @@ def get_cluster() -> FlinkClusterClient:
 
 
 @lru_cache
+def get_targets() -> TargetRegistry:
+    """Resolves a job's execution target to the clients that talk to that cluster."""
+    return TargetRegistry(get_secret_store())
+
+
+@lru_cache
 def get_submitter() -> JobSubmitter:
+    """The default target's submitter.
+
+    Still used where no job is in hand -- the scheduler's reconcile pass and the
+    startup reachability check. Anything acting on a specific job resolves that
+    job's target instead.
+    """
     return JobSubmitter(get_gateway(), get_cluster(), get_secret_store())
 
 

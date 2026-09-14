@@ -13,13 +13,15 @@ from starlette.responses import Response
 
 from .auth import ensure_admin_user
 from .db import Base, engine, session_scope
-from .deps import get_cluster, get_registry, get_submitter
+from .migrations import upgrade_to_head
+from .deps import get_cluster, get_registry, get_submitter, get_targets
 from .ddl import DdlError
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import jobs as job_routes
 from .routes import secrets as secret_routes
 from .routes import system as system_routes
+from .routes import targets as target_routes
 from .scheduler import Scheduler
 from .secrets import SecretError
 from .settings import settings
@@ -43,12 +45,16 @@ async def lifespan(app: FastAPI):
     global _scheduler
 
     settings().data_dir.mkdir(parents=True, exist_ok=True)
-    # Alembic owns the schema in a real deployment; create_all keeps a fresh
-    # SQLite install working with no migration step.
-    Base.metadata.create_all(engine)
+    # Alembic owns the schema. create_all would add missing tables but never
+    # missing columns, so an upgrade that adds one would start and then fail at the
+    # first query mentioning it.
+    upgrade_to_head()
 
     with session_scope() as db:
         ensure_admin_user(db)
+        # Every job without an explicit target runs here, so it must exist before
+        # anything is submitted.
+        get_targets().ensure_default(db)
 
     registry = get_registry()
     log.info(
@@ -68,7 +74,7 @@ async def lifespan(app: FastAPI):
             settings().flink_rest_url,
         )
 
-    _scheduler = Scheduler(get_submitter())
+    _scheduler = Scheduler(get_submitter(), get_targets())
     _scheduler.start()
     try:
         yield
@@ -89,6 +95,7 @@ app.include_router(system_routes.router)
 app.include_router(secret_routes.router)
 app.include_router(catalog_routes.router)
 app.include_router(job_routes.router)
+app.include_router(target_routes.router)
 
 
 @app.exception_handler(SubmissionError)

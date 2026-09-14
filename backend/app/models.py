@@ -70,6 +70,36 @@ class TimestampMixin:
     )
 
 
+class Target(Base, TimestampMixin):
+    """A Flink cluster jobs can be sent to.
+
+    Placement in Flink is not what it first sounds like. A session cluster's
+    scheduler puts tasks in whatever slot is free, and there is no supported way to
+    say "this job belongs on that machine". Slot sharing groups control placement
+    *within* one job; fine-grained resource management controls slot *sizing*.
+    Neither pins a job to a host.
+
+    So placement means choosing which cluster receives the job, and a target is that
+    choice made explicit: a small cluster for light jobs and a large one for heavy
+    state, or one cluster per machine. The same model carries over to Kubernetes
+    later, where a target maps to a deployment with real node affinity.
+    """
+
+    __tablename__ = "targets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(String(512))
+    flink_rest_url: Mapped[str] = mapped_column(String(512))
+    gateway_url: Mapped[str] = mapped_column(String(512))
+    # Free-form labels, e.g. {"zone": "rack-1", "profile": "memory"}. Not used for
+    # routing yet; they exist so a fleet can be described before it needs to be.
+    labels: Mapped[str] = mapped_column(Text, default="{}")
+    # Exactly one target is the default; jobs that name none are sent there.
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class User(Base, TimestampMixin):
     __tablename__ = "users"
 
@@ -155,6 +185,11 @@ class Job(Base, TimestampMixin):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[str | None] = mapped_column(String(64))
+    # Which cluster this job runs on. Null means the default target, which is what
+    # every existing job gets: adding this while everything is implicitly "default"
+    # is a nullable column and a dropdown, where retrofitting it later would be a
+    # migration plus a decision per job.
+    target_name: Mapped[str | None] = mapped_column(String(64), index=True)
 
     versions: Mapped[list["JobVersion"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobVersion.version.desc()"

@@ -109,8 +109,75 @@ services:
       start_period: 30s
     networks: [mars]
 
+  # ---------------------------------------------------------------------------
+  # A second execution target.
+  #
+  # Flink schedules tasks into whatever slot a cluster has free, and offers no way
+  # to pin a job to one machine inside a cluster. Running a second cluster is how
+  # placement is actually expressed: register it in MARS under Cluster, then pick it
+  # per job.
+  #
+  # Enable with:  docker compose --profile second-target up -d
+  # ---------------------------------------------------------------------------
+  jobmanager-b:
+    image: mars/flink:0.1.0
+    container_name: mars-jobmanager-b
+    profiles: [second-target]
+    command: jobmanager
+    restart: unless-stopped
+    volumes:
+      - ./flink/conf/config-b.yaml:/opt/flink/conf/config.yaml:ro,z
+      - flink-state-b:/flink-state
+    environment: [ "TZ=${TZ:-UTC}" ]
+    mem_limit: 1280m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/overview || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks: [mars]
+
+  taskmanager-b:
+    image: mars/flink:0.1.0
+    container_name: mars-taskmanager-b
+    profiles: [second-target]
+    command: taskmanager
+    restart: unless-stopped
+    depends_on:
+      jobmanager-b: { condition: service_healthy }
+    volumes:
+      - ./flink/conf/config-b.yaml:/opt/flink/conf/config.yaml:ro,z
+      - flink-state-b:/flink-state
+    environment: [ "TZ=${TZ:-UTC}" ]
+    mem_limit: 1536m
+    cpus: 0.5
+    networks: [mars]
+
+  sql-gateway-b:
+    image: mars/flink:0.1.0
+    container_name: mars-sql-gateway-b
+    profiles: [second-target]
+    restart: unless-stopped
+    depends_on:
+      jobmanager-b: { condition: service_healthy }
+    command: >
+      /opt/flink/bin/sql-gateway.sh start-foreground
+      -Dsql-gateway.endpoint.rest.address=0.0.0.0
+      -Dsql-gateway.endpoint.rest.bind-address=0.0.0.0
+      -Drest.address=jobmanager-b
+      -Drest.port=8081
+    volumes:
+      - ./flink/conf/config-b.yaml:/opt/flink/conf/config.yaml:ro,z
+    environment: [ "TZ=${TZ:-UTC}" ]
+    mem_limit: 640m
+    cpus: 0.35
+    networks: [mars]
+
 volumes:
   flink-state:
+  flink-state-b:
   console-data:
 
 networks:

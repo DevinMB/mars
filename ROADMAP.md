@@ -4,8 +4,9 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 
 ## Near term
 
-- **Alembic migrations run on startup.** The schema is generated; wiring `upgrade head`
-  into the container entrypoint is what makes upgrades safe for someone else's install.
+- ~~Alembic migrations run on startup~~ **DONE**, and needed sooner than expected:
+  adding a column to `jobs` brought the console up and then failed at the first query
+  mentioning it, because `create_all` adds missing tables but never missing columns.
 - **Savepoint-aware restarts.** Cancel-with-savepoint and resume-from-savepoint through
   the console. Supervisor mode currently resubmits from scratch, which is wrong for any
   job with meaningful state.
@@ -15,9 +16,12 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   connector's target *before* submitting turns "job restarts forever" into "this database
   does not exist" at the moment a user presses Save.
 
-## Execution targets — running jobs on specific workers
+## Execution targets — running jobs on specific workers — **DONE**
 
-Requested so capacity can be grown deliberately rather than by hoping one cluster copes.
+Shipped. A target is a Flink cluster; jobs name one or get the default. Verified by
+standing up a second cluster and confirming a pinned job ran there and nowhere else.
+
+The notes below are kept because the reasoning still governs what comes next.
 
 Worth being precise about what Flink actually offers, because "assign a job to a node" is
 not a single switch:

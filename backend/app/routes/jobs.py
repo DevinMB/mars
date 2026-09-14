@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 from ..auth import Principal
 from ..cluster import FlinkClusterClient
 from ..db import get_session
-from ..deps import current_principal, get_cluster, get_submitter, require_writer
+from ..deps import (
+    current_principal,
+    get_cluster,
+    get_submitter,
+    get_targets,
+    require_writer,
+)
 from ..guards import check_job
 from ..models import CatalogEntry, Job, JobRun, JobVersion, RunState, Schedule
 from ..schemas import (
@@ -22,6 +28,7 @@ from ..schemas import (
     WarningOut,
 )
 from ..submitter import JobSubmitter, SubmissionError
+from ..targets import TargetRegistry, UnknownTargetError
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -79,6 +86,7 @@ def _out(job: Job) -> JobOut:
         catalog_refs=_refs(job),
         enabled=job.enabled,
         version=job.version,
+        target_name=job.target_name,
         updated_at=job.updated_at,
         latest_run=_run_out(latest),
         schedule=_schedule_out(job.schedule),
@@ -158,6 +166,7 @@ def create_job(
         sql_text=body.sql_text,
         catalog_refs=json.dumps(body.catalog_refs),
         created_by=principal.username,
+        target_name=body.target_name or None,
         version=1,
     )
     db.add(job)
@@ -193,6 +202,7 @@ def update_job(
     job.job_type = body.job_type
     job.sql_text = body.sql_text
     job.catalog_refs = new_refs
+    job.target_name = body.target_name or None
 
     # Only a change to what actually runs earns a new version; renaming the
     # description should not fill the history with noise.
@@ -220,7 +230,7 @@ async def delete_job(
     name: str,
     _: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
-    submitter: JobSubmitter = Depends(get_submitter),
+    targets: TargetRegistry = Depends(get_targets),
 ) -> None:
     job = _get(db, name)
     running = [
@@ -241,12 +251,12 @@ def preview_script(
     name: str,
     _: Principal = Depends(current_principal),
     db: Session = Depends(get_session),
-    submitter: JobSubmitter = Depends(get_submitter),
+    targets: TargetRegistry = Depends(get_targets),
 ) -> dict:
     """The exact statements that will be sent, with secrets still as placeholders."""
     job = _get(db, name)
     try:
-        return {"statements": submitter.build_script(db, job)}
+        return {"statements": targets.for_job_submitter(db, job).build_script(db, job)}
     except SubmissionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -256,14 +266,14 @@ async def validate_job(
     name: str,
     _: Principal = Depends(current_principal),
     db: Session = Depends(get_session),
-    submitter: JobSubmitter = Depends(get_submitter),
+    targets: TargetRegistry = Depends(get_targets),
 ) -> ValidateResponse:
     job = _get(db, name)
     warnings = [
         WarningOut(level=w.level, code=w.code, message=w.message) for w in check_job(db, job)
     ]
     try:
-        await submitter.validate(db, job)
+        await targets.for_job_submitter(db, job).validate(db, job)
     except SubmissionError as exc:
         return ValidateResponse(
             ok=False, error=exc.summary, detail=exc.detail, warnings=warnings
@@ -276,7 +286,7 @@ async def run_job(
     name: str,
     principal: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
-    submitter: JobSubmitter = Depends(get_submitter),
+    targets: TargetRegistry = Depends(get_targets),
 ) -> RunOut:
     job = _get(db, name)
     if not job.enabled:
@@ -296,7 +306,7 @@ async def run_job(
         )
 
     try:
-        run = await submitter.submit(db, job, submitted_by=principal.username)
+        run = await targets.for_job_submitter(db, job).submit(db, job, submitted_by=principal.username)
     except SubmissionError as exc:
         raise HTTPException(status_code=400, detail=exc.summary) from exc
     return _run_out(run)  # type: ignore[return-value]
@@ -310,7 +320,7 @@ async def cancel_job(
     name: str,
     _: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
-    submitter: JobSubmitter = Depends(get_submitter),
+    targets: TargetRegistry = Depends(get_targets),
 ) -> None:
     job = _get(db, name)
     active = next(
@@ -320,7 +330,7 @@ async def cancel_job(
     )
     if active is None:
         raise HTTPException(status_code=409, detail="This job is not running.")
-    await submitter.cancel(db, active)
+    await targets.for_job_submitter(db, job).cancel(db, active)
 
 
 @router.get("/{name}/runs", response_model=list[RunOut])

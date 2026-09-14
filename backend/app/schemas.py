@@ -98,6 +98,8 @@ class JobIn(BaseModel):
     sql_text: str
     catalog_refs: list[str] = Field(default_factory=list)
     note: str | None = None
+    # None means the default target.
+    target_name: str | None = None
 
     @field_validator("job_type")
     @classmethod
@@ -152,12 +154,39 @@ class JobOut(BaseModel):
     catalog_refs: list[str]
     enabled: bool
     version: int
+    target_name: str | None = None
     updated_at: UtcDatetime
     latest_run: RunOut | None = None
     schedule: ScheduleOut | None = None
     # Live state from the cluster, when it is reachable.
     live_state: str | None = None
     checkpoint_age_ms: int | None = None
+
+
+class TargetIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    description: str | None = None
+    flink_rest_url: str
+    gateway_url: str
+    labels: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
+    is_default: bool = False
+
+
+class TargetOut(BaseModel):
+    name: str
+    description: str | None
+    flink_rest_url: str
+    gateway_url: str
+    labels: dict[str, str] = Field(default_factory=dict)
+    enabled: bool
+    is_default: bool
+    job_count: int = 0
+    # Live, when the cluster answers.
+    reachable: bool | None = None
+    flink_version: str | None = None
+    slots_total: int | None = None
+    slots_available: int | None = None
 
 
 class WarningOut(BaseModel):

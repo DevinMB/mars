@@ -1,0 +1,65 @@
+# MARS Flink session cluster configuration.
+#
+# Sized for a small single-host deployment. The slot count is deliberately high
+# relative to memory: MARS jobs are typically many small SQL pipelines rather than
+# a few large ones, and each needs its own slot.
+
+jobmanager:
+  rpc:
+    address: jobmanager-b
+    port: 6123
+  memory:
+    process:
+      size: 1024m
+  bind-host: 0.0.0.0
+  execution:
+    failover-strategy: region
+
+taskmanager:
+  bind-host: 0.0.0.0
+  host: taskmanager-b
+  numberOfTaskSlots: 4
+  memory:
+    process:
+      size: 1280m
+
+parallelism:
+  default: 1
+
+rest:
+  address: 0.0.0.0
+  bind-address: 0.0.0.0
+
+# Checkpointing is on by default: a MARS job that cannot recover is not much use.
+execution:
+  checkpointing:
+    interval: 30s
+    min-pause: 10s
+    timeout: 10min
+    externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+
+state:
+  backend:
+    type: hashmap
+  checkpoints:
+    dir: file:///flink-state/checkpoints
+  savepoints:
+    dir: file:///flink-state/savepoints
+
+metrics:
+  reporters: prom
+  reporter:
+    prom:
+      factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+      port: 9249
+
+# Async UDFs (the Ollama enricher) need a bounded queue and a timeout that
+# accommodates a slow model without stalling the pipeline forever.
+table:
+  exec:
+    async-scalar:
+      buffer-capacity: 10
+      timeout: 3min
+      max-attempts: 3
+      retry-strategy: FIXED_DELAY
+      retry-delay: 5s

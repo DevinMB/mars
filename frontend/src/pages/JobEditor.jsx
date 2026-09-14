@@ -10,6 +10,8 @@ export default function JobEditor() {
   const navigate = useNavigate()
 
   const [entries, setEntries] = useState(null)
+  const [targets, setTargets] = useState([])
+  const [target, setTarget] = useState('')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [jobType, setJobType] = useState('streaming')
@@ -22,6 +24,7 @@ export default function JobEditor() {
   useEffect(() => {
     (async () => {
       setEntries(await api.catalog())
+      setTargets(await api.targets().catch(() => []))
       if (editing) {
         const j = await api.job(editing)
         setName(j.name)
@@ -29,6 +32,7 @@ export default function JobEditor() {
         setJobType(j.job_type)
         setSql(j.sql_text)
         setRefs(j.catalog_refs)
+        setTarget(j.target_name || '')
       }
     })().catch((err) => setError(err.message))
   }, [editing])
@@ -44,6 +48,7 @@ export default function JobEditor() {
     const body = {
       name, description, job_type: jobType, sql_text: sql,
       catalog_refs: refs, note: note || undefined,
+      target_name: target || null,
     }
     try {
       if (editing) await api.updateJob(editing, body)
@@ -85,6 +90,31 @@ export default function JobEditor() {
             <Field label="Description">
               <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
+            {targets.length > 1 && (
+              <Field
+                label="Runs on"
+                hint={
+                  'Which Flink cluster receives this job. A cluster schedules tasks into ' +
+                  'any free slot it has, so choosing where a job runs means choosing the ' +
+                  'cluster \u2014 not a machine within one.'
+                }
+              >
+                <select className="input" value={target} onChange={(e) => setTarget(e.target.value)}>
+                  <option value="">
+                    {targets.find((t) => t.is_default)?.name || 'default'} (default)
+                  </option>
+                  {targets
+                    .filter((t) => !t.is_default && t.enabled)
+                    .map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
+                        {t.description ? ` \u2014 ${t.description}` : ''}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            )}
+
             <Field
               label="Type"
               hint={
