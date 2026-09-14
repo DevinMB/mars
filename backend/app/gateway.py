@@ -15,6 +15,7 @@ about it shape this module:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -184,21 +185,61 @@ def _populate(result: StatementResult, payload: dict[str, Any]) -> None:
 
 
 def _friendly_error(raw: str) -> str:
-    """Reduces a Flink stack trace to the one line that explains the failure."""
+    """Reduces a Flink failure to the one line that explains it.
+
+    The gateway returns ``{"errors": ["Internal server error.", "<9kB trace>"]}``.
+    Two things matter: the body must be JSON-decoded first, because otherwise the
+    newlines are still ``\\n`` escapes and every line-oriented pattern matches the
+    whole blob; and the *deepest* ``Caused by`` is the real reason, since the outer
+    frames only say that fetching results failed.
+    """
     if not raw:
         return "Statement failed with no detail"
 
-    match = _USEFUL_CAUSE.search(raw)
-    if match:
-        return " ".join(match.group("msg").split())[:400]
+    text = _decoded_error_text(raw)
 
-    # Fall back to the deepest "Caused by", which is usually the real reason.
-    causes = re.findall(r"Caused by: [\w.$]+(?:Exception|Error):\s*(.+)", raw)
+    # The last "Caused by" is the root cause; earlier ones are gateway plumbing.
+    causes = re.findall(
+        r"Caused by:\s*[\w.$]*?(?:Exception|Error):\s*(.+)", text
+    )
     if causes:
-        return " ".join(causes[-1].split())[:400]
+        return _tidy(causes[-1])
 
-    for line in raw.splitlines():
+    match = _USEFUL_CAUSE.search(text)
+    if match:
+        return _tidy(match.group("msg"))
+
+    for line in text.splitlines():
         line = line.strip()
-        if line and not line.startswith(("at ", "\tat ", "{", "}", "<")):
-            return line[:400]
+        if line and not line.startswith(("at ", "...", "<", "{", "}")):
+            return _tidy(line)
     return "Statement failed"
+
+
+def _decoded_error_text(raw: str) -> str:
+    """Pulls the human-readable text out of a gateway error body."""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return raw
+
+    if isinstance(parsed, dict):
+        errors = parsed.get("errors")
+        if isinstance(errors, list):
+            # Longest entry first: the short one is always "Internal server error."
+            return "\n".join(sorted((str(e) for e in errors), key=len, reverse=True))
+        if isinstance(errors, str):
+            return errors
+    return raw
+
+
+def _tidy(message: str) -> str:
+    """Trims noise that is constant in a MARS deployment.
+
+    Every table lives in the one default catalog, so spelling that out in an error
+    only makes the useful part -- the table name -- harder to find.
+    """
+    text = " ".join(message.split())
+    text = text.replace("`default_catalog`.`default_database`.", "")
+    text = re.sub(r"\s*in any of the catalogs \[[^\]]*\],?", "", text)
+    return text.strip()[:400]
