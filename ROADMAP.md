@@ -140,6 +140,43 @@ somewhere else.
 Worth noting for sequencing: steps 1 and 2 are additive and could be done any time.
 Step 3 is where the value is, and it depends on savepoints.
 
+## Dark mode
+
+A toggle, defaulting to the system preference.
+
+**The leverage point is already there.** `index.css` defines `.card`, `.input`,
+`.tbl`, `.btn-*` and `.eyebrow` as component classes, so most surfaces are described
+in one file rather than scattered across markup. Moving their colours to CSS custom
+properties — `--surface`, `--surface-raised`, `--text`, `--text-muted`, `--border` —
+and redefining those under a `.dark` selector carries most of the interface without
+touching a single component.
+
+What does not come free:
+
+- **Literal `slate-*` classes in pages.** They are everywhere and each is a decision
+  that was made for a light background. These want auditing rather than a blanket
+  `dark:` variant, which doubles every class and drifts the moment someone forgets.
+- **Status colours.** The state pills lean on emerald, amber and red at 50-weight
+  tints with 700-weight text. Those tints vanish on a dark ground; dark needs the
+  relationship inverted — a dark tint with light text — and re-checked for contrast,
+  because "running" and "restarting" have to stay distinguishable at a glance.
+- **Orange on dark.** `brand-600` reads well on white and muddies against slate-900.
+  The button and the accent rule likely want `brand-500`, which means the palette
+  gains a per-theme mapping rather than one fixed choice.
+- **Things already dark.** `CodeBlock` and the SQL editor gutter are slate-900 today
+  because they sit on white. On a dark page they stop being distinct and need to go
+  the other way, slightly lighter than the surface behind them.
+
+**The implementation trap is the flash.** Reading the preference in React means the
+first paint is the wrong theme and then corrects, which is uglier than not having the
+feature. The class has to be on `<html>` before the bundle parses, which means a
+small inline script in `index.html` that reads `localStorage` and falls back to
+`prefers-color-scheme`. That script is the only part that cannot be tidy.
+
+Scope note: three states, not two — light, dark, and follow the system. A toggle
+that only flips between light and dark quietly overrides a preference the operating
+system already expresses.
+
 ## Later
 
 - **Multi-user in earnest.** Roles exist; per-job ownership and audit do not.
