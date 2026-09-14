@@ -195,3 +195,77 @@ def test_split_handles_backticked_identifiers():
 def test_split_tolerates_missing_trailing_semicolon():
     assert split_statements("SELECT 1") == ["SELECT 1"]
     assert split_statements("  ") == []
+
+
+# -- statement sets ---------------------------------------------------------
+
+
+def test_statement_set_is_kept_whole():
+    """EXECUTE STATEMENT SET compiles several INSERTs into one job with one source
+    read. Splitting it would submit each separately, rescanning the source each
+    time -- three passes over a 335k-record topic instead of one."""
+    script = """
+EXECUTE STATEMENT SET
+BEGIN
+  INSERT INTO a SELECT doc FROM src WHERE k = 'x';
+  INSERT INTO b SELECT doc FROM src WHERE k = 'y';
+  INSERT INTO c SELECT doc FROM src WHERE k = 'z';
+END;
+"""
+    parts = split_statements(script)
+    assert len(parts) == 1
+    assert parts[0].count("INSERT INTO") == 3
+    assert parts[0].strip().upper().endswith("END")
+
+
+def test_ddl_before_and_after_a_statement_set_still_splits():
+    script = """
+CREATE TABLE src (doc STRING) WITH ('connector' = 'datagen');
+EXECUTE STATEMENT SET
+BEGIN
+  INSERT INTO a SELECT doc FROM src;
+  INSERT INTO b SELECT doc FROM src;
+END;
+SELECT 1;
+"""
+    parts = split_statements(script)
+    assert len(parts) == 3
+    assert parts[0].startswith("CREATE TABLE")
+    assert parts[1].count("INSERT INTO") == 2
+    assert parts[2] == "SELECT 1"
+
+
+def test_end_inside_a_case_expression_does_not_close_the_set():
+    """CASE ... END appears constantly in these jobs; only a trailing END closes
+    the statement set."""
+    script = """
+EXECUTE STATEMENT SET
+BEGIN
+  INSERT INTO a SELECT CASE WHEN x THEN 'p' ELSE 'q' END FROM src;
+  INSERT INTO b SELECT CASE WHEN y THEN 'r' ELSE 's' END FROM src;
+END;
+"""
+    parts = split_statements(script)
+    assert len(parts) == 1
+    assert parts[0].count("INSERT INTO") == 2
+
+
+def test_lowercase_statement_set_is_recognised():
+    script = "execute statement set begin insert into a select 1; insert into b select 2; end;"
+    parts = split_statements(script)
+    assert len(parts) == 1
+
+
+def test_semicolon_in_a_string_inside_a_statement_set():
+    script = (
+        "EXECUTE STATEMENT SET BEGIN "
+        "INSERT INTO a SELECT 'has; semicolon' FROM src; "
+        "INSERT INTO b SELECT 1 FROM src; END;"
+    )
+    parts = split_statements(script)
+    assert len(parts) == 1
+    assert "has; semicolon" in parts[0]
+
+
+def test_ordinary_script_is_unaffected():
+    assert split_statements("SELECT 1; SELECT 2;") == ["SELECT 1", "SELECT 2"]

@@ -136,11 +136,22 @@ def columns_for(connector: Connector, overrides: list[dict] | None = None) -> li
     return [Column(name=c.name, sql_type=c.sql_type) for c in connector.columns]
 
 
+# EXECUTE STATEMENT SET BEGIN ... END; wraps several INSERTs that must compile into
+# a single job. The semicolons between them are part of that one statement.
+_STATEMENT_SET_START = re.compile(r"\bEXECUTE\s+STATEMENT\s+SET\b", re.I)
+
+
 def split_statements(script: str) -> list[str]:
     """Splits a SQL script on semicolons that are not inside quotes or comments.
 
     A naive ``script.split(';')`` breaks on any option value containing one, which
     Kafka JAAS configuration and cron expressions routinely do.
+
+    It also keeps ``EXECUTE STATEMENT SET BEGIN ... END;`` whole. That construct is
+    how several INSERTs share one source read -- Flink compiles them into a single
+    job with one scan -- and splitting it would submit each INSERT separately,
+    reading the source once per statement. On a 335k-record topic being fanned out
+    three ways, that is the difference between one pass and three.
     """
     statements: list[str] = []
     buf: list[str] = []
@@ -193,7 +204,13 @@ def split_statements(script: str) -> list[str]:
         elif ch == "`" and not (in_single or in_double):
             in_backtick = not in_backtick
         elif ch == ";" and not (in_single or in_double or in_backtick):
-            stmt = "".join(buf).strip()
+            pending = "".join(buf)
+            if _inside_statement_set(pending):
+                # A semicolon between the INSERTs of a statement set; keep going.
+                buf.append(ch)
+                i += 1
+                continue
+            stmt = pending.strip()
             if stmt:
                 statements.append(stmt)
             buf = []
@@ -207,6 +224,18 @@ def split_statements(script: str) -> list[str]:
     if tail:
         statements.append(tail)
     return statements
+
+
+def _inside_statement_set(pending: str) -> bool:
+    """True when the text so far has opened a statement set and not yet closed it.
+
+    The set closes on a bare ``END`` token, so ``END`` appearing inside a CASE
+    expression is not mistaken for the terminator: only the final one, with nothing
+    but whitespace after it, counts.
+    """
+    if not _STATEMENT_SET_START.search(pending):
+        return False
+    return not re.search(r"\bEND\s*$", pending, re.I)
 
 
 def options_to_json(options: dict[str, str]) -> str:
