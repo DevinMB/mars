@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "connector": "filesystem",
+  "displayName": "Filesystem",
+  "kinds": ["source", "sink"],
+  "description": "Reads and writes files on a mounted path or object store.",
+  "docsUrl": "https://nightlies.apache.org/flink/flink-docs-stable/docs/connectors/table/filesystem/",
+  "supportsHealthCheck": false,
+  "options": [
+    { "key": "path", "label": "Path", "type": "string", "required": true, "secret": false,
+      "group": "General", "placeholder": "file:///data/out",
+      "help": "Must be reachable from the TaskManager, not from the console." },
+    { "key": "format", "label": "Format", "type": "enum", "required": true, "secret": false,
+      "group": "Format", "default": "json", "choices": ["json", "csv", "parquet", "avro", "raw"] },
+    { "key": "sink.rolling-policy.file-size", "label": "Roll at size", "type": "string",
+      "required": false, "secret": false, "group": "Sink", "default": "128MB" },
+    { "key": "sink.rolling-policy.rollover-interval", "label": "Roll after", "type": "duration",
+      "required": false, "secret": false, "group": "Sink", "default": "30min" }
+  ],
+  "columns": []
+}

@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "connector": "print",
+  "displayName": "Print (debug)",
+  "kinds": ["sink"],
+  "description": "Writes rows to the TaskManager log. For inspecting a pipeline, not for production.",
+  "docsUrl": "https://nightlies.apache.org/flink/flink-docs-stable/docs/connectors/table/print/",
+  "supportsHealthCheck": false,
+  "options": [
+    { "key": "print-identifier", "label": "Prefix", "type": "string",
+      "required": false, "secret": false, "group": "General",
+      "help": "Prepended to every line, so you can find them in the log." }
+  ],
+  "columns": []
+}

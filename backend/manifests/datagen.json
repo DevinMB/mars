@@ -1,0 +1,17 @@
+{
+  "manifestVersion": 1,
+  "connector": "datagen",
+  "displayName": "Data generator",
+  "kinds": ["source"],
+  "description": "Generates synthetic rows. Useful for trying a pipeline before pointing it at real data.",
+  "docsUrl": "https://nightlies.apache.org/flink/flink-docs-stable/docs/connectors/table/datagen/",
+  "supportsHealthCheck": false,
+  "options": [
+    { "key": "rows-per-second", "label": "Rows per second", "type": "integer",
+      "required": false, "secret": false, "group": "General", "default": "10000" },
+    { "key": "number-of-rows", "label": "Total rows", "type": "integer",
+      "required": false, "secret": false, "group": "General",
+      "help": "Leave empty for an unbounded stream. Set it to make the job finish." }
+  ],
+  "columns": []
+}
