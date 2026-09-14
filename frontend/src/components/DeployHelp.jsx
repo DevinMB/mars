@@ -110,7 +110,7 @@ curl -s http://newhost:8083/v1/info`}</Copyable>
               href={REMOTE_DIR}
               target="_blank"
               rel="noreferrer"
-              className="inline-block text-brand-600 hover:text-brand-700 text-[12px]"
+              className="inline-block link text-[12px]"
             >
               remote-target/ on GitHub, with the full README →
             </a>

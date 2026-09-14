@@ -12,6 +12,7 @@ import CatalogEditor from './pages/CatalogEditor'
 import Secrets from './pages/Secrets'
 import Cluster from './pages/Cluster'
 import Account from './pages/Account'
+import Admin from './pages/Admin'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -36,6 +37,7 @@ function Shell() {
       <Route path="/secrets" element={<Protected><Secrets /></Protected>} />
       <Route path="/cluster" element={<Protected><Cluster /></Protected>} />
       <Route path="/account" element={<Protected><Account /></Protected>} />
+      <Route path="/admin" element={<Protected><Admin /></Protected>} />
       <Route path="*" element={<Navigate to="/jobs" replace />} />
     </Routes>
   )

@@ -142,7 +142,20 @@ These are advisory — each has a legitimate exception — but none should be hi
 
 ## Administration
 
-The CLI works directly against the database, so it works even when nobody can sign in.
+Accounts are managed under **Admin** in the console: create them, change roles,
+disable, reset passwords, and issue or revoke API tokens. Generated passwords and
+new tokens are shown once, because MARS stores only a hash.
+
+Two rules are enforced by the API, not merely hidden in the page:
+
+- The last enabled administrator cannot be demoted, disabled or deleted. Otherwise
+  one careless edit locks everyone out and the only way back is a shell on the host.
+- You cannot disable or delete your own account.
+
+### From the command line
+
+The CLI works directly against the database, so it works even when nobody can sign
+in — which is what makes it the recovery path rather than a duplicate of the page.
 
 ```bash
 docker exec mars-console python -m app.admin list-users

@@ -17,14 +17,22 @@
   .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px]
           font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed
           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40; }
-  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800; }
+  /* The one loud element on a page. Orange because that is the product's
+     colour, not because orange means anything in particular. */
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800
+                  shadow-sm shadow-brand-600/20; }
   .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300
                     hover:bg-slate-50 hover:border-slate-400; }
   .btn-danger { @apply btn bg-white text-red-700 border border-red-300 hover:bg-red-50; }
 
   .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 text-[13px]
            text-slate-900 placeholder:text-slate-400 transition-shadow
-           focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-500; }
+           focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-400; }
+
+  /* Inline links: slate that warms on hover. A coloured link in every table cell
+     would be noise next to an orange button. */
+  .link { @apply text-slate-700 hover:text-brand-700 underline-offset-2 hover:underline
+          transition-colors; }
   .label { @apply block text-[13px] font-medium text-slate-700 mb-1; }
   .hint { @apply text-[11px] text-slate-500 mt-1 leading-snug; }
   .mono { @apply font-mono text-[12.5px]; }

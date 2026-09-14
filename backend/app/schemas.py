@@ -163,6 +163,64 @@ class JobOut(BaseModel):
     checkpoint_age_ms: int | None = None
 
 
+class UserIn(BaseModel):
+    username: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+    role: str = "editor"
+    # Omit to have one generated and returned once.
+    password: str | None = Field(default=None, min_length=12)
+
+    @field_validator("role")
+    @classmethod
+    def _role(cls, v: str) -> str:
+        if v not in ("admin", "editor", "viewer"):
+            raise ValueError("role must be admin, editor or viewer")
+        return v
+
+
+class UserUpdate(BaseModel):
+    role: str | None = None
+    disabled: bool | None = None
+
+    @field_validator("role")
+    @classmethod
+    def _role(cls, v: str | None) -> str | None:
+        if v is not None and v not in ("admin", "editor", "viewer"):
+            raise ValueError("role must be admin, editor or viewer")
+        return v
+
+
+class UserOut(BaseModel):
+    username: str
+    role: str
+    disabled: bool
+    must_change_password: bool
+    last_login_at: UtcDatetime | None
+    created_at: UtcDatetime
+    token_count: int = 0
+    is_self: bool = False
+
+
+class PasswordResetOut(BaseModel):
+    username: str
+    # Returned once, when MARS generated it. Null when the caller set one.
+    password: str | None
+
+
+class TokenIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    expires_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class TokenOut(BaseModel):
+    name: str
+    prefix: str
+    created_at: UtcDatetime
+    expires_at: UtcDatetime | None
+    last_used_at: UtcDatetime | None
+    # Only on creation, and never again.
+    token: str | None = None
+
+
 class TargetIn(BaseModel):
     name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")
     description: str | None = None

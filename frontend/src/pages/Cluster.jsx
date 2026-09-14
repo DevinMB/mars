@@ -45,7 +45,7 @@ function TargetCard({ target, canManage, onEdit, onRemove }) {
         {canManage && (
           <span className="flex items-center gap-2 text-[12px]">
             <button onClick={() => onEdit(target)}
-                    className="text-brand-600 hover:text-brand-700">Edit</button>
+                    className="link">Edit</button>
             {!target.is_default && (
               <button onClick={() => onRemove(target)}
                       className="text-slate-400 hover:text-red-600">Remove</button>

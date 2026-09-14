@@ -22,6 +22,7 @@ from .routes import jobs as job_routes
 from .routes import secrets as secret_routes
 from .routes import system as system_routes
 from .routes import targets as target_routes
+from .routes import users as user_routes
 from .scheduler import Scheduler
 from .secrets import SecretError
 from .settings import settings
@@ -96,6 +97,7 @@ app.include_router(secret_routes.router)
 app.include_router(catalog_routes.router)
 app.include_router(job_routes.router)
 app.include_router(target_routes.router)
+app.include_router(user_routes.router)
 
 
 @app.exception_handler(SubmissionError)

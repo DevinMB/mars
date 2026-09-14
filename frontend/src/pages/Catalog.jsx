@@ -48,7 +48,7 @@ export default function Catalog() {
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   <Link to={`/catalog/${encodeURIComponent(e.name)}/edit`}
-                        className="text-brand-600 hover:text-brand-700 text-sm mr-3">Edit</Link>
+                        className="link text-sm mr-3">Edit</Link>
                   <button onClick={() => remove(e.name)}
                           className="text-slate-400 hover:text-red-600 text-sm">Delete</button>
                 </td>

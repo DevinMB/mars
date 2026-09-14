@@ -65,6 +65,22 @@ export const api = {
   deleteCatalog: (name) => request(`/api/catalog/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   checkCatalog: (name) => request(`/api/catalog/${encodeURIComponent(name)}/check`, { method: 'POST' }),
 
+  // users
+  users: () => request('/api/users'),
+  createUser: (body) => request('/api/users', { method: 'POST', body }),
+  updateUser: (username, body) =>
+    request(`/api/users/${encodeURIComponent(username)}`, { method: 'PATCH', body }),
+  resetUserPassword: (username) =>
+    request(`/api/users/${encodeURIComponent(username)}/password`, { method: 'POST' }),
+  deleteUser: (username) =>
+    request(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+  userTokens: (username) => request(`/api/users/${encodeURIComponent(username)}/tokens`),
+  createUserToken: (username, body) =>
+    request(`/api/users/${encodeURIComponent(username)}/tokens`, { method: 'POST', body }),
+  revokeUserToken: (username, name) =>
+    request(`/api/users/${encodeURIComponent(username)}/tokens/${encodeURIComponent(name)}`,
+            { method: 'DELETE' }),
+
   // targets
   targets: () => request('/api/targets'),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),

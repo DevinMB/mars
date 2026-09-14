@@ -293,7 +293,7 @@ export default function JobDetail() {
                 {job.catalog_refs.map((r) => (
                   <li key={r}>
                     <Link to={`/catalog/${encodeURIComponent(r)}/edit`}
-                          className="mono text-sm text-brand-600 hover:text-brand-700">{r}</Link>
+                          className="mono text-sm link">{r}</Link>
                   </li>
                 ))}
               </ul>

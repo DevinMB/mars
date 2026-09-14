@@ -9,6 +9,9 @@ const NAV = [
   { to: '/catalog', label: 'Catalog' },
   { to: '/secrets', label: 'Secrets' },
   { to: '/cluster', label: 'Cluster' },
+  // Only administrators may manage accounts, so only they are offered the tab.
+  // The API enforces it regardless.
+  { to: '/admin', label: 'Admin', adminOnly: true },
 ]
 
 function ClusterDot() {
@@ -93,7 +96,7 @@ export default function Layout({ children }) {
               </NavLink>
               <nav className="flex items-stretch gap-1 overflow-x-auto overflow-y-hidden
                               [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {NAV.map((item) => (
+                {NAV.filter((i) => !i.adminOnly || user?.role === 'admin').map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
