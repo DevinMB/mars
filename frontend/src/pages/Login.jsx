@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import MarsMark from '../components/MarsMark'
 import { Alert, Field, Spinner } from '../components/ui'
 
 export default function Login() {
@@ -33,7 +34,10 @@ export default function Login() {
     <div className="min-h-screen grid place-items-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <img src="/icon-192.png" alt="MARS" className="w-16 h-16 rounded-2xl shadow-card mb-3" />
+          <div className="w-16 h-16 rounded-2xl bg-slate-900 grid place-items-center
+                          shadow-card mb-3">
+            <MarsMark size={42} title="MARS" />
+          </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-slate-900 tracking-tight leading-tight">
               MARS

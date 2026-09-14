@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import MarsMark from './MarsMark'
 import { useAuth } from '../lib/auth'
 
 const NAV = [
@@ -79,7 +80,7 @@ export default function Layout({ children }) {
           <div className="flex items-stretch justify-between h-16 gap-4">
             <div className="flex items-stretch gap-6 min-w-0">
               <NavLink to="/jobs" className="flex items-center gap-2.5 shrink-0 self-center">
-                <img src="/icon-48.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
+                <MarsMark size={30} className="shrink-0" title="MARS" />
                 <span className="leading-none">
                   <span className="block text-[15px] font-semibold text-slate-900 tracking-tight">
                     MARS
@@ -140,7 +141,7 @@ export default function Layout({ children }) {
       <footer className="border-t border-slate-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2
                         text-[11px] text-slate-400">
-          <img src="/icon-16.png" alt="" className="w-3.5 h-3.5 rounded-sm opacity-70" />
+          <MarsMark size={14} className="shrink-0 opacity-80" />
           <span>
             <span className="text-slate-500 font-medium">MARS</span>
             {' '}· Marsden Apache Real-time Streaming · stream pipelines for Apache Flink®
