@@ -17,10 +17,15 @@ Then open **http://localhost:8080**. The first administrator's password is print
 to the log:
 
 ```bash
-docker compose logs console | grep -A3 administrator
+docker logs mars-console 2>&1 | grep -A3 administrator
 ```
 
-If you missed it, or lost it later, it is recoverable — see [Administration](#administration).
+**If you missed it — or the container has since been rebuilt, which starts a fresh
+log — reset it.** This needs no compose file and works from any directory:
+
+```bash
+docker exec mars-console python -m app.admin reset-password admin
+```
 
 ---
 
@@ -115,12 +120,21 @@ These are advisory — each has a legitimate exception — but none should be hi
 The CLI works directly against the database, so it works even when nobody can sign in.
 
 ```bash
-docker compose exec console python -m app.admin list-users
-docker compose exec console python -m app.admin reset-password admin
-docker compose exec console python -m app.admin create-user devin --role admin
-docker compose exec console python -m app.admin issue-token ci --name deploy
-docker compose exec console python -m app.admin revoke-token --name deploy
+docker exec mars-console python -m app.admin list-users
+docker exec mars-console python -m app.admin reset-password admin
+docker exec mars-console python -m app.admin create-user devin --role admin
+docker exec mars-console python -m app.admin issue-token ci --name deploy
+docker exec mars-console python -m app.admin revoke-token --name deploy
 ```
+
+`docker exec` is used rather than `docker compose exec` deliberately: it needs no
+compose file and so works from any directory. `docker compose exec` only works from
+the directory holding `docker-compose.yml`.
+
+> The bootstrap password appears **once**, in the log of the container that created
+> it. Rebuilding the console replaces that container and its log, so treat the
+> reset command above as the normal way to recover access rather than a last
+> resort.
 
 Roles are `admin` (everything, including secrets), `editor` (jobs and catalog), and
 `viewer` (read-only).
