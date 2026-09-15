@@ -16,7 +16,7 @@ from ..deps import (
     get_secret_store,
     require_writer,
 )
-from ..guards import check_catalog_entry, columns_of
+from ..guards import check_catalog_entry, columns_of, parse_options
 from ..models import CatalogEntry, Job
 from ..gateway import SqlGatewayClient
 from ..preview import sample_source
@@ -34,6 +34,23 @@ from ..secrets import SecretStore
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
 
+def _options_of(entry: CatalogEntry) -> dict[str, str]:
+    """The entry's options, from the form values or read back out of the DDL.
+
+    An entry created from hand-written SQL -- which is how anything imported or
+    scripted arrives -- stores no form values, so the editor showed empty Topic
+    and Bootstrap servers fields for sources that were demonstrably working. The
+    DDL is the definition; the stored values are only a convenience, so fall back
+    to reading the definition itself.
+    """
+    stored = options_from_json(entry.options_json)
+    if stored:
+        return stored
+    parsed = parse_options(entry.sql_text)
+    parsed.pop("connector", None)  # implied by the entry, and emitted separately
+    return parsed
+
+
 def _out(entry: CatalogEntry, used_by: list[str] | None = None) -> CatalogEntryOut:
     return CatalogEntryOut(
         id=entry.id,
@@ -42,7 +59,7 @@ def _out(entry: CatalogEntry, used_by: list[str] | None = None) -> CatalogEntryO
         connector=entry.connector,
         description=entry.description,
         sql_text=entry.sql_text,
-        options=options_from_json(entry.options_json),
+        options=_options_of(entry),
         updated_at=entry.updated_at,
         used_by=used_by or [],
         columns=[ColumnOut(name=n, type=t) for n, t in columns_of(entry.sql_text)],
@@ -158,7 +175,7 @@ def update_entry(
     entry.connector = body.connector
     entry.description = body.description
     entry.sql_text = _render(body, registry)
-    entry.options_json = options_to_json(body.options)
+    entry.options_json = options_to_json(body.options or parse_options(entry.sql_text))
     db.commit()
     return _out(entry, _users_of(db, name))
 

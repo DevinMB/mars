@@ -25,6 +25,7 @@ export default function JobEditor() {
   const [check, setCheck] = useState(null)
   const [checking, setChecking] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(true)
 
   useEffect(() => {
     (async () => {
@@ -38,6 +39,9 @@ export default function JobEditor() {
         setSql(j.sql_text)
         setRefs(j.catalog_refs)
         setTarget(j.target_name || '')
+        // Editing an existing job: the tables are already chosen, so lead with
+        // the columns instead.
+        if ((j.catalog_refs || []).length) setPickerOpen(false)
       }
     })().catch((err) => setError(err.message))
   }, [editing])
@@ -221,36 +225,56 @@ export default function JobEditor() {
         </div>
 
         <aside>
-          <div className="card p-4 sticky top-20">
-            <h3 className="text-sm font-medium text-slate-900 mb-1">Tables this job uses</h3>
-            <p className="text-xs text-slate-500 mb-3">
-              Their definitions are replayed each time the job runs.
-            </p>
-
-            <TablePicker
-              entries={entries}
-              selected={refs}
-              onToggle={toggleRef}
-            />
-
+          {/* Columns come first once tables are chosen: picking tables happens
+              once, but the columns are consulted continuously while writing, and
+              they were previously below a long list and off the bottom of the
+              screen. */}
+          <div className="card p-4 sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto">
             {refs.length > 0 && (
-              <div className="mt-4 border-t border-slate-200 pt-3">
+              <div className="mb-3">
                 <h3 className="text-sm font-medium text-slate-900 mb-1">
                   Columns available
                 </h3>
                 <p className="text-xs text-slate-500 mb-2">
-                  Click one to drop it into the statement.
+                  Click one to drop it into the statement at the cursor.
                 </p>
-                <div className="max-h-[26rem] overflow-y-auto pr-1">
-                  {refs
-                    .map((r) => entries.find((e) => e.name === r))
-                    .filter(Boolean)
-                    .map((entry) => (
-                      <SchemaPanel key={entry.name} entry={entry} onInsert={insertAtCursor} />
-                    ))}
-                </div>
+                {refs
+                  .map((r) => entries.find((e) => e.name === r))
+                  .filter(Boolean)
+                  .map((entry) => (
+                    <SchemaPanel key={entry.name} entry={entry} onInsert={insertAtCursor} />
+                  ))}
               </div>
             )}
+
+            <div className={refs.length > 0 ? 'border-t border-slate-200 pt-3' : ''}>
+              <button
+                type="button"
+                onClick={() => setPickerOpen((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 text-left"
+              >
+                <span className="text-sm font-medium text-slate-900">
+                  Tables this job uses
+                </span>
+                <span className="text-xs text-slate-500 shrink-0">
+                  {refs.length > 0 && `${refs.length} selected`}
+                  <span className="ml-1 text-slate-400">{pickerOpen ? '\u25B4' : '\u25BE'}</span>
+                </span>
+              </button>
+
+              {pickerOpen && (
+                <>
+                  <p className="text-xs text-slate-500 mt-1 mb-3">
+                    Their definitions are replayed each time the job runs.
+                  </p>
+                  <TablePicker
+                    entries={entries}
+                    selected={refs}
+                    onToggle={toggleRef}
+                  />
+                </>
+              )}
+            </div>
           </div>
         </aside>
       </div>

@@ -41,6 +41,11 @@ class ConnectorOption:
     help: str | None = None
     choices: list[str] = field(default_factory=list)
     visible_when: dict[str, str] | None = None
+    # Other option keys that satisfy this one when it is required. Flink accepts
+    # 'format', or 'key.format' plus 'value.format' when the two sides differ;
+    # insisting on 'format' alone rejects definitions Flink is perfectly happy
+    # with, and made such an entry impossible to save from the form.
+    satisfied_by: list[str] = field(default_factory=list)
 
     @classmethod
     def from_json(cls, d: dict[str, Any]) -> "ConnectorOption":
@@ -56,6 +61,7 @@ class ConnectorOption:
             help=d.get("help"),
             choices=list(d.get("choices", [])),
             visible_when=d.get("visibleWhen"),
+            satisfied_by=list(d.get("satisfiedBy", [])),
         )
 
 
@@ -136,6 +142,7 @@ class Connector:
                     "help": o.help,
                     "choices": o.choices,
                     "visibleWhen": o.visible_when,
+                    "satisfiedBy": o.satisfied_by,
                 }
                 for o in self.options
             ],

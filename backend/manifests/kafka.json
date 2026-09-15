@@ -83,7 +83,10 @@
         "raw",
         "debezium-json"
       ],
-      "help": "How records are encoded. Use 'raw' with a single STRING column to pass whole documents through untouched."
+      "help": "How records are encoded. Use 'raw' with a single STRING column to pass whole documents through untouched. Leave blank if the definition sets key.format and value.format separately.",
+      "satisfiedBy": [
+        "value.format"
+      ]
     },
     {
       "key": "json.ignore-parse-errors",

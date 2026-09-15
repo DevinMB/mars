@@ -348,6 +348,44 @@ class WarningOut(BaseModel):
     message: str
 
 
+class AiProviderIn(BaseModel):
+    kind: str = "ollama"
+    base_url: str = ""
+    model: str = ""
+    # A name in the secret store, never a key. Keys are entered under Secrets.
+    secret_name: str | None = None
+    enabled: bool = False
+    timeout_seconds: int = 120
+
+    @field_validator("kind")
+    @classmethod
+    def _kind(cls, v: str) -> str:
+        from .ai import KINDS
+
+        if v not in KINDS:
+            raise ValueError(f"kind must be one of: {', '.join(KINDS)}")
+        return v
+
+
+class AiProviderOut(BaseModel):
+    kind: str
+    base_url: str
+    model: str
+    secret_name: str | None = None
+    enabled: bool
+    timeout_seconds: int
+    # True when this is complete enough to use. Features check this rather than
+    # inspecting the fields themselves.
+    configured: bool = False
+    updated_by: str | None = None
+
+
+class AiStatusOut(BaseModel):
+    ok: bool
+    detail: str = ""
+    models: list[str] = Field(default_factory=list)
+
+
 class ValidateResponse(BaseModel):
     ok: bool
     # Rewritten into plain language where the failure is one MARS recognises;

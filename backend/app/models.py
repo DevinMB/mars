@@ -105,6 +105,32 @@ class Target(Base, TimestampMixin):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class AiProvider(Base, TimestampMixin):
+    """The model MARS talks to, configured once and used by every AI feature.
+
+    One row. Features that want a model ask for this rather than carrying their
+    own endpoint, so switching from a local Ollama to a hosted API is a change in
+    one place and every feature follows.
+
+    The credential is not stored here. It is a reference into the existing
+    encrypted secret store, so an API key is handled exactly like a database
+    password: encrypted at rest, never returned by the API, and redacted out of
+    error messages.
+    """
+
+    __tablename__ = "ai_provider"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # ollama | anthropic | openai-compatible
+    kind: Mapped[str] = mapped_column(String(32), default="ollama")
+    base_url: Mapped[str] = mapped_column(String(512), default="")
+    model: Mapped[str] = mapped_column(String(128), default="")
+    secret_name: Mapped[str | None] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=120)
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
 class User(Base, TimestampMixin):
     __tablename__ = "users"
 

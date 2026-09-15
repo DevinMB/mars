@@ -35,8 +35,12 @@ export default function CatalogEditor() {
         setName(e.name)
         setDescription(e.description || '')
         setValues(e.options || {})
+        // This entry's own columns, not the connector's suggested ones. Seeding
+        // from the connector meant opening any hand-written definition showed
+        // someone else's schema, and saving would have written it back.
+        const own = (e.columns || []).map((c) => ({ name: c.name, sqlType: c.type }))
         const declared = all.find((c) => c.connector === e.connector)?.columns || []
-        setColumns(declared.map((c) => ({ name: c.name, sqlType: c.sqlType })))
+        setColumns(own.length ? own : declared.map((c) => ({ name: c.name, sqlType: c.sqlType })))
       }
     })().catch((err) => setError(err.message))
   }, [editing])

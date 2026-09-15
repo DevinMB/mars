@@ -84,6 +84,11 @@ export const api = {
     request(`/api/users/${encodeURIComponent(username)}/tokens/${encodeURIComponent(name)}`,
             { method: 'DELETE' }),
 
+  // ai
+  aiProvider: () => request('/api/ai'),
+  setAiProvider: (body) => request('/api/ai', { method: 'PUT', body }),
+  testAiProvider: (body) => request('/api/ai/test', { method: 'POST', body }),
+
   // targets
   targets: () => request('/api/targets'),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),

@@ -16,6 +16,7 @@ from .db import Base, engine, session_scope
 from .migrations import upgrade_to_head
 from .deps import get_cluster, get_registry, get_submitter, get_targets
 from .ddl import DdlError
+from .routes import ai as ai_routes
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import jobs as job_routes
@@ -98,6 +99,7 @@ app.include_router(catalog_routes.router)
 app.include_router(job_routes.router)
 app.include_router(target_routes.router)
 app.include_router(user_routes.router)
+app.include_router(ai_routes.router)
 
 
 @app.exception_handler(SubmissionError)

@@ -83,26 +83,35 @@ def build_create_table(
     if not columns:
         raise DdlError("A table needs at least one column.")
 
+    def supplied(key: str) -> bool:
+        return bool(str(options.get(key, "")).strip())
+
     missing = [
         o.key
         for o in connector.options
-        if o.required and not str(options.get(o.key, "")).strip()
+        if o.required
+        and not supplied(o.key)
+        and not any(supplied(alt) for alt in o.satisfied_by)
     ]
     if missing:
         raise DdlError(
             f"{connector.display_name} requires: {', '.join(missing)}."
         )
 
-    unknown = sorted(set(options) - {o.key for o in connector.options} - {"connector"})
-    if unknown:
-        raise DdlError(
-            f"Unknown option(s) for {connector.display_name}: {', '.join(unknown)}."
-        )
+    # Options the manifest does not enumerate are kept, not rejected. A manifest
+    # describes the options worth putting on a form, never the full set a
+    # connector accepts -- Kafka alone takes dozens via its properties.*
+    # passthrough. Rejecting them meant a definition written by hand could not
+    # survive a round trip through the form, silently losing things like
+    # key.format and value.fields-include.
 
     rendered_columns = ",\n".join(c.render() for c in columns)
 
     with_lines = [f"  'connector' = '{escape_option_value(connector.connector)}'"]
     for key in sorted(options):
+        if key == "connector":
+            # Already emitted above; emitting it twice is a duplicate-key error.
+            continue
         raw = options[key]
         if raw is None or str(raw).strip() == "":
             continue

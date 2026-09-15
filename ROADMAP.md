@@ -95,6 +95,30 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   mechanism gives the Catalog a "peek at this source" -- five live messages from a topic
   -- which is how someone works out what to write in the first place.
 
+- **Describe the job in words.** Alongside writing SQL by hand, a box to say what the job
+  should do -- "read each whisper, pull out the message and username, and write them to
+  the whispers database" -- and have a model draft the statement. The provider is already
+  configurable under Administration; what remains is the feature itself.
+
+  What makes this workable rather than a novelty is that MARS can give the model real
+  context and can check the answer:
+
+  - The prompt is grounded in the tables actually ticked for the job, their columns, and
+    -- for raw-passthrough sources -- the fields found by sampling a record. The model is
+    told what exists instead of guessing at names.
+  - References in the prompt autocomplete against those same tables and columns, so
+    "@whispers_raw" and "@doc.username" are unambiguous rather than prose the model has to
+    interpret.
+  - The draft is validated before it is shown. `/api/jobs/validate` already compiles a
+    statement and explains failures in plain language, so a draft that does not compile
+    can be repaired and re-checked automatically.
+  - **The draft always lands in the editor for a human to approve.** It is never submitted.
+    That single rule is what makes the feature safe to ship at all.
+
+- **Autocomplete in both boxes.** The same index of tables, columns and sampled document
+  fields serves the SQL editor and the prompt box. Worth building once, as a shared
+  source of completions, rather than twice.
+
 - **Schema-aware completion.** MARS knows every table and column in the catalog, which
   Flink's own UI does not. Completing table names after FROM, then that table's columns,
   is the feature people expect from a managed service and cannot get self-hosted. Needs a
@@ -106,6 +130,23 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   that over MCP lets people build jobs from the tools they already use, without MARS
   shipping an LLM integration or paying for inference. The rule that makes it safe is
   that generated SQL lands in the editor for approval and is never submitted directly.
+
+- ~~A configurable AI provider~~ **DONE.** One provider, set under Administration, used by
+  every feature that needs a model: Ollama, Claude, or anything serving the OpenAI chat
+  shape. Features ask for the configured model rather than carrying an endpoint, so
+  switching backends is one change and everything follows.
+
+  Three properties worth keeping as this grows:
+
+  - **The credential is not a new mechanism.** An API key is a reference into the existing
+    encrypted secret store, so it is handled exactly like a database password: encrypted
+    at rest, never returned by the API, redacted out of error text.
+  - **Off by default.** Until an administrator configures and enables a provider, every AI
+    feature is inert and nothing is sent anywhere. Enabling Claude says plainly that
+    prompts go to Anthropic.
+  - **Testing checks the model, not just the host.** The usual misconfiguration is a model
+    that is not pulled on the server; a bare ping would pass and the failure would appear
+    only when someone first used it. Test lists what is there and suggests the near match.
 
 - **Savepoint-aware restarts.** Cancel-with-savepoint and resume-from-savepoint through
   the console. Supervisor mode currently resubmits from scratch, which is wrong for any
