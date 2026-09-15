@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MARS_", env_file=".env", extra="ignore")
 
     # --- Flink ---
+    # Examples are seeded once, when the first administrator is created. Set this
+    # false for an install that should come up empty.
+    seed_examples: bool = True
+    examples_dir: Path = Path("/app/examples")
+
     flink_rest_url: str = "http://jobmanager:8081"
     # The address to put in links to Flink's own UI, for deployments where the
     # browser cannot use flink_rest_url -- behind a reverse proxy, or with the UI

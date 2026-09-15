@@ -1,0 +1,60 @@
+format: 1
+note: |
+  Seeded once, when MARS creates its first administrator. Deleting these does not
+  bring them back.
+
+  Everything here runs on Flink's built-in connectors, so it works on a fresh
+  install with no Kafka, no database and nothing else to set up. It exists so the
+  first screen is not empty, and so there is something to press Run on while you
+  are still deciding whether you like this.
+secrets_required: []
+targets: []
+catalog:
+- name: example_readings
+  kind: source
+  connector: datagen
+  description: Made-up sensor readings. A generator, so it needs nothing external.
+  sql: |-
+    CREATE TABLE example_readings (
+      sensor STRING,
+      celsius DOUBLE
+    ) WITH (
+      'connector' = 'datagen',
+      'rows-per-second' = '5',
+      'fields.sensor.length' = '4',
+      'fields.celsius.min' = '-20',
+      'fields.celsius.max' = '40'
+    )
+- name: example_alerts
+  kind: sink
+  connector: print
+  description: Prints to the TaskManager log. Somewhere harmless for output to go.
+  sql: |-
+    CREATE TABLE example_alerts (
+      sensor STRING,
+      celsius DOUBLE,
+      state STRING
+    ) WITH (
+      'connector' = 'print'
+    )
+jobs:
+- name: example_temperature_alerts
+  description: >-
+    Labels each reading hot, freezing or fine. Try "Show me the output" before
+    running it — that is the whole idea.
+  type: streaming
+  enabled: true
+  uses:
+  - example_readings
+  - example_alerts
+  sql: |-
+    INSERT INTO example_alerts
+    SELECT
+      sensor,
+      celsius,
+      CASE
+        WHEN celsius > 30 THEN 'too hot'
+        WHEN celsius < 0 THEN 'freezing'
+        ELSE 'fine'
+      END
+    FROM example_readings

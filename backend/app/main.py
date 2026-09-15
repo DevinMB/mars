@@ -12,9 +12,16 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_late
 from starlette.responses import Response
 
 from .auth import ensure_admin_user
+from .seeding import seed_examples
 from .db import Base, engine, session_scope
 from .migrations import upgrade_to_head
-from .deps import get_cluster, get_registry, get_submitter, get_targets
+from .deps import (
+    get_cluster,
+    get_registry,
+    get_secret_store,
+    get_submitter,
+    get_targets,
+)
 from .ddl import DdlError
 from .routes import ai as ai_routes
 from .routes import auth as auth_routes
@@ -54,10 +61,15 @@ async def lifespan(app: FastAPI):
     upgrade_to_head()
 
     with session_scope() as db:
-        ensure_admin_user(db)
+        # Non-None only on a genuinely fresh install, which is exactly when the
+        # examples should appear and never afterwards.
+        first_install = ensure_admin_user(db) is not None
         # Every job without an explicit target runs here, so it must exist before
         # anything is submitted.
         get_targets().ensure_default(db)
+
+        if first_install and settings().seed_examples:
+            seed_examples(db, get_secret_store(), settings().examples_dir)
 
     registry = get_registry()
     log.info(

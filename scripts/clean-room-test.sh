@@ -188,6 +188,21 @@ case "$conns" in
 esac
 
 # ---------------------------------------------------------------------------
+say "Is the first screen empty?"
+
+grep -q "Seeded .* example definition" <<<"$logs" \
+  && ok "examples were seeded on the fresh install" \
+  || bad "nothing was seeded, so a new user lands on an empty screen"
+
+if [ -n "${PW:-}" ]; then
+  jobs=$(console "sh -c \"curl -sS -c /tmp/j -o /dev/null -X POST http://localhost:8080/api/auth/login -H Content-Type:application/json -d '{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"$PW\\\"}' && curl -sS -b /tmp/j http://localhost:8080/api/jobs\"" 2>/dev/null)
+  case "$jobs" in
+    *example_temperature_alerts*) ok "the example job is there to press Run on" ;;
+    *) bad "the example job is not in the job list" ;;
+  esac
+fi
+
+# ---------------------------------------------------------------------------
 say "Did any of this touch the host?"
 host_images_after=$(docker images -q | sort | md5sum | cut -d' ' -f1)
 host_nets_after=$(docker network ls -q | sort | md5sum | cut -d' ' -f1)

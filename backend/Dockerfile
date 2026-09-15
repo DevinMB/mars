@@ -18,6 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
 COPY backend/manifests ./manifests
+# Seeded once, on a fresh install, so the first screen is not a dead end.
+COPY examples ./examples
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
 COPY --from=frontend /build/dist ./static
