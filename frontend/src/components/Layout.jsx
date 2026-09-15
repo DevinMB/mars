@@ -7,7 +7,9 @@ import { useAuth } from '../lib/auth'
 const NAV = [
   { to: '/jobs', label: 'Jobs' },
   { to: '/catalog', label: 'Catalog' },
-  { to: '/secrets', label: 'Secrets' },
+  // Secrets are administrator-only, and the API agrees. Even the names of
+  // stored credentials say something about an installation.
+  { to: '/secrets', label: 'Secrets', adminOnly: true },
   { to: '/cluster', label: 'Cluster' },
   // Only administrators may manage accounts, so only they are offered the tab.
   // The API enforces it regardless.
@@ -114,17 +116,25 @@ export default function Layout({ children }) {
                 ))}
               </nav>
             </div>
-            <div className="flex items-center gap-4 shrink-0 self-center">
+            {/* One type size across the whole cluster, separated by a rule rather
+                than by guessing at gaps. Previously the slot count, the username and
+                the sign-out link were three different sizes sitting together. */}
+            <div className="flex items-center gap-3 shrink-0 self-center text-[12px]">
               <ClusterDot />
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-600 hidden sm:inline">{user?.username}</span>
-                <button
-                  onClick={async () => { await logout(); navigate('/login') }}
-                  className="text-sm text-slate-500 hover:text-slate-900"
-                >
-                  Sign out
-                </button>
-              </div>
+              <span className="w-px h-4 bg-slate-200" aria-hidden="true" />
+              <span className="hidden sm:flex items-center gap-1.5">
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 grid
+                                 place-items-center text-[10px] font-semibold uppercase">
+                  {(user?.username || '?').slice(0, 1)}
+                </span>
+                <span className="text-slate-700">{user?.username}</span>
+              </span>
+              <button
+                onClick={async () => { await logout(); navigate('/login') }}
+                className="text-slate-500 hover:text-slate-900 transition-colors"
+              >
+                Sign out
+              </button>
             </div>
           </div>
         </div>

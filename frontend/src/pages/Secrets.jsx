@@ -38,7 +38,7 @@ export default function Secrets() {
     <>
       <PageHeader
         title="Secrets"
-        subtitle="Referenced from table definitions, never stored in them"
+        subtitle="Referenced from table definitions, never stored in them. Administrators only."
         actions={!adding && <button className="btn-primary" onClick={() => setAdding(true)}>New secret</button>}
       />
 

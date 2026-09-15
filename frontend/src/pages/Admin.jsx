@@ -220,13 +220,13 @@ export default function Admin() {
         />
       )}
 
+      {/* Only while it is true. Once a second administrator exists the point is
+          made and the banner is just noise on every visit. */}
       {admins === 1 && (
         <div className="mb-4">
-          <Alert level="warning" title="Only one administrator">
-            If this account is lost, nobody can manage MARS from the console. Recovery
-            then means a shell on the host and{' '}
-            <code className="mono">docker exec mars-console python -m app.admin reset-password</code>.
-            Promoting a second administrator avoids that.
+          <Alert level="warning">
+            <span className="font-medium">There is only one administrator.</span>{' '}
+            If this account is lost, recovering access needs a shell on the host.
           </Alert>
         </div>
       )}

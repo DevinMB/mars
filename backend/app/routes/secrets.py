@@ -16,6 +16,14 @@ router = APIRouter(prefix="/api/secrets", tags=["secrets"])
 
 @router.get("", response_model=list[SecretOut])
 def list_secrets(
+    # Writers, not administrators, and deliberately so. An editor building a sink
+    # has to pick which stored credential it uses, and the connector form offers
+    # exactly these names for that. Values are never returned by any endpoint, so
+    # what a writer learns is which credentials exist -- which they need in order
+    # to reference one.
+    #
+    # The Secrets *tab* is administrator-only, because managing credentials is an
+    # administrator's job. Listing them to fill a dropdown is not the same thing.
     _: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
 ) -> list[SecretOut]:

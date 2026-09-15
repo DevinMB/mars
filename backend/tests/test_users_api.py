@@ -164,3 +164,22 @@ def test_revoking_a_token_stops_it_working(db, admin):
 def test_expiring_token_records_its_expiry(db, admin):
     out = mod.create_token("admin", TokenIn(name="ci", expires_days=30), _principal(admin), db)
     assert out.expires_at is not None
+
+
+def test_secret_listing_is_available_to_writers_but_management_is_not():
+    """An editor creating a sink must be able to pick which credential it uses, so
+    the connector form can fill its dropdown. Values are never returned by any
+    endpoint; what a writer learns is which names exist."""
+    from app.deps import require_admin, require_writer
+    from app.routes import secrets as mod
+
+    guards = {}
+    for route in mod.router.routes:
+        method = sorted(route.methods - {"HEAD", "OPTIONS"})[0]
+        guards[(method, route.path)] = [d.call for d in route.dependant.dependencies]
+
+    assert require_writer in guards[("GET", "/api/secrets")]
+    assert require_admin not in guards[("GET", "/api/secrets")]
+
+    for key in [("PUT", "/api/secrets/{name}"), ("DELETE", "/api/secrets/{name}")]:
+        assert require_admin in guards[key], f"{key} must require an administrator"
