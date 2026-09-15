@@ -26,6 +26,7 @@ from ..schemas import (
     CatalogEntryIn,
     HealthRequest,
     HealthResultOut,
+    SampleRequest,
     CatalogEntryOut,
     ColumnOut,
     NestedFieldOut,
@@ -358,4 +359,53 @@ def list_entry_versions(
         }
         for v in entry.versions
     ]
+
+@router.post("/sample", response_model=SampleOut)
+async def sample_draft(
+    body: SampleRequest,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    gateway: SqlGatewayClient = Depends(get_gateway),
+    store: SecretStore = Depends(get_secret_store),
+    registry: ConnectorRegistry = Depends(get_registry),
+) -> SampleOut:
+    """Reads a few records from a source that has not been saved yet.
+
+    Defining a source is exactly when someone wants to know what is in the topic,
+    and requiring a save first means committing a definition to find out whether
+    it was right.
+    """
+    draft = CatalogEntryIn(
+        name=body.name or "draft_source",
+        kind="source",
+        connector=body.connector,
+        options=body.options,
+        columns=body.columns,
+    )
+    try:
+        sql_text = _render(draft, registry)
+    except HTTPException:
+        raise
+    except DdlError as exc:
+        return SampleOut(error=str(exc))
+
+    # Transient and never added to the session: sampling must not create anything.
+    entry = CatalogEntry(
+        name=draft.name, kind="source", connector=body.connector, sql_text=sql_text
+    )
+    result = await sample_source(
+        gateway, store, db, entry, limit=body.limit, start=body.start
+    )
+    return SampleOut(
+        columns=result.columns,
+        rows=result.rows,
+        nested={
+            column: [
+                NestedFieldOut(name=f.name, type=f.type, example=f.example)
+                for f in fields
+            ]
+            for column, fields in result.nested.items()
+        },
+        error=result.error,
+    )
 

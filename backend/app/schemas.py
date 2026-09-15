@@ -385,6 +385,17 @@ class DraftResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class SampleRequest(BaseModel):
+    """An unsaved source definition, sampled before it is committed."""
+
+    connector: str
+    options: dict[str, str] = Field(default_factory=dict)
+    columns: list[ColumnIn] = Field(default_factory=list)
+    name: str = "draft_source"
+    limit: int = 5
+    start: str = "earliest"
+
+
 class HealthRequest(BaseModel):
     """A connector and its options, checked before anything depends on them."""
 

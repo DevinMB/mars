@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import HealthCheck from '../components/HealthCheck'
+import SourcePeek from '../components/SourcePeek'
 import CatalogHistory from '../components/CatalogHistory'
 import ColumnEditor from '../components/ColumnEditor'
 import ConnectorForm from '../components/ConnectorForm'
@@ -163,6 +164,11 @@ export default function CatalogEditor() {
                 />
 
                 <HealthCheck connector={connectorId} options={values} />
+
+                {kind === 'source' && (
+                  <SourcePeek connector={connectorId} options={values}
+                              columns={columns} name={name} />
+                )}
               </div>
 
               <div className="card p-6">
