@@ -382,6 +382,28 @@ class DraftResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class ImportRequest(BaseModel):
+    yaml_text: str
+    # Defaults to a dry run: this writes over definitions jobs are running from,
+    # and seeing the list first is the difference between an import and an accident.
+    dry_run: bool = True
+    # Without this, entries that already exist are left alone, so importing into a
+    # populated installation is additive rather than destructive.
+    replace: bool = False
+
+
+class ImportResult(BaseModel):
+    dry_run: bool
+    ok: bool
+    created: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+    unchanged: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    # Secrets the imported definitions reference and this installation lacks.
+    missing_secrets: list[str] = Field(default_factory=list)
+
+
 class AiProviderIn(BaseModel):
     kind: str = "ollama"
     base_url: str = ""

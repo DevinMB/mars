@@ -20,6 +20,7 @@ from .routes import ai as ai_routes
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import jobs as job_routes
+from .routes import portability as portability_routes
 from .routes import secrets as secret_routes
 from .routes import system as system_routes
 from .routes import targets as target_routes
@@ -100,6 +101,7 @@ app.include_router(job_routes.router)
 app.include_router(target_routes.router)
 app.include_router(user_routes.router)
 app.include_router(ai_routes.router)
+app.include_router(portability_routes.router)
 
 
 @app.exception_handler(SubmissionError)

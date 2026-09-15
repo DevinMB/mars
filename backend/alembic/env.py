@@ -16,7 +16,16 @@ import app.models  # noqa: F401  (imported for its side effect of registering ta
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which silences every logger
+    # configured before this point -- including uvicorn's and the application's.
+    #
+    # That is worse than it sounds. Migrations only actually run on a first
+    # install or an upgrade (upgrade_to_head returns early when the schema is
+    # already current), so logging died on exactly the run that prints the
+    # generated administrator password, and nowhere else. A fresh install
+    # therefore came up working but silent, and the README's
+    # "docker logs | grep administrator" found nothing, with no way in.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", settings().resolved_database_url())
 target_metadata = Base.metadata
