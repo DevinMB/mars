@@ -82,18 +82,19 @@ export default function Layout({ children }) {
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-stretch justify-between h-16 gap-4">
-            <div className="flex items-stretch gap-6 min-w-0">
-              <NavLink to="/jobs" className="flex items-center gap-2.5 shrink-0 self-center">
-                <MarsMark size={30} className="shrink-0" title="MARS" />
-                <span className="leading-none">
-                  <span className="block text-[15px] font-semibold text-slate-900 tracking-tight">
-                    MARS
-                  </span>
-                  <span className="hidden lg:block text-[10.5px] text-slate-500 mt-1
-                                   whitespace-nowrap">
-                    Marsden Apache Real-time Streaming
-                  </span>
+          <div className="flex items-stretch justify-between h-12 gap-4">
+            <div className="flex items-stretch gap-5 min-w-0">
+              <NavLink to="/jobs" className="flex items-center gap-2 shrink-0 self-center">
+                <MarsMark size={22} className="shrink-0" title="MARS" />
+                <span className="text-[14px] font-semibold text-slate-900 tracking-tight">
+                  MARS
+                </span>
+                {/* The expansion stays, but inline rather than stacked -- stacking it
+                    was what made the bar tall. Dropped on narrow screens, where the
+                    tabs need the room more. */}
+                <span className="hidden xl:flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="w-px h-3 bg-slate-200" aria-hidden="true" />
+                  <span className="whitespace-nowrap">Marsden Apache Real-time Streaming</span>
                 </span>
               </NavLink>
               <nav className="flex items-stretch gap-1 overflow-x-auto overflow-y-hidden
@@ -103,7 +104,7 @@ export default function Layout({ children }) {
                     key={item.to}
                     to={item.to}
                     className={({ isActive }) =>
-                      `flex items-center px-3 text-[13px] font-medium whitespace-nowrap
+                      `flex items-center px-2.5 text-[13px] font-medium whitespace-nowrap
                        border-b-2 -mb-px transition-colors ${
                         isActive
                           ? 'text-slate-900 border-accent-500'
