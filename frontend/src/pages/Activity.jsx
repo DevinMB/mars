@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { duration, relativeTime } from '../lib/format'
@@ -21,7 +21,7 @@ export default function Activity() {
   const [busy, setBusy] = useState(null)
   const [reload, setReload] = useState(0)
   const [error, setError] = useState(null)
-  const [onlyProblems, setOnlyProblems] = useState(false)
+  const [onlyProblems, setOnlyProblems] = useState(true)
 
   const acknowledge = async (run, undo) => {
     setBusy(run.run_id)
@@ -29,12 +29,6 @@ export default function Activity() {
     catch (e) { setError(e.message) }
     finally { setBusy(null) }
   }
-
-  // Set once, from the first load: open on the problems when there are any, and
-  // on the full history when there are none -- an empty screen is a worse answer
-  // than a quiet one. Never re-decided, so a refresh cannot undo a choice the
-  // person watching has since made for themselves.
-  const decided = useRef(false)
 
   useEffect(() => {
     let alive = true
@@ -44,10 +38,6 @@ export default function Activity() {
           if (!alive) return
           setRuns(r)
           setError(null)
-          if (!decided.current) {
-            decided.current = true
-            setOnlyProblems(r.some(isProblem))
-          }
         })
         .catch((e) => { if (alive) setError(e.message) })
     load()

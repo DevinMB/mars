@@ -1,4 +1,5 @@
 import { Badge } from './ui'
+import TypePicker from './TypePicker'
 
 // Columns a connector declares are pre-filled and explained; extra ones can be
 // added freely, because the manifest describes a contract, not a limit.
@@ -25,11 +26,9 @@ export default function ColumnEditor({ columns, onChange, declared = [] }) {
               />
               {spec?.help && <p className="hint">{spec.help}</p>}
             </div>
-            <input
-              className="input mono w-48"
-              placeholder="STRING"
+            <TypePicker
               value={col.sqlType}
-              onChange={(e) => update(i, { sqlType: e.target.value })}
+              onChange={(sqlType) => update(i, { sqlType })}
             />
             <div className="pt-2 w-20 shrink-0">
               {spec?.required ? (

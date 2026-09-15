@@ -70,7 +70,9 @@ export default function Catalog() {
         subtitle="The sources and sinks your jobs read from and write to"
         actions={
           <>
-            <Link to="/catalog/new?kind=source" className="btn-secondary">New source</Link>
+            {/* Two equal actions, so two identical buttons. One was quiet and one
+                loud, which implied a sink mattered more than a source. */}
+            <Link to="/catalog/new?kind=source" className="btn-primary">New source</Link>
             <Link to="/catalog/new?kind=sink" className="btn-primary">New sink</Link>
           </>
         }
