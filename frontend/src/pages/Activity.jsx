@@ -1,8 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { duration, relativeTime } from '../lib/format'
 import { Alert, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
+
+// A failure only counts as a problem while it is still the latest word on that
+// job and nobody has said they dealt with it. Everything else is history, and a
+// list that keeps showing history is one people stop reading.
+const isProblem = (r) =>
+  (['failed', 'restarting'].includes(r.state) || r.restarts > 0) &&
+  !r.superseded && !r.acknowledged
 
 // Every job's runs in one list, newest first.
 //
@@ -23,11 +30,25 @@ export default function Activity() {
     finally { setBusy(null) }
   }
 
+  // Set once, from the first load: open on the problems when there are any, and
+  // on the full history when there are none -- an empty screen is a worse answer
+  // than a quiet one. Never re-decided, so a refresh cannot undo a choice the
+  // person watching has since made for themselves.
+  const decided = useRef(false)
+
   useEffect(() => {
     let alive = true
     const load = () =>
       api.activity(200)
-        .then((r) => { if (alive) { setRuns(r); setError(null) } })
+        .then((r) => {
+          if (!alive) return
+          setRuns(r)
+          setError(null)
+          if (!decided.current) {
+            decided.current = true
+            setOnlyProblems(r.some(isProblem))
+          }
+        })
         .catch((e) => { if (alive) setError(e.message) })
     load()
     const t = setInterval(load, 15000)
@@ -36,13 +57,6 @@ export default function Activity() {
 
   if (error && !runs) return <Alert level="danger" title="Could not load activity">{error}</Alert>
   if (!runs) return <Spinner label="Loading activity" />
-
-  // A failure only counts as a problem while it is still the latest word on that
-  // job and nobody has said they dealt with it. Everything else is history, and a
-  // list that keeps showing history is one people stop reading.
-  const isProblem = (r) =>
-    (['failed', 'restarting'].includes(r.state) || r.restarts > 0) &&
-    !r.superseded && !r.acknowledged
 
   const shown = onlyProblems ? runs.filter(isProblem) : runs
   const problems = runs.filter(isProblem).length
