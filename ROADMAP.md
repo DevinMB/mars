@@ -641,6 +641,23 @@ is worth having even if nothing is ever charged for.
 
 ## Securing the cluster itself
 
+**Several passes, not one.** What follows is the first and most concrete, because it has
+already been demonstrated. Other surfaces are known but unaudited, and grouping them into
+a single "harden it" task would hide how much is actually there:
+
+| Surface | Status |
+|---|---|
+| TaskManager joins the cluster unauthenticated | **Observed** — see below |
+| Flink REST published with no authentication | **Observed** — effectively a remote shell |
+| No TLS anywhere: console, REST, RPC, data plane | **Observed** |
+| `secret.key` sits beside the database it decrypts | **Observed** — see the backup section |
+| Login throttling, session handling, cookie flags | Not yet audited |
+| Container privileges, base-image currency, dependency CVEs | Not yet audited |
+
+The first four are things this work turned up rather than looked for. The last two have
+not been examined at all, and saying so is more useful than assuming they are fine.
+
+
 **Flink authenticates nothing by default, and MARS ships it that way.** Worth stating
 plainly because the assumption is invisible until it is violated: a Flink cluster expects
 to run in a trusted network. Any process that can reach the JobManager's RPC port may
