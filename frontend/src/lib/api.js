@@ -84,6 +84,15 @@ export const api = {
     request(`/api/users/${encodeURIComponent(username)}/tokens/${encodeURIComponent(name)}`,
             { method: 'DELETE' }),
 
+  // backup and restore
+  // The export is YAML, not JSON, so it bypasses the usual helper.
+  exportDefinitions: async () => {
+    const res = await fetch('/api/export', { credentials: 'same-origin' })
+    if (!res.ok) throw new Error(`Export failed (${res.status})`)
+    return res.text()
+  },
+  importDefinitions: (body) => request('/api/import', { method: 'POST', body }),
+
   // ai
   aiProvider: () => request('/api/ai'),
   setAiProvider: (body) => request('/api/ai', { method: 'PUT', body }),

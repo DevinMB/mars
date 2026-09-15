@@ -72,9 +72,19 @@ run. Round-tripping this installation reports all 30 definitions **unchanged**, 
 is the check that matters -- an export that cannot be re-imported cleanly is not a
 backup. Secret values are never exported; the file lists the names it needs.
 
-Remaining: a UI for both (an Export button and an import screen showing the dry run
-before it is applied), and `replace` deserves a confirmation that names what it will
-overwrite.
+The UI is in Administration: Export downloads the file; Import takes a file or pasted
+text, shows exactly what would change, and only then offers to apply it. Overwriting is
+off by default and confirmed by name and count.
+
+Worth recording, because it changes how a team would use this: **the `.sql` files in a
+jobs repository are a mirror, not a source.** Nothing in MARS reads them, so editing one
+changes nothing, and they cannot express what a job needs beyond its statement — which
+tables it declares, its schedule, its target, its type. The YAML export carries all of
+that, which is what makes git-as-source-of-truth possible rather than decorative.
+
+Still missing for that workflow: a drift check that can run in CI. The mechanism already
+exists -- an import dry run with `replace` reports `updated` for everything that differs
+-- it needs an exit code and a command, not new logic.
 
 **The original gap, for context:** Every job, catalog entry, schedule, target, user and
 encrypted secret lives in one Docker volume, `mars_console-data`. Two consequences,

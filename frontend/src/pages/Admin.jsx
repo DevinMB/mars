@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import BackupPanel from '../components/BackupPanel'
 import { useAuth } from '../lib/auth'
 import { relativeTime } from '../lib/format'
 import SecretOnce from '../components/SecretOnce'
@@ -206,6 +207,8 @@ export default function Admin() {
       {secret && (
         <SecretOnce label={secret.label} value={secret.value} onDone={() => setSecret(null)} />
       )}
+
+      <BackupPanel />
 
       {adding && (
         <NewUserForm
