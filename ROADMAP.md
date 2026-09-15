@@ -111,6 +111,13 @@ That is the feature, not a caveat to note in passing:
 Anything that skips this ships a feature that appears to work and fails later,
 somewhere else.
 
+### Already done
+
+The Secrets tab is administrator-only, and listing secret names stays available to
+writers so the connector form can offer them. That split holds whatever backs the
+store, and an external backend only narrows it further: with a vault configured, the
+page becomes a browser rather than an editor for everyone.
+
 ### The rest of the design
 
 - **Caching.** A vault round trip per statement is too slow and too noisy in the
@@ -176,6 +183,83 @@ small inline script in `index.html` that reads `localStorage` and falls back to
 Scope note: three states, not two — light, dark, and follow the system. A toggle
 that only flips between light and dark quietly overrides a preference the operating
 system already expresses.
+
+## Settle the name
+
+`MARS` is fixed; the backronym is not. The current expansion, *Marsden Apache
+Real-time Streaming*, has one problem worth solving before it reaches a licence
+file or a landing page: **Apache** is itself an ASF mark, so an expansion that leans
+on it is doing the thing the acronym was chosen to avoid. Dropping it removes the
+concern entirely.
+
+`M` is Marsden. Candidates for the rest, with what each claims:
+
+| Expansion | What it says |
+|---|---|
+| Marsden **Adaptive Realtime Streaming** | Reads smoothly, claims little, hard to be wrong about |
+| Marsden **Aggregation, Routing & Streaming** | Literally what the product does — it aggregates, routes jobs to targets and records to sinks, and streams |
+| Marsden **Automated Realtime Streaming** | Emphasises that jobs run themselves once defined |
+| Marsden **Applied Realtime Streaming** | Quiet and neutral; the weakest claim of the four |
+
+*Aggregation, Routing & Streaming* is the most descriptive and the only one that
+earns its words. *Adaptive Realtime Streaming* is the safest.
+
+Decide before the first public commit, since the expansion lands in the README, the
+page footer, the login screen and anything written about it. The acronym itself does
+not change either way, so nothing in the code moves.
+
+## Real accounts: email and single sign-on
+
+Today an account is a username and a password held by MARS. That is the right amount
+of machinery for one operator and too little for a team.
+
+- **Email on an account**, which is the prerequisite for everything else: password
+  reset without an administrator, notifying someone their job has been failing,
+  saying who did what in a way that means something outside this one console.
+- **Google sign-in**, then OIDC generally — Okta, Entra, Authentik. Worth building
+  as OIDC once rather than Google specifically, since Google is simply one provider
+  and every business buyer will ask for theirs.
+- **Provisioning rules**, because SSO changes who creates accounts: does a first
+  sign-in create one, and with which role? The safe default is that it does not, and
+  an administrator invites instead.
+
+Two things in the current design to revisit when this lands. Sessions are stateless
+and signed, which is neat and means there is no server-side session to revoke on an
+SSO logout — a short TTL covers it but is not the same thing. And the local password
+path has to survive, because an identity provider being down must not lock everyone
+out of the thing that runs their pipelines.
+
+## Charging for it
+
+Well past the current work, and recorded so the shape is not decided by accident.
+
+**What to meter.** Slots are the natural unit: they are what a cluster actually
+sells, what bounds how many jobs run at once, and MARS already counts them per
+target and in aggregate. Jobs are a worse unit — a job that runs once a day and one
+that pins a slot forever are not comparable — and records processed is worse still,
+since it punishes exactly the workloads the product is good at.
+
+**Keep the purchase boring.** The bar to clear is a mobile app subscription: pick a
+plan, pay, done, cancel without an email exchange. That means a hosted checkout —
+Stripe Checkout or similar — rather than card fields in this codebase, so the
+application never touches a card number and PCI scope stays at nil.
+
+**The awkward part is self-hosting.** MARS runs on someone else's hardware, so there
+is no runtime to withhold. That leaves the usual options, and choosing among them is
+a business decision rather than a technical one:
+
+- A licence key that unlocks capacity, checked offline. Honest customers pay; it is
+  not a lock.
+- Open core: the console free, with the paid tier being the things an organisation
+  needs — SSO, audit, external secret stores, support.
+- A hosted offering, where the metering is real because the slots are yours.
+
+Open core fits what already exists: SSO and external secret stores are both on this
+roadmap and are both exactly what a business buyer needs and a hobbyist does not.
+
+**What to build first, whenever this starts.** Not billing. Counting — per target,
+over time, retained. Metering is useless applied retrospectively, and a usage view
+is worth having even if nothing is ever charged for.
 
 ## Later
 
