@@ -37,3 +37,46 @@ export function duration(fromIso, toIso) {
   const hours = Math.floor(mins / 60)
   return `${hours}h ${mins % 60}m`
 }
+
+export function bytes(n) {
+  if (n === null || n === undefined) return '—'
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = n / 1024
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1 }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`
+}
+
+export function millis(ms) {
+  if (ms === null || ms === undefined) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  const secs = ms / 1000
+  if (secs < 60) return `${secs < 10 ? secs.toFixed(1) : Math.round(secs)}s`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ${Math.round(secs % 60)}s`
+  const hours = Math.floor(mins / 60)
+  return `${hours}h ${mins % 60}m`
+}
+
+export function count(n) {
+  if (n === null || n === undefined) return '—'
+  if (n < 1000) return `${n}`
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
+  return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`
+}
+
+// Flink reports rates as floats that are frequently 0 on an idle stream; "0/s"
+// is a real answer and must not be shown as "no data".
+export function rate(n) {
+  if (n === null || n === undefined) return '—'
+  if (n === 0) return '0/s'
+  if (n < 1) return `${n.toFixed(2)}/s`
+  if (n < 1000) return `${n < 10 ? n.toFixed(1) : Math.round(n)}/s`
+  return `${count(Math.round(n))}/s`
+}
+
+export function percent(ratio) {
+  if (ratio === null || ratio === undefined) return '—'
+  return `${Math.round(ratio * 100)}%`
+}

@@ -7,6 +7,27 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 - ~~Alembic migrations run on startup~~ **DONE**, and needed sooner than expected:
   adding a column to `jobs` brought the console up and then failed at the first query
   mentioning it, because `create_all` adds missing tables but never missing columns.
+- ~~Job diagnostics~~ **DONE.** A failing job used to show one truncated line, and
+  diagnosing it meant leaving MARS for the Flink UI or `docker logs`. Each job now has a
+  Diagnostics tab: checkpoint health judged against that job's own configured interval,
+  per-operator backpressure and throughput, Kafka consumer lag, and the full stack trace
+  with stored secrets replaced by their references.
+
+  Two things that had to be got right, both of which produce a confident wrong answer:
+
+  - Flink chains `Source -> Calc -> Sink` into one task, so the task-level record counters
+    read 0 on exactly the jobs someone is most likely to be checking. The real counts are
+    operator-level and have to be summed across subtasks.
+  - A two-phase sink's committer emits one record per checkpoint whether or not any data
+    moved, so the naive "busiest operator" reading reported an idle pipeline as steadily
+    processing records. Committers are excluded from throughput.
+
+- **Alerting stays in Grafana.** MARS exposes `/metrics`; Prometheus scrapes it and
+  Grafana owns thresholds, routing and delivery. Building a second alerting system inside
+  MARS would mean a second place to configure the same thing, and anyone running this
+  already has somewhere alerts go. The console's job is to explain a problem once someone
+  is looking at it -- which is what the Diagnostics tab now does.
+
 - **Savepoint-aware restarts.** Cancel-with-savepoint and resume-from-savepoint through
   the console. Supervisor mode currently resubmits from scratch, which is wrong for any
   job with meaningful state. Now also a prerequisite for credential rotation, since

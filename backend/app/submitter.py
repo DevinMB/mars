@@ -238,22 +238,33 @@ class JobSubmitter:
                 ):
                     run.ended_at = utcnow()
                     if new_state == RunState.FAILED.value and not run.error_summary:
-                        run.error_summary = await self._fetch_failure(db, run.flink_job_id)
+                        summary, detail = await self._fetch_failure(
+                            db, run.flink_job_id
+                        )
+                        run.error_summary = summary
+                        # Keep the whole trace, not just the headline: the cause
+                        # of a runtime failure is usually several frames down,
+                        # and Flink drops the job from its history eventually.
+                        if detail and not run.error_detail:
+                            run.error_detail = detail
                 changed += 1
 
         if changed:
             db.commit()
         return changed
 
-    async def _fetch_failure(self, db: Session, flink_job_id: str | None) -> str | None:
+    async def _fetch_failure(
+        self, db: Session, flink_job_id: str | None
+    ) -> tuple[str | None, str | None]:
+        """Returns (one-line summary, full trace), both redacted."""
         if not flink_job_id:
-            return None
+            return None, None
         try:
             detail = await self._cluster.job_detail(flink_job_id)
         except Exception:
-            return None
+            return None, None
         if detail is None or not detail.exception:
-            return None
+            return None, None
         # During a restart loop rootException is often momentarily empty, so take
         # the first line that names a real cause rather than the first line at all.
         lines = [ln.strip() for ln in detail.exception.strip().splitlines() if ln.strip()]
@@ -261,7 +272,8 @@ class JobSubmitter:
             (ln for ln in lines if "Exception" in ln or "Error" in ln),
             lines[0] if lines else "",
         )
-        return self._store.redact(db, first)[:500] or None
+        full = self._store.redact(db, detail.exception)
+        return self._store.redact(db, first)[:500] or None, full or None
 
 
 def _catalog_refs(job: Job) -> list[str]:

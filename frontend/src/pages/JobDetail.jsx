@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { duration, relativeTime } from '../lib/format'
 import SqlEditor from '../components/SqlEditor'
+import Diagnostics from '../components/Diagnostics'
 import { Alert, Badge, CodeBlock, Field, PageHeader, Spinner, StatePill } from '../components/ui'
 
 const ACTIVE = ['running', 'submitting', 'restarting']
@@ -87,6 +88,8 @@ export default function JobDetail() {
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(null)
   const [tab, setTab] = useState('sql')
+  const [diag, setDiag] = useState(null)
+  const [diagBusy, setDiagBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -98,6 +101,22 @@ export default function JobDetail() {
   }, [name])
 
   useEffect(() => { load() }, [load])
+
+  const loadDiagnostics = useCallback(async () => {
+    setDiagBusy(true)
+    try { setDiag(await api.jobDiagnostics(name)) }
+    catch (err) { setError(err.message) }
+    finally { setDiagBusy(false) }
+  }, [name])
+
+  // Keep the numbers live while the tab is open: backpressure and lag are only
+  // meaningful as something you watch move.
+  useEffect(() => {
+    if (tab !== 'diagnostics') return
+    loadDiagnostics()
+    const t = setInterval(loadDiagnostics, 10000)
+    return () => clearInterval(t)
+  }, [tab, loadDiagnostics])
 
   // Poll while something is in flight so the page reflects reality without a refresh.
   useEffect(() => {
@@ -161,12 +180,22 @@ export default function JobDetail() {
             {run.error_summary
               ? run.error_summary
               : 'The job starts and then fails repeatedly. It is not processing anything.'}
+            <button onClick={() => setTab('diagnostics')} className="link ml-2 font-medium">
+              See why
+            </button>
           </Alert>
         </div>
       )}
 
       {run?.state === 'failed' && run.error_summary && (
-        <div className="mb-4"><Alert level="danger" title="Last run failed">{run.error_summary}</Alert></div>
+        <div className="mb-4">
+          <Alert level="danger" title="Last run failed">
+            {run.error_summary}
+            <button onClick={() => setTab('diagnostics')} className="link ml-2 font-medium">
+              See why
+            </button>
+          </Alert>
+        </div>
       )}
 
       {validation && (
@@ -184,7 +213,8 @@ export default function JobDetail() {
         <div className="lg:col-span-2 space-y-6">
           <div className="card overflow-hidden">
             <div className="flex border-b border-slate-200">
-              {[['sql', 'Statement'], ['script', 'What actually runs'], ['history', 'Versions']].map(([id, label]) => (
+              {[['sql', 'Statement'], ['diagnostics', 'Diagnostics'],
+                ['script', 'What actually runs'], ['history', 'Versions']].map(([id, label]) => (
                 <button
                   key={id}
                   onClick={() => (id === 'script' && !script ? showScript() : setTab(id))}
@@ -201,6 +231,10 @@ export default function JobDetail() {
 
             <div className="p-4">
               {tab === 'sql' && <SqlEditor value={job.sql_text} onChange={() => {}} readOnly rows={12} />}
+
+              {tab === 'diagnostics' && (
+                <Diagnostics data={diag} loading={diagBusy} onRefresh={loadDiagnostics} />
+              )}
 
               {tab === 'script' && (
                 <div className="space-y-3">

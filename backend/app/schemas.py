@@ -122,6 +122,52 @@ class RunOut(BaseModel):
     submitted_by: str | None
 
 
+class CheckpointOut(BaseModel):
+    completed: int = 0
+    failed: int = 0
+    in_progress: int = 0
+    restored: int = 0
+    latest_completed_age_ms: int | None = None
+    latest_completed_size_bytes: int | None = None
+    latest_completed_duration_ms: int | None = None
+    interval_ms: int | None = None
+    timeout_ms: int | None = None
+    stalled: bool = False
+
+
+class VertexOut(BaseModel):
+    id: str
+    name: str
+    status: str = ""
+    parallelism: int = 0
+    backpressure_level: str | None = None
+    busy_ratio: float | None = None
+    backpressured_ratio: float | None = None
+    records_in: int | None = None
+    records_out: int | None = None
+    records_in_rate: float | None = None
+    records_out_rate: float | None = None
+    kafka_lag_max: float | None = None
+
+
+class DiagnosticsOut(BaseModel):
+    """What the console needs to answer "why is this job not working?"."""
+
+    available: bool = False
+    # Why diagnostics could not be gathered, when they could not be.
+    reason: str | None = None
+    flink_job_id: str | None = None
+    target: str | None = None
+    state: str | None = None
+    uptime_ms: int | None = None
+    restarts: int | None = None
+    checkpoints: CheckpointOut | None = None
+    vertices: list[VertexOut] = []
+    # Full stack trace, with any known secret value replaced by its placeholder.
+    exception: str | None = None
+    flink_ui_url: str | None = None
+
+
 class ScheduleIn(BaseModel):
     mode: str = "cron"
     cron_expr: str | None = None

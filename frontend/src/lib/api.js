@@ -101,6 +101,7 @@ export const api = {
   cancelJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
   jobRuns: (name) => request(`/api/jobs/${encodeURIComponent(name)}/runs`),
   jobVersions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/versions`),
+  jobDiagnostics: (name) => request(`/api/jobs/${encodeURIComponent(name)}/diagnostics`),
   setSchedule: (name, body) => request(`/api/jobs/${encodeURIComponent(name)}/schedule`, { method: 'PUT', body }),
   clearSchedule: (name) => request(`/api/jobs/${encodeURIComponent(name)}/schedule`, { method: 'DELETE' }),
 }

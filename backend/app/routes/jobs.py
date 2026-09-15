@@ -12,6 +12,7 @@ from ..db import get_session
 from ..deps import (
     current_principal,
     get_cluster,
+    get_secret_store,
     get_submitter,
     get_targets,
     require_writer,
@@ -19,14 +20,18 @@ from ..deps import (
 from ..guards import check_job
 from ..models import CatalogEntry, Job, JobRun, JobVersion, RunState, Schedule
 from ..schemas import (
+    CheckpointOut,
+    DiagnosticsOut,
     JobIn,
     JobOut,
     RunOut,
     ScheduleIn,
     ScheduleOut,
     ValidateResponse,
+    VertexOut,
     WarningOut,
 )
+from ..secrets import SecretStore
 from ..submitter import JobSubmitter, SubmissionError
 from ..targets import TargetRegistry, UnknownTargetError
 
@@ -358,6 +363,80 @@ def get_run(
     out = _run_out(run).model_dump()  # type: ignore[union-attr]
     out["error_detail"] = run.error_detail
     return out
+
+
+@router.get("/{name}/diagnostics", response_model=DiagnosticsOut)
+async def job_diagnostics(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+    store: SecretStore = Depends(get_secret_store),
+) -> DiagnosticsOut:
+    """Everything the cluster knows about this job's most recent run.
+
+    Answers "why is it not working?" without leaving MARS: checkpoint health
+    against the job's own configured interval, per-operator backpressure and
+    throughput, consumer lag, and the full stack trace.
+    """
+    job = _get(db, name)
+    run = job.runs[0] if job.runs else None
+    if run is None or not run.flink_job_id:
+        return DiagnosticsOut(available=False, reason="This job has not run yet.")
+
+    try:
+        target = targets.for_job(db, job)
+    except UnknownTargetError as e:
+        return DiagnosticsOut(available=False, reason=str(e))
+
+    out = DiagnosticsOut(
+        flink_job_id=run.flink_job_id,
+        target=target.name,
+        flink_ui_url=f"{target.flink_rest_url.rstrip('/')}/#/job/{run.flink_job_id}/overview",
+    )
+
+    try:
+        detail = await targets.cluster(target).job_detail(run.flink_job_id)
+    except Exception:
+        # The run's own record is still worth showing when the cluster is down.
+        out.reason = f"Cluster {target.name} is unreachable."
+        out.exception = _redacted(db, store, run.error_detail or run.error_summary)
+        return out
+
+    if detail is None:
+        # Flink keeps finished jobs only as long as its history allows.
+        out.reason = "The cluster no longer has this job; it may have been pruned."
+        out.exception = _redacted(db, store, run.error_detail or run.error_summary)
+        return out
+
+    out.available = True
+    out.state = detail.overview.state
+    out.uptime_ms = detail.overview.duration_ms
+    out.restarts = detail.restarts if detail.restarts is not None else run.restarts
+    out.checkpoints = CheckpointOut(
+        completed=detail.checkpoints.completed,
+        failed=detail.checkpoints.failed,
+        in_progress=detail.checkpoints.in_progress,
+        restored=detail.checkpoints.restored,
+        latest_completed_age_ms=detail.checkpoints.latest_completed_age_ms,
+        latest_completed_size_bytes=detail.checkpoints.latest_completed_size_bytes,
+        latest_completed_duration_ms=detail.checkpoints.latest_completed_duration_ms,
+        interval_ms=detail.checkpoints.interval_ms,
+        timeout_ms=detail.checkpoints.timeout_ms,
+        stalled=detail.checkpoints.stalled,
+    )
+    out.vertices = [VertexOut(**vars(v)) for v in detail.vertices]
+    out.exception = _redacted(
+        db, store, detail.exception or run.error_detail or run.error_summary
+    )
+    return out
+
+
+def _redacted(db: Session, store: SecretStore, text: str | None) -> str | None:
+    """A Flink trace readily echoes table options back, passwords included."""
+    if not text:
+        return None
+    return store.redact(db, text)
 
 
 @router.get("/{name}/versions")

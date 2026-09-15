@@ -5,7 +5,10 @@ state, uptime, checkpoint health, and why something failed.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,7 +42,22 @@ class CheckpointHealth:
     # keeps climbing is the earliest visible sign of a stuck job.
     latest_completed_age_ms: int | None = None
     latest_completed_size_bytes: int | None = None
+    latest_completed_duration_ms: int | None = None
     in_progress: int = 0
+    restored: int = 0
+    # The configured interval, so age can be judged against what this job asked
+    # for rather than against a number hardcoded in the console. An age of four
+    # intervals means something is wrong; four intervals is 2 minutes on one job
+    # and 2 hours on another.
+    interval_ms: int | None = None
+    timeout_ms: int | None = None
+
+    @property
+    def stalled(self) -> bool:
+        """True when checkpoints should have completed by now and have not."""
+        if self.latest_completed_age_ms is None or not self.interval_ms:
+            return False
+        return self.latest_completed_age_ms > 3 * self.interval_ms
 
 
 @dataclass
@@ -53,18 +71,39 @@ class ClusterInfo:
 
 
 @dataclass
-class VertexBackpressure:
+class VertexHealth:
+    """One operator in the job graph, with the numbers that explain its state.
+
+    Ratios are 0..1 taken from Flink's own backpressure sampling, not from the
+    accumulated-*-time counters on the job graph: those are cumulative
+    milliseconds since the task started, so a job that was briefly busy hours ago
+    looks permanently busy if you read them as a rate.
+    """
+
+    id: str
     name: str
+    status: str = ""
+    parallelism: int = 0
+    backpressure_level: str | None = None  # ok | low | high
     busy_ratio: float | None = None
     backpressured_ratio: float | None = None
+    records_in: int | None = None
+    records_out: int | None = None
+    records_in_rate: float | None = None
+    records_out_rate: float | None = None
+    # Highest consumer lag across this operator's subtasks. Only sources report
+    # it, and Kafka reports NaN when the consumer has not fetched recently, so a
+    # None here means "not applicable", never "zero".
+    kafka_lag_max: float | None = None
 
 
 @dataclass
 class JobDetail:
     overview: JobOverview
     checkpoints: CheckpointHealth = field(default_factory=CheckpointHealth)
-    vertices: list[VertexBackpressure] = field(default_factory=list)
+    vertices: list[VertexHealth] = field(default_factory=list)
     exception: str | None = None
+    restarts: int | None = None
 
 
 class FlinkClusterClient:
@@ -126,9 +165,18 @@ class FlinkClusterClient:
 
         detail = JobDetail(overview=overview)
         async with self._client() as c:
-            detail.checkpoints = await self._checkpoints(c, job_id)
-            detail.exception = await self._root_exception(c, job_id)
-            detail.vertices = await self._backpressure(c, job_id)
+            # Independent reads; a slow one should not serialise the others.
+            checkpoints, exception, vertices, restarts = await asyncio.gather(
+                self._checkpoints(c, job_id),
+                self._root_exception(c, job_id),
+                self._vertices(c, job_id),
+                self._restarts(c, job_id),
+                return_exceptions=True,
+            )
+        detail.checkpoints = _or(checkpoints, CheckpointHealth())
+        detail.exception = _or(exception, None)
+        detail.vertices = _or(vertices, [])
+        detail.restarts = _or(restarts, None)
         return detail
 
     async def cancel(self, job_id: str) -> None:
@@ -169,16 +217,39 @@ class FlinkClusterClient:
         health.completed = counts.get("completed", 0)
         health.failed = counts.get("failed", 0)
         health.in_progress = counts.get("in_progress", 0)
+        health.restored = counts.get("restored", 0)
 
         latest = (d.get("latest") or {}).get("completed")
         if latest:
             health.latest_completed_size_bytes = latest.get("state_size")
+            health.latest_completed_duration_ms = latest.get("end_to_end_duration")
             ts = latest.get("latest_ack_timestamp") or latest.get("trigger_timestamp")
             if ts:
-                import time as _t
+                health.latest_completed_age_ms = max(
+                    0, int(time.time() * 1000) - int(ts)
+                )
 
-                health.latest_completed_age_ms = max(0, int(_t.time() * 1000) - int(ts))
+        # The configured interval gives the age a yardstick.
+        try:
+            rc = await c.get(f"/jobs/{job_id}/checkpoints/config")
+            if rc.status_code == 200:
+                cfg = rc.json()
+                health.interval_ms = _int(cfg.get("interval"))
+                health.timeout_ms = _int(cfg.get("timeout"))
+        except httpx.HTTPError:
+            pass
         return health
+
+    async def _restarts(self, c: httpx.AsyncClient, job_id: str) -> int | None:
+        try:
+            r = await c.get(f"/jobs/{job_id}/metrics", params={"get": "numRestarts"})
+            if r.status_code != 200:
+                return None
+            for m in r.json():
+                return _int(m.get("value"))
+        except httpx.HTTPError:
+            return None
+        return None
 
     async def _root_exception(self, c: httpx.AsyncClient, job_id: str) -> str | None:
         try:
@@ -197,28 +268,190 @@ class FlinkClusterClient:
             return history[0].get("stacktrace")
         return None
 
-    async def _backpressure(
+    async def _vertices(
         self, c: httpx.AsyncClient, job_id: str
-    ) -> list[VertexBackpressure]:
-        out: list[VertexBackpressure] = []
+    ) -> list[VertexHealth]:
         try:
             r = await c.get(f"/jobs/{job_id}")
             if r.status_code != 200:
-                return out
+                return []
             vertices = r.json().get("vertices", [])
         except httpx.HTTPError:
-            return out
+            return []
 
+        out: list[VertexHealth] = []
         for v in vertices:
-            metrics = v.get("metrics", {})
+            m = v.get("metrics", {})
             out.append(
-                VertexBackpressure(
-                    name=v.get("name", "")[:120],
-                    busy_ratio=metrics.get("accumulated-busy-time"),
-                    backpressured_ratio=metrics.get("accumulated-backpressured-time"),
+                VertexHealth(
+                    id=v.get("id", ""),
+                    name=v.get("name", "")[:200],
+                    status=v.get("status", ""),
+                    parallelism=v.get("parallelism", 0) or 0,
+                    # Deliberately not read-records/write-records from here:
+                    # those count only what crosses a network boundary, and
+                    # Flink chains Source -> Calc -> Sink into a single task, so
+                    # they read 0 on exactly the jobs people most want to check.
+                    # The real counts are operator-level, fetched below.
                 )
             )
+
+        # Only ask for live numbers on vertices that are actually running --
+        # a FINISHED or CANCELED task has no subtasks left to sample.
+        live = [x for x in out if x.status == "RUNNING"]
+        if live:
+            await asyncio.gather(
+                *(self._vertex_live(c, job_id, x) for x in live),
+                return_exceptions=True,
+            )
         return out
+
+    async def _vertex_live(
+        self, c: httpx.AsyncClient, job_id: str, vertex: VertexHealth
+    ) -> None:
+        """Fills in backpressure, throughput and lag for one running vertex."""
+        base = f"/jobs/{job_id}/vertices/{vertex.id}"
+
+        async def backpressure() -> None:
+            r = await c.get(f"{base}/backpressure")
+            if r.status_code != 200:
+                return
+            d = r.json()
+            if d.get("status") != "ok":
+                return  # sampling still in progress
+            vertex.backpressure_level = d.get("backpressureLevel")
+            subtasks = d.get("subtasks") or []
+            # The worst subtask is what matters: one wedged subtask stalls the
+            # whole job, and averaging it away is how that gets missed.
+            busy = [_float(s.get("busyRatio")) for s in subtasks]
+            bp = [_float(s.get("ratio")) for s in subtasks]
+            vertex.busy_ratio = _max(busy)
+            vertex.backpressured_ratio = _max(bp)
+
+        async def counts() -> None:
+            """Cumulative records handled, from the operator-level metrics.
+
+            Metric ids are "<subtask>.<operator>.<metric>", so a job with
+            parallelism 4 and three chained operators reports twelve numbers for
+            one logical count. Sum across subtasks, then take the busiest
+            operator: in a chain that is the one that saw every record.
+            """
+            r = await c.get(f"{base}/metrics")
+            if r.status_code != 200:
+                return
+            wanted = [
+                m["id"]
+                for m in r.json()
+                if isinstance(m.get("id"), str)
+                and m["id"].endswith(
+                    (
+                        ".numRecordsIn",
+                        ".numRecordsOut",
+                        ".numRecordsInPerSecond",
+                        ".numRecordsOutPerSecond",
+                    )
+                )
+            ]
+            if not wanted:
+                return
+            r = await c.get(f"{base}/metrics", params={"get": ",".join(wanted[:200])})
+            if r.status_code != 200:
+                return
+
+            totals: dict[tuple[str, str], float] = {}
+            for m in r.json():
+                mid = m.get("id", "")
+                subtask, _, rest = mid.partition(".")
+                operator, _, metric = rest.rpartition(".")
+                value = _float(m.get("value"))
+                if not operator or value is None:
+                    continue
+                if _is_committer(operator):
+                    continue
+                key = (operator, metric)
+                totals[key] = totals.get(key, 0.0) + value
+
+            def busiest(metric: str) -> float | None:
+                values = [v for (_, m), v in totals.items() if m == metric]
+                return max(values) if values else None
+
+            total_in = busiest("numRecordsIn")
+            total_out = busiest("numRecordsOut")
+            if total_in is not None:
+                vertex.records_in = int(total_in)
+            if total_out is not None:
+                vertex.records_out = int(total_out)
+            vertex.records_in_rate = busiest("numRecordsInPerSecond")
+            vertex.records_out_rate = busiest("numRecordsOutPerSecond")
+
+        async def lag() -> None:
+            # Kafka's lag metric is namespaced per subtask and operator, e.g.
+            # "0.Source__foo[37].KafkaSourceReader.KafkaConsumer.records-lag-max",
+            # so it cannot be requested by a plain name -- the ids have to be
+            # discovered first.
+            r = await c.get(f"{base}/metrics")
+            if r.status_code != 200:
+                return
+            ids = [
+                m["id"]
+                for m in r.json()
+                if isinstance(m.get("id"), str)
+                and m["id"].endswith("records-lag-max")
+            ]
+            if not ids:
+                return
+            r = await c.get(f"{base}/metrics", params={"get": ",".join(ids[:64])})
+            if r.status_code != 200:
+                return
+            vertex.kafka_lag_max = _max([_float(m.get("value")) for m in r.json()])
+
+        await asyncio.gather(
+            backpressure(), counts(), lag(), return_exceptions=True
+        )
+
+
+def _is_committer(operator: str) -> bool:
+    """True for the commit stage of a two-phase sink.
+
+    A committer emits exactly one record per checkpoint regardless of how much
+    data moved, so it is the largest counter on an idle job: an untouched
+    pipeline reported "134 records processed" purely because it had checkpointed
+    134 times. It measures checkpoints, not throughput, and must not be counted
+    as either.
+    """
+    return operator.endswith("Committer")
+
+
+def _or(value: Any, fallback: Any) -> Any:
+    """asyncio.gather(return_exceptions=True) hands back the exception itself."""
+    return fallback if isinstance(value, BaseException) else value
+
+
+def _int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float(value: Any) -> float | None:
+    """Parses a Flink metric value, rejecting the ones JSON cannot represent.
+
+    Kafka reports "NaN" for lag whenever the consumer has not fetched recently.
+    Letting that through produces a bare NaN token in the response body, which is
+    not valid JSON and which the browser refuses to parse -- so the whole
+    diagnostics panel would go blank because one metric was idle.
+    """
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _max(values: list[float | None]) -> float | None:
+    present = [v for v in values if v is not None]
+    return max(present) if present else None
 
 
 def _overview(j: dict[str, Any]) -> JobOverview:
