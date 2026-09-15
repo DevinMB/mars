@@ -639,6 +639,53 @@ roadmap and are both exactly what a business buyer needs and a hobbyist does not
 over time, retained. Metering is useless applied retrospectively, and a usage view
 is worth having even if nothing is ever charged for.
 
+## Securing the cluster itself
+
+**Flink authenticates nothing by default, and MARS ships it that way.** Worth stating
+plainly because the assumption is invisible until it is violated: a Flink cluster expects
+to run in a trusted network. Any process that can reach the JobManager's RPC port may
+register as a TaskManager, and will be accepted.
+
+This is not theoretical here. During the clean-room install test, a second stack's
+TaskManager registered with the *production* JobManager -- production went from 12 slots
+to 24 and began scheduling work onto a container that had nothing to do with it. Nothing
+authorised it and nothing objected. It was an accident rather than an attack, but it is
+the same thing.
+
+### The larger exposure is the REST port
+
+Submitting a job to Flink means running code on the cluster, so an unauthenticated REST
+API is a remote shell. The compose file publishes `8081` on the host with no
+authentication in front of it. Anyone who can reach that port can cancel every job, or
+start their own. This is a sharper problem than the TaskManager question and should be
+fixed first.
+
+The SQL Gateway, by contrast, is already unpublished and reachable only from inside the
+stack's network. That is the right shape, and the Flink UI should follow it.
+
+### What production-ready looks like
+
+1. **Stop publishing the Flink UI by default.** Proxy it through the console, which
+   already has accounts, roles and sessions. Publishing the port becomes opt-in for
+   people who understand what they are exposing, rather than the default. This also
+   removes the browser-reachability problem the `ui_url` setting exists to work around.
+2. **`security.ssl.internal.enabled`** — mutual TLS across RPC, the blob server and the
+   data plane, with a keystore generated at first boot and mounted into every service.
+   Be honest in the documentation about what it proves: the keystore is shared across the
+   cluster, so it authenticates *holding the cluster's key*, not per-node identity. That
+   is enough to stop a stranger joining, which is the threat.
+3. **`security.ssl.rest.enabled` with client certificates** between the console and the
+   JobManager, once the port is no longer public.
+4. **Say where the trust boundary is.** Today it is "everything on the Docker network",
+   and nothing tells the operator that.
+
+### Where this actually bites
+
+The Cluster tab encourages deploying a second cluster on another host and pointing it at
+the manager. On a flat home network that is fine. Across anything else it is currently
+unauthenticated and unencrypted, and the instructions do not say so. Either the guidance
+gains that warning now, or internal SSL lands before the feature is advertised further.
+
 ## Migrating an existing application onto MARS
 
 **Large, and deliberately not started.** Recorded now because this installation was
