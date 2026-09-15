@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import SqlEditor from '../components/SqlEditor'
 import ValidationPanel from '../components/ValidationPanel'
 import TablePicker from '../components/TablePicker'
 import SchemaPanel from '../components/SchemaPanel'
+import PromptPanel from '../components/PromptPanel'
+import { buildCompletions } from '../components/Completion'
 import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 
 export default function JobEditor() {
@@ -26,11 +28,15 @@ export default function JobEditor() {
   const [checking, setChecking] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(true)
+  const [docFields, setDocFields] = useState({})
+  const [ai, setAi] = useState(null)
 
   useEffect(() => {
     (async () => {
       setEntries(await api.catalog())
       setTargets(await api.targets().catch(() => []))
+      // A viewer without access to the AI settings simply does not see the box.
+      setAi(await api.aiProvider().catch(() => null))
       if (editing) {
         const j = await api.job(editing)
         setName(j.name)
@@ -79,6 +85,11 @@ export default function JobEditor() {
     const t = setTimeout(() => runCheck(sql, refs, target, editing || name, jobType), 700)
     return () => clearTimeout(t)
   }, [sql, refs, target, jobType, name, editing, runCheck])
+
+  const completions = useMemo(
+    () => buildCompletions(entries || [], refs, docFields),
+    [entries, refs, docFields],
+  )
 
   const sqlRef = useRef(null)
   const insertAtCursor = (text) => {
@@ -196,6 +207,17 @@ export default function JobEditor() {
             </Field>
           </div>
 
+          <PromptPanel
+            enabled={Boolean(ai?.configured)}
+            refs={refs}
+            completions={completions}
+            jobType={jobType}
+            targetName={target}
+            jobName={editing || name}
+            documentFields={docFields}
+            onDraft={(text) => { setSql(text); setCheck(null) }}
+          />
+
           <div className="card p-6">
             <h2 className="font-medium text-slate-900 mb-1">Statement</h2>
             <p className="text-xs text-slate-500 mb-4">
@@ -210,6 +232,7 @@ export default function JobEditor() {
               marker={check && !check.ok && check.line
                 ? { line: check.line, message: check.error }
                 : null}
+              completions={completions}
             />
             <ValidationPanel result={check} checking={checking} dirty={dirty} />
           </div>

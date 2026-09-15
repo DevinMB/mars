@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { CompletionList, useCompletion } from './Completion'
 
 // A deliberately small SQL editor: a monospace textarea with a line gutter and
 // tab handling. It keeps the bundle light and behaves predictably; a full
 // language server is a later upgrade, not a prerequisite.
 function SqlEditorInner(
-  { value, onChange, rows = 16, readOnly = false, marker = null },
+  { value, onChange, rows = 16, readOnly = false, marker = null, completions = [] },
   ref,
 ) {
   const taRef = useRef(null)
@@ -24,7 +25,14 @@ function SqlEditorInner(
     return () => ta.removeEventListener('scroll', sync)
   }, [])
 
+  const completion = useCompletion({
+    value: value || '', onChange, taRef, items: readOnly ? [] : completions, mode: 'sql',
+  })
+
   const onKeyDown = (e) => {
+    // The completion list claims Tab and Enter only while it is open, so both
+    // keys keep their normal behaviour the rest of the time.
+    if (completion.onKeyDown(e)) return
     if (e.key !== 'Tab' || readOnly) return
     // Tab indents rather than leaving the field: this is an editor, not a form.
     e.preventDefault()
@@ -36,6 +44,7 @@ function SqlEditorInner(
   }
 
   return (
+    <>
     <div className="flex border border-slate-300 rounded-md overflow-hidden bg-white
                     focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-500">
       <div
@@ -72,6 +81,14 @@ function SqlEditorInner(
         placeholder="INSERT INTO my_sink SELECT … FROM my_source"
       />
     </div>
+    {completion.open && (
+      <CompletionList
+        matches={completion.matches}
+        active={completion.active}
+        onPick={completion.accept}
+      />
+    )}
+    </>
   )
 }
 

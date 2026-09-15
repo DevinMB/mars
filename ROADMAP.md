@@ -95,10 +95,9 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   mechanism gives the Catalog a "peek at this source" -- five live messages from a topic
   -- which is how someone works out what to write in the first place.
 
-- **Describe the job in words.** Alongside writing SQL by hand, a box to say what the job
-  should do -- "read each whisper, pull out the message and username, and write them to
-  the whispers database" -- and have a model draft the statement. The provider is already
-  configurable under Administration; what remains is the feature itself.
+- ~~Describe the job in words~~ **DONE.** A box above the editor takes a description and
+  drafts the statement. Asked for the device-status conversion in one sentence, the model
+  produced the production statement, character for character.
 
   What makes this workable rather than a novelty is that MARS can give the model real
   context and can check the answer:
@@ -112,12 +111,25 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   - The draft is validated before it is shown. `/api/jobs/validate` already compiles a
     statement and explains failures in plain language, so a draft that does not compile
     can be repaired and re-checked automatically.
-  - **The draft always lands in the editor for a human to approve.** It is never submitted.
-    That single rule is what makes the feature safe to ship at all.
+  - **The draft always lands in the editor for a human to approve.** It is never
+    submitted. That rule lives in the drafting module rather than the UI: it returns text
+    and has no way to run anything.
 
-- **Autocomplete in both boxes.** The same index of tables, columns and sampled document
-  fields serves the SQL editor and the prompt box. Worth building once, as a shared
-  source of completions, rather than twice.
+  The repair loop is worth keeping. Asked for something Flink rejects -- sorting an
+  unbounded stream -- the first draft failed, the plain-language explanation was fed back,
+  and the second attempt compiled. An error message written for a person turns out to be
+  at least as useful to a model.
+
+- ~~Autocomplete in both boxes~~ **DONE.** One index of tables, columns and sampled
+  document fields serves the SQL editor and the description box. In SQL a field inserts
+  `JSON_VALUE(doc, '$.username')`; in prose the same entry inserts `@doc.username`, which
+  is what the model is then told about. The description box only completes after an `@`,
+  so ordinary prose is never interrupted.
+
+  The list is anchored under the field rather than at the caret. Positioning at the caret
+  inside a textarea means measuring text with a mirrored element, and it misplaces itself
+  on wrapping and scrolling in ways that are worse than a list that is always in the same
+  place. Worth revisiting alongside a real editor component.
 
 - **Schema-aware completion.** MARS knows every table and column in the catalog, which
   Flink's own UI does not. Completing table names after FROM, then that table's columns,

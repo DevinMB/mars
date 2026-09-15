@@ -348,6 +348,29 @@ class WarningOut(BaseModel):
     message: str
 
 
+class DraftRequest(BaseModel):
+    """A description of a job, plus the tables it is allowed to use."""
+
+    prompt: str
+    catalog_refs: list[str] = Field(default_factory=list)
+    job_type: str = "streaming"
+    target_name: str | None = None
+    name: str = "draft"
+    # Field names found inside JSON documents, keyed table -> column -> fields.
+    # Supplied by the console from any samples the user has already taken, so the
+    # model is told what is in a document rather than guessing at it.
+    document_fields: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+
+
+class DraftResponse(BaseModel):
+    sql: str = ""
+    ok: bool = False
+    error: str | None = None
+    hint: str | None = None
+    attempts: int = 0
+    notes: list[str] = Field(default_factory=list)
+
+
 class AiProviderIn(BaseModel):
     kind: str = "ollama"
     base_url: str = ""

@@ -6,7 +6,7 @@ import { Alert, Spinner } from './ui'
 // declared schema reads `record_key, doc` and says nothing about what can be
 // selected. The declared columns are always shown; the fields inside a document
 // need a real record, which is what "Look inside" fetches.
-export default function SchemaPanel({ entry, onInsert }) {
+export default function SchemaPanel({ entry, onInsert, onSampled }) {
   const [sample, setSample] = useState(null)
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -14,7 +14,19 @@ export default function SchemaPanel({ entry, onInsert }) {
   const look = async () => {
     setLoading(true)
     setOpen(true)
-    try { setSample(await api.sampleEntry(entry.name, 5)) }
+    try {
+      const s = await api.sampleEntry(entry.name, 5)
+      setSample(s)
+      // Hand the discovered fields up: completion and the description box both
+      // need them, and nobody else can discover them without sampling again.
+      if (!s.error && onSampled) {
+        onSampled(entry.name, Object.fromEntries(
+          Object.entries(s.nested || {}).map(([column, fields]) => [
+            column, fields.map((f) => f.name),
+          ]),
+        ))
+      }
+    }
     catch (err) { setSample({ error: err.message }) }
     finally { setLoading(false) }
   }

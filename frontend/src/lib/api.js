@@ -106,6 +106,7 @@ export const api = {
   jobScript: (name) => request(`/api/jobs/${encodeURIComponent(name)}/script`),
   validateJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/validate`, { method: 'POST' }),
   validateDraft: (body) => request('/api/jobs/validate', { method: 'POST', body }),
+  draftJob: (body) => request('/api/jobs/draft', { method: 'POST', body }),
   runJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' }),
   cancelJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
   jobRuns: (name) => request(`/api/jobs/${encodeURIComponent(name)}/runs`),

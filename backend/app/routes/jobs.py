@@ -18,13 +18,17 @@ from ..deps import (
     get_targets,
     require_writer,
 )
+from ..ai import AiClient
+from ..drafting import draft_statement
 from ..explain import Context as ExplainContext
 from ..explain import explain
-from ..guards import check_job, column_names
+from ..guards import check_job, column_names, columns_of
 from ..models import CatalogEntry, Job, JobRun, JobVersion, RunState, Schedule
 from ..schemas import (
     CheckpointOut,
     DraftJobIn,
+    DraftRequest,
+    DraftResponse,
     DiagnosticsOut,
     JobIn,
     JobOut,
@@ -35,6 +39,8 @@ from ..schemas import (
     VertexOut,
     WarningOut,
 )
+from ..routes.ai import _row as ai_row
+from ..routes.ai import config_for as ai_config
 from ..secrets import SecretStore
 from ..submitter import JobSubmitter, SubmissionError
 from ..targets import TargetRegistry, UnknownTargetError
@@ -408,6 +414,81 @@ async def validate_draft(
     except SubmissionError as exc:
         return _validated(db, body.sql_text, body.catalog_refs, warnings, exc)
     return ValidateResponse(ok=True, warnings=warnings)
+
+
+@router.post("/draft", response_model=DraftResponse)
+async def draft_job(
+    body: DraftRequest,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+    store: SecretStore = Depends(get_secret_store),
+) -> DraftResponse:
+    """Drafts a statement from a description, and checks it before returning it.
+
+    Requires write access: someone who cannot create a job has no reason to
+    generate one, and this spends time on a model and on the planner.
+
+    The result is a draft. It is returned as text and nothing here can submit it.
+    """
+    if not body.prompt.strip():
+        raise HTTPException(status_code=400, detail="Describe what the job should do.")
+
+    row = ai_row(db)
+    config = ai_config(db, store, row)
+    if not row.enabled or not config.configured:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No AI provider is enabled. An administrator sets one up under AI."
+            ),
+        )
+
+    entries = {
+        e.name: e
+        for e in db.query(CatalogEntry)
+        .filter(CatalogEntry.name.in_(body.catalog_refs))
+        .all()
+    } if body.catalog_refs else {}
+
+    tables = [
+        {
+            "name": e.name,
+            "kind": e.kind,
+            "columns": [{"name": n, "type": t} for n, t in columns_of(e.sql_text)],
+            "document_fields": body.document_fields.get(e.name, {}),
+        }
+        for e in entries.values()
+    ]
+
+    async def _validate(sql: str) -> tuple[bool, str | None, str | None]:
+        candidate = Job(
+            name=body.name or "draft",
+            sql_text=sql,
+            job_type=body.job_type,
+            catalog_refs=json.dumps(body.catalog_refs),
+            target_name=body.target_name or None,
+        )
+        try:
+            await targets.for_job_submitter(db, candidate).validate(db, candidate)
+        except SubmissionError as exc:
+            checked = _validated(db, sql, body.catalog_refs, [], exc)
+            return False, checked.error, checked.hint
+        except UnknownTargetError as exc:
+            return False, str(exc), None
+        return True, None, None
+
+    result = await draft_statement(
+        AiClient(config), body.prompt, tables, body.job_type, _validate
+    )
+    return DraftResponse(
+        sql=result.sql,
+        ok=result.ok,
+        error=store.redact(db, result.error) if result.error else None,
+        hint=result.hint,
+        attempts=result.attempts,
+        notes=[store.redact(db, n) for n in result.notes],
+    )
 
 
 @router.post("/{name}/run", response_model=RunOut, status_code=status.HTTP_202_ACCEPTED)
