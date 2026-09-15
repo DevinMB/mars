@@ -70,6 +70,8 @@ class CatalogEntryIn(BaseModel):
     columns: list[ColumnIn] = Field(default_factory=list)
     # Supplied instead of options/columns when a user hand-writes the DDL.
     sql_text: str | None = None
+    # Stored with the version this save creates, so the history reads as a story.
+    note: str | None = None
 
     @field_validator("kind")
     @classmethod
@@ -97,6 +99,7 @@ class CatalogEntryOut(BaseModel):
     # Declared in the DDL. For a raw-passthrough source this is just the envelope
     # (`record_key`, `doc`); what is inside the document needs a sample.
     columns: list[ColumnOut] = Field(default_factory=list)
+    version: int = 1
 
 
 class NestedFieldOut(BaseModel):

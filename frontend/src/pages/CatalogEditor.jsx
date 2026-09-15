@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import HealthCheck from '../components/HealthCheck'
+import CatalogHistory from '../components/CatalogHistory'
 import ColumnEditor from '../components/ColumnEditor'
 import ConnectorForm from '../components/ConnectorForm'
 import ConnectorPicker from '../components/ConnectorPicker'
@@ -20,6 +21,8 @@ export default function CatalogEditor() {
   const [description, setDescription] = useState('')
   const [values, setValues] = useState({})
   const [columns, setColumns] = useState([])
+  const [usedBy, setUsedBy] = useState([])
+  const [note, setNote] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -36,6 +39,7 @@ export default function CatalogEditor() {
         setName(e.name)
         setDescription(e.description || '')
         setValues(e.options || {})
+        setUsedBy(e.used_by || [])
         // This entry's own columns, not the connector's suggested ones. Seeding
         // from the connector meant opening any hand-written definition showed
         // someone else's schema, and saving would have written it back.
@@ -66,7 +70,8 @@ export default function CatalogEditor() {
   const save = async () => {
     setSaving(true)
     setError(null)
-    const body = { name, kind, connector: connectorId, description, options: values, columns }
+    const body = { name, kind, connector: connectorId, description, options: values,
+                    columns, note: note || undefined }
     try {
       if (editing) await api.updateCatalog(editing, body)
       else await api.createCatalog(body)
@@ -160,6 +165,17 @@ export default function CatalogEditor() {
         </div>
 
         <aside className="space-y-4">
+          {editing && (
+            <div className="card p-4">
+              <Field label="What changed?"
+                     hint="Saved with this version, so the history reads like a story.">
+                <input className="input" value={note}
+                       onChange={(e) => setNote(e.target.value)}
+                       placeholder="Pointed at the new topic" />
+              </Field>
+            </div>
+          )}
+
           {connector?.description && (
             <div className="card p-4">
               <h3 className="text-sm font-medium text-slate-900 mb-1">{connector.displayName}</h3>
@@ -183,6 +199,7 @@ export default function CatalogEditor() {
                 : 'Choose a connector to see the statement.'}
             </CodeBlock>
           </div>
+          {editing && <CatalogHistory name={editing} usedBy={usedBy} />}
         </aside>
       </div>
     </>

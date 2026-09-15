@@ -17,7 +17,7 @@ from ..deps import (
     require_writer,
 )
 from ..guards import check_catalog_entry, columns_of, parse_options
-from ..models import CatalogEntry, Job
+from ..models import CatalogEntry, CatalogVersion, Job
 from ..gateway import SqlGatewayClient
 from ..health import probe
 from ..preview import sample_source
@@ -66,6 +66,7 @@ def _out(entry: CatalogEntry, used_by: list[str] | None = None) -> CatalogEntryO
         updated_at=entry.updated_at,
         used_by=used_by or [],
         columns=[ColumnOut(name=n, type=t) for n, t in columns_of(entry.sql_text)],
+        version=entry.version,
     )
 
 
@@ -151,6 +152,16 @@ def create_entry(
         created_by=principal.username,
     )
     db.add(entry)
+    db.flush()
+    db.add(CatalogVersion(
+        entry_id=entry.id,
+        version=1,
+        sql_text=entry.sql_text,
+        description=entry.description,
+        options_json=entry.options_json,
+        note=body.note,
+        created_by=principal.username,
+    ))
     db.commit()
     return _out(entry)
 
@@ -159,7 +170,7 @@ def create_entry(
 def update_entry(
     name: str,
     body: CatalogEntryIn,
-    _: Principal = Depends(require_writer),
+    principal: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
     registry: ConnectorRegistry = Depends(get_registry),
 ) -> CatalogEntryOut:
@@ -174,11 +185,28 @@ def update_entry(
             detail="A catalog entry cannot be renamed; create a new one and repoint its jobs.",
         )
 
+    rendered = _render(body, registry)
+    # Only a change to the definition earns a version. Editing the description
+    # should not fill the history with noise -- the same rule jobs follow.
+    changed = rendered != entry.sql_text or body.kind != entry.kind
+
     entry.kind = body.kind
     entry.connector = body.connector
     entry.description = body.description
-    entry.sql_text = _render(body, registry)
+    entry.sql_text = rendered
     entry.options_json = options_to_json(body.options or parse_options(entry.sql_text))
+
+    if changed:
+        entry.version += 1
+        db.add(CatalogVersion(
+            entry_id=entry.id,
+            version=entry.version,
+            sql_text=entry.sql_text,
+            description=entry.description,
+            options_json=entry.options_json,
+            note=body.note,
+            created_by=principal.username,
+        ))
     db.commit()
     return _out(entry, _users_of(db, name))
 
@@ -304,4 +332,30 @@ async def check_entry_health(
     return HealthResultOut(
         ok=result.ok, detail=store.redact(db, result.detail), hint=result.hint
     )
+
+@router.get("/{name}/versions")
+def list_entry_versions(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> list[dict]:
+    """What this source or sink used to be, and who changed it.
+
+    Worth having for a catalog entry more than for a job: one entry feeds many
+    jobs, so this is the change with the widest blast radius.
+    """
+    entry = db.query(CatalogEntry).filter(CatalogEntry.name == name).one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No catalog entry named '{name}'")
+    return [
+        {
+            "version": v.version,
+            "sql_text": v.sql_text,
+            "description": v.description,
+            "note": v.note,
+            "created_at": v.created_at,
+            "created_by": v.created_by,
+        }
+        for v in entry.versions
+    ]
 

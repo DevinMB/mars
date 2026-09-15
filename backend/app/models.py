@@ -216,8 +216,45 @@ class CatalogEntry(Base, TimestampMixin):
     # The form values it was generated from, so the form can be reopened.
     options_json: Mapped[str] = mapped_column(Text, default="{}")
     created_by: Mapped[str | None] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+    versions: Mapped[list["CatalogVersion"]] = relationship(
+        back_populates="entry", cascade="all, delete-orphan",
+        order_by="CatalogVersion.version.desc()",
+    )
 
     __table_args__ = (UniqueConstraint("name", name="uq_catalog_name"),)
+
+
+class CatalogVersion(Base):
+    """One past definition of a source or sink.
+
+    Jobs were versioned from the start and catalog entries were not, which had it
+    backwards: one entry feeds many jobs, so changing a source's consumer group or
+    its columns silently changes behaviour for everything referencing it. That is
+    the edit most worth being able to look back at, and it was the one with no
+    history at all.
+    """
+
+    __tablename__ = "catalog_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_entries.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    sql_text: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(String(512))
+    options_json: Mapped[str] = mapped_column(Text, default="{}")
+    note: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_by: Mapped[str | None] = mapped_column(String(64))
+
+    entry: Mapped[CatalogEntry] = relationship(back_populates="versions")
+
+    __table_args__ = (
+        UniqueConstraint("entry_id", "version", name="uq_catalog_entry_version"),
+    )
 
 
 class Job(Base, TimestampMixin):

@@ -59,6 +59,8 @@ export const api = {
 
   // catalog
   catalog: (kind) => request(`/api/catalog${kind ? `?kind=${kind}` : ''}`),
+  catalogVersions: (name) =>
+    request(`/api/catalog/${encodeURIComponent(name)}/versions`),
   checkHealth: (connector, options) =>
     request('/api/catalog/health', { method: 'POST', body: { connector, options } }),
   checkEntryHealth: (name) =>
