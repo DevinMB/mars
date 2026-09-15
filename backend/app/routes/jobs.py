@@ -26,7 +26,15 @@ from ..preview import preview_statement
 from ..explain import Context as ExplainContext
 from ..explain import explain
 from ..guards import check_job, column_names, columns_of
-from ..models import CatalogEntry, Job, JobRun, JobVersion, RunState, Schedule
+from ..models import (
+    CatalogEntry,
+    Job,
+    JobRun,
+    JobVersion,
+    RunState,
+    Schedule,
+    utcnow,
+)
 from ..schemas import (
     CheckpointOut,
     DraftJobIn,
@@ -195,11 +203,23 @@ def recent_activity(
         .limit(max(1, min(limit, 500)))
         .all()
     )
+
+    # A failure that a later run has already replaced is history, not news. Worked
+    # out rather than stored: it is always true, needs nobody to click anything,
+    # and cannot go stale.
+    newest: dict[str, int] = {}
+    for run, name in rows:
+        if name not in newest or run.id > newest[name]:
+            newest[name] = run.id
+
     return [
         {
             "run_id": run.id,
             "job": name,
             "state": run.state,
+            "superseded": run.id < newest.get(name, run.id),
+            "acknowledged": run.acknowledged_at is not None,
+            "acknowledged_by": run.acknowledged_by,
             "started_at": run.started_at,
             "ended_at": run.ended_at,
             "restarts": run.restarts,
@@ -211,6 +231,23 @@ def recent_activity(
         }
         for run, name in rows
     ]
+
+
+@router.post("/activity/{run_id}/acknowledge", response_model=None,
+             status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def acknowledge_run(
+    run_id: int,
+    undo: bool = False,
+    principal: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> None:
+    """Marks a failed run as dealt with, or takes that back."""
+    run = db.get(JobRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="No such run.")
+    run.acknowledged_at = None if undo else utcnow()
+    run.acknowledged_by = None if undo else principal.username
+    db.commit()
 
 
 @router.get("/{name}", response_model=JobOut)

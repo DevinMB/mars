@@ -11,8 +11,17 @@ import { Alert, EmptyState, PageHeader, Spinner, StatePill } from '../components
 // the one the console was worst at answering.
 export default function Activity() {
   const [runs, setRuns] = useState(null)
+  const [busy, setBusy] = useState(null)
+  const [reload, setReload] = useState(0)
   const [error, setError] = useState(null)
   const [onlyProblems, setOnlyProblems] = useState(false)
+
+  const acknowledge = async (run, undo) => {
+    setBusy(run.run_id)
+    try { await api.acknowledgeRun(run.run_id, undo); setReload((n) => n + 1) }
+    catch (e) { setError(e.message) }
+    finally { setBusy(null) }
+  }
 
   useEffect(() => {
     let alive = true
@@ -23,17 +32,20 @@ export default function Activity() {
     load()
     const t = setInterval(load, 15000)
     return () => { alive = false; clearInterval(t) }
-  }, [])
+  }, [reload])
 
   if (error && !runs) return <Alert level="danger" title="Could not load activity">{error}</Alert>
   if (!runs) return <Spinner label="Loading activity" />
 
-  const shown = onlyProblems
-    ? runs.filter((r) => ['failed', 'restarting'].includes(r.state) || r.restarts > 0)
-    : runs
-  const problems = runs.filter(
-    (r) => ['failed', 'restarting'].includes(r.state) || r.restarts > 0,
-  ).length
+  // A failure only counts as a problem while it is still the latest word on that
+  // job and nobody has said they dealt with it. Everything else is history, and a
+  // list that keeps showing history is one people stop reading.
+  const isProblem = (r) =>
+    (['failed', 'restarting'].includes(r.state) || r.restarts > 0) &&
+    !r.superseded && !r.acknowledged
+
+  const shown = onlyProblems ? runs.filter(isProblem) : runs
+  const problems = runs.filter(isProblem).length
 
   return (
     <>
@@ -57,7 +69,8 @@ export default function Activity() {
         </EmptyState>
       ) : shown.length === 0 ? (
         <EmptyState title="Nothing has gone wrong">
-          No failures or restarts in the last {runs.length} runs.
+          Nothing outstanding in the last {runs.length} runs. Failures that a later
+          run has already replaced are not counted.
         </EmptyState>
       ) : (
         <div className="card overflow-hidden">
@@ -96,6 +109,30 @@ export default function Activity() {
                       <span className="text-amber-700 ml-2">
                         {r.restarts} restart{r.restarts === 1 ? '' : 's'}
                       </span>
+                    )}
+                    {r.superseded && ['failed', 'restarting'].includes(r.state) && (
+                      <span className="ml-2 text-slate-400"
+                            title="A later run of this job has replaced it.">
+                        superseded
+                      </span>
+                    )}
+                    {r.acknowledged && (
+                      <span className="ml-2 text-slate-400"
+                            title={`Marked as dealt with by ${r.acknowledged_by || 'someone'}`}>
+                        dismissed
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap w-px">
+                    {['failed', 'restarting'].includes(r.state) && !r.superseded && (
+                      r.acknowledged ? (
+                        <button className="text-xs link" disabled={busy === r.run_id}
+                                onClick={() => acknowledge(r, true)}>Undo</button>
+                      ) : (
+                        <button className="text-xs link" disabled={busy === r.run_id}
+                                title="Hide this from the problems view. It stays in the history."
+                                onClick={() => acknowledge(r, false)}>Dismiss</button>
+                      )
                     )}
                   </td>
                 </tr>

@@ -131,6 +131,8 @@ export const api = {
   stopJob: (name, drain = false) =>
     request(`/api/jobs/${encodeURIComponent(name)}/stop?drain=${drain}`, { method: 'POST' }),
   activity: (limit = 200) => request(`/api/jobs/activity?limit=${limit}`),
+  acknowledgeRun: (runId, undo = false) =>
+    request(`/api/jobs/activity/${runId}/acknowledge?undo=${undo}`, { method: 'POST' }),
   jobRuns: (name) => request(`/api/jobs/${encodeURIComponent(name)}/runs`),
   jobVersions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/versions`),
   jobDiagnostics: (name) => request(`/api/jobs/${encodeURIComponent(name)}/diagnostics`),

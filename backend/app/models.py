@@ -339,6 +339,10 @@ class JobRun(Base):
     savepoint_path: Mapped[str | None] = mapped_column(String(1024))
     # The savepoint this run started from, if any.
     restored_from: Mapped[str | None] = mapped_column(String(1024))
+    # Set when someone decides a failure has been dealt with. Recorded rather than
+    # hidden in a browser, so it means the same thing to everyone looking.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by: Mapped[str | None] = mapped_column(String(64))
     # How many times the cluster has been seen restarting this job. A number that
     # keeps climbing is a restart loop, not a transient blip.
     restarts: Mapped[int] = mapped_column(Integer, default=0)
