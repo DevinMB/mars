@@ -84,23 +84,24 @@ function ClusterHeading({ target, jobs }) {
   )
 }
 
-// How long since a job last checkpointed, as a dot.
+// Says when a job has stopped checkpointing, and says nothing otherwise.
 //
-// The thresholds here are a heuristic, not a judgement: this list does not know
-// each job's configured interval, and fetching it per row would double the
-// requests behind a view that refreshes every ten seconds. The Diagnostics tab
-// does know the interval and is the authority; this is a prompt to go and look.
+// Deliberately absent when healthy. The running pill already carries a green dot,
+// so a second one beside it was two green circles saying the same thing, and a
+// row full of indicators that are always fine trains people to stop reading them.
+//
+// The thresholds are a heuristic and not a judgement: this list does not know each
+// job's configured interval, and fetching it per row would double the requests
+// behind a view that refreshes every ten seconds. The Diagnostics tab does know
+// the interval and is the authority; this is a prompt to go and look.
 function Staleness({ ms }) {
-  if (ms === null || ms === undefined) return null
-  const tone =
-    ms < 120000 ? 'bg-emerald-500'
-      : ms < 600000 ? 'bg-amber-500'
-        : 'bg-red-500'
+  if (ms === null || ms === undefined || ms < 120000) return null
+  const bad = ms >= 600000
   return (
-    <span
-      className={`inline-block w-1.5 h-1.5 rounded-full ${tone} shrink-0`}
-      title={`Last checkpoint ${millis(ms)} ago`}
-    />
+    <span className={`ml-2 text-xs ${bad ? 'text-red-700 font-medium' : 'text-amber-700'}`}
+          title="A job that is running but no longer checkpointing is not making progress.">
+      no checkpoint for {millis(ms)}
+    </span>
   )
 }
 
@@ -123,10 +124,8 @@ function JobRow({ job, showCluster }) {
         )}
       </td>
       <td>
-        <span className="inline-flex items-center gap-2">
-          <StatePill state={run?.state} />
-          <Staleness ms={job.checkpoint_age_ms} />
-        </span>
+        <StatePill state={run?.state} />
+        <Staleness ms={job.checkpoint_age_ms} />
         {run?.restarts > 0 && (
           <span className="ml-2 text-xs text-amber-700">
             {run.restarts} restart{run.restarts === 1 ? '' : 's'}
