@@ -15,7 +15,12 @@ from app.settings import settings
 import app.models  # noqa: F401  (imported for its side effect of registering tables)
 
 config = context.config
-if config.config_file_name is not None:
+# Only when alembic is driven from the command line. Run in-process at startup it
+# must not touch logging at all: the ini sets the root logger to WARN, which threw
+# away every INFO line the console emits -- including the connector list and,
+# because migrations only run on a first install, the generated administrator
+# password. The console configures its own logging and is the owner of it.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     # disable_existing_loggers defaults to True, which silences every logger
     # configured before this point -- including uvicorn's and the application's.
     #

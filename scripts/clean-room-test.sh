@@ -37,8 +37,8 @@ note() { printf '        %s\n' "$*"; }
 
 # Run a command inside the nested daemon's world.
 inside() { docker exec "$DIND" sh -c "$*"; }
-# Run a command inside the console container, which has curl and python.
-console() { inside "docker exec mars-console sh -c '$*'"; }
+# Run a command inside the console container, which has curl.
+console() { inside "docker exec mars-console $*"; }
 
 cleanup() {
   if [ -n "${CLEANROOM_KEEP:-}" ]; then
@@ -165,7 +165,7 @@ say "Signing in and building something"
 
 if [ -n "${PW:-}" ]; then
   body="{\"username\":\"admin\",\"password\":\"$PW\"}"
-  if console "curl -fsS -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '$body'" >/dev/null 2>&1; then
+  if console "curl -fsS -X POST http://localhost:8080/api/auth/login -H Content-Type:application/json -d '$body'" >/dev/null 2>&1; then
     ok "the printed password signs in"
   else
     bad "the printed password does not sign in"
@@ -174,12 +174,9 @@ else
   bad "skipped sign-in: no password was printed"
 fi
 
-conns=$(console "curl -fsS http://localhost:8080/api/connectors" 2>/dev/null \
-        | python3 -c 'import sys,json;print(",".join(sorted(c["connector"] for c in json.load(sys.stdin))))' 2>/dev/null)
-if [ -z "$conns" ]; then
-  # The list needs a session; fall back to what the console logged at startup.
-  conns=$(grep -oE "Loaded [0-9]+ connector\(s\): .*" <<<"$logs" | head -1 | sed 's/.*: //')
-fi
+# Listing connectors over the API needs a session; what the console logged at
+# startup is the same list and needs none.
+conns=$(grep -o "connector(s): .*" <<<"$logs" | head -1 | sed 's/^connector(s): //')
 note "connectors on a bare install: ${conns:-unknown}"
 case "$conns" in
   *kafka*) ok "Kafka is available, as the README claims" ;;

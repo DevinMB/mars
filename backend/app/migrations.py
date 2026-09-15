@@ -34,6 +34,10 @@ def _config() -> Config:
     root = Path(__file__).resolve().parent.parent
     cfg = Config(str(root / "alembic.ini"))
     cfg.set_main_option("script_location", str(root / "alembic"))
+    # env.py reads this. Running in-process, alembic must leave logging alone:
+    # its ini pins the root logger to WARNING, which silently discarded every
+    # INFO line the console emits. The `alembic` command still configures its own.
+    cfg.attributes["configure_logger"] = False
     return cfg
 
 
