@@ -59,6 +59,9 @@ export const api = {
 
   // catalog
   catalog: (kind) => request(`/api/catalog${kind ? `?kind=${kind}` : ''}`),
+  sampleEntry: (name, limit = 5, start = 'earliest') =>
+    request(`/api/catalog/${encodeURIComponent(name)}/sample?limit=${limit}&start=${start}`,
+            { method: 'POST' }),
   catalogEntry: (name) => request(`/api/catalog/${encodeURIComponent(name)}`),
   createCatalog: (body) => request('/api/catalog', { method: 'POST', body }),
   updateCatalog: (name, body) => request(`/api/catalog/${encodeURIComponent(name)}`, { method: 'PUT', body }),

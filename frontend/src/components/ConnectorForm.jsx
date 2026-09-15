@@ -41,14 +41,20 @@ function OptionInput({ option, value, onChange, secretNames }) {
   }
 
   if (option.type === 'enum') {
+    // Leaving an optional option unset writes nothing into the DDL, and the
+    // connector then applies its own default -- so blank and explicitly choosing
+    // the default produce identical SQL. Showing "—" alongside "none (default)"
+    // made that look like two different settings. The blank now says what it
+    // does, and the choices no longer repeat it.
     return (
       <select {...common}>
-        {!option.required && <option value="">—</option>}
-        {option.choices.map((c) => (
-          <option key={c} value={c}>
-            {c}
-            {c === option.default ? '  (default)' : ''}
+        {!option.required && (
+          <option value="">
+            {option.default ? `Default — ${option.default}` : 'Not set'}
           </option>
+        )}
+        {option.choices.map((c) => (
+          <option key={c} value={c}>{c}</option>
         ))}
       </select>
     )

@@ -72,7 +72,24 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   Still missing: `transaction.timeout.ms` must exceed the checkpoint interval, which MARS
   knows per cluster and could check rather than only document.
 
-- **Preview the output before deploying.** The largest remaining gap in authoring. Today
+- ~~See what is in a source~~ **DONE** for sources. The declared columns of every table
+  are now listed beside the editor, and clicking one inserts it at the cursor. That alone
+  is not enough here: eight of ten sources on this host carry an opaque JSON document in a
+  single STRING column, so the declared schema reads `record_key, doc` and says nothing
+  about what can be selected. "Look inside" reads a few real records and lists the fields
+  found within the document, with an example value, inserting `JSON_VALUE(doc, '$.field')`
+  on click.
+
+  Every record sampled is inspected rather than just the first, because these documents
+  are not schema-checked anywhere: the first real sample found `user_id` arriving as both
+  a number and a string, which is exactly the thing worth knowing before writing a cast.
+
+  Two hazards, both handled: a preview gets a throwaway consumer group and an explicit
+  start position, so it can never take partitions from the job that owns the real group
+  (verified: production offsets unmoved, no group left behind); and the operation is
+  cancelled on every path out, because a streaming SELECT is a job holding a slot.
+
+- **Preview a job's output before deploying.** The remaining half. Today
   a statement goes from the editor to production with nothing in between; the SQL Gateway
   can run a bounded SELECT, so the editor could show twenty real rows first. The same
   mechanism gives the Catalog a "peek at this source" -- five live messages from a topic

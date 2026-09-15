@@ -1,10 +1,16 @@
-import { useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
 // A deliberately small SQL editor: a monospace textarea with a line gutter and
 // tab handling. It keeps the bundle light and behaves predictably; a full
 // language server is a later upgrade, not a prerequisite.
-export default function SqlEditor({ value, onChange, rows = 16, readOnly = false, marker = null }) {
+function SqlEditorInner(
+  { value, onChange, rows = 16, readOnly = false, marker = null },
+  ref,
+) {
   const taRef = useRef(null)
+  // The parent needs the caret position to insert a column name where the
+  // cursor actually is, rather than appending to the end.
+  useImperativeHandle(ref, () => taRef.current, [])
   const gutterRef = useRef(null)
 
   const lines = (value || '').split('\n').length
@@ -68,3 +74,5 @@ export default function SqlEditor({ value, onChange, rows = 16, readOnly = false
     </div>
   )
 }
+
+export default forwardRef(SqlEditorInner)

@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import SqlEditor from '../components/SqlEditor'
 import ValidationPanel from '../components/ValidationPanel'
 import TablePicker from '../components/TablePicker'
+import SchemaPanel from '../components/SchemaPanel'
 import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 
 export default function JobEditor() {
@@ -74,6 +75,18 @@ export default function JobEditor() {
     const t = setTimeout(() => runCheck(sql, refs, target, editing || name, jobType), 700)
     return () => clearTimeout(t)
   }, [sql, refs, target, jobType, name, editing, runCheck])
+
+  const sqlRef = useRef(null)
+  const insertAtCursor = (text) => {
+    const ta = sqlRef.current
+    if (!ta) { setSql((prev) => `${prev}${text}`); return }
+    const { selectionStart: a, selectionEnd: b } = ta
+    setSql((prev) => `${prev.slice(0, a)}${text}${prev.slice(b)}`)
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.selectionStart = ta.selectionEnd = a + text.length
+    })
+  }
 
   const toggleRef = (entryName) =>
     setRefs((prev) =>
@@ -186,6 +199,7 @@ export default function JobEditor() {
               them by name.
             </p>
             <SqlEditor
+              ref={sqlRef}
               value={sql}
               onChange={setSql}
               rows={14}
@@ -218,6 +232,25 @@ export default function JobEditor() {
               selected={refs}
               onToggle={toggleRef}
             />
+
+            {refs.length > 0 && (
+              <div className="mt-4 border-t border-slate-200 pt-3">
+                <h3 className="text-sm font-medium text-slate-900 mb-1">
+                  Columns available
+                </h3>
+                <p className="text-xs text-slate-500 mb-2">
+                  Click one to drop it into the statement.
+                </p>
+                <div className="max-h-[26rem] overflow-y-auto pr-1">
+                  {refs
+                    .map((r) => entries.find((e) => e.name === r))
+                    .filter(Boolean)
+                    .map((entry) => (
+                      <SchemaPanel key={entry.name} entry={entry} onInsert={insertAtCursor} />
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         </aside>
       </div>

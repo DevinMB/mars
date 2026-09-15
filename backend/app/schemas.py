@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, PlainSerializer, field_validator
 
@@ -79,6 +79,11 @@ class CatalogEntryIn(BaseModel):
         return v
 
 
+class ColumnOut(BaseModel):
+    name: str
+    type: str
+
+
 class CatalogEntryOut(BaseModel):
     id: int
     name: str
@@ -89,6 +94,25 @@ class CatalogEntryOut(BaseModel):
     options: dict[str, str]
     updated_at: UtcDatetime
     used_by: list[str] = Field(default_factory=list)
+    # Declared in the DDL. For a raw-passthrough source this is just the envelope
+    # (`record_key`, `doc`); what is inside the document needs a sample.
+    columns: list[ColumnOut] = Field(default_factory=list)
+
+
+class NestedFieldOut(BaseModel):
+    name: str
+    type: str
+    example: str | None = None
+
+
+class SampleOut(BaseModel):
+    """A handful of real records, so a job can be written against facts."""
+
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
+    # Field names found inside JSON documents, per column.
+    nested: dict[str, list[NestedFieldOut]] = Field(default_factory=dict)
+    error: str | None = None
 
 
 class JobIn(BaseModel):

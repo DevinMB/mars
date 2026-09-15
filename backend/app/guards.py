@@ -321,16 +321,75 @@ def _dedupe(warnings: list[Warning_]) -> list[Warning_]:
     # Danger first: the console shows these in order.
     return sorted(out, key=lambda w: 0 if w.level == "danger" else 1)
 
-_COLUMN_LINE = re.compile(r"^\s*`?(?P<name>[A-Za-z_][\w$]*)`?\s+[A-Za-z]")
+# The name may be backtick-quoted; the closing backtick must not be swept into
+# the type, which produced DDL like "`id` ` BIGINT" when this was rebuilt.
+_COLUMN_LINE = re.compile(
+    r"^\s*(?:`(?P<quoted>[^`]+)`|(?P<name>[A-Za-z_][\w$]*))\s+(?P<rest>[A-Za-z].*)$",
+    re.S,
+)
 _RESERVED = {"primary", "watermark", "constraint", "unique", "partitioned", "with"}
+
+
+def strip_noise(sql_text: str) -> str:
+    """Removes comments and blanks string literals, keeping length and layout.
+
+    Necessary before counting brackets. A catalog entry usually opens with a
+    paragraph of explanation, and prose contains parentheses -- one entry here
+    begins "produced by stack 4 (and by sit_sessionize in parallel)", which a
+    naive scan reads as the start of the column list and yields a column called
+    "and". Another says "(stack 9)", which unbalances the depth count and yields
+    nothing at all.
+    """
+    out = []
+    i = 0
+    n = len(sql_text)
+    while i < n:
+        ch = sql_text[i]
+        nxt = sql_text[i + 1] if i + 1 < n else ""
+        if ch == "-" and nxt == "-":
+            while i < n and sql_text[i] != "\n":
+                out.append(" ")
+                i += 1
+            continue
+        if ch == "/" and nxt == "*":
+            while i < n and not (sql_text[i] == "*" and sql_text[i + 1 : i + 2] == "/"):
+                out.append(" " if sql_text[i] != "\n" else "\n")
+                i += 1
+            out.append("  ")
+            i += 2
+            continue
+        if ch == "'":
+            out.append(" ")
+            i += 1
+            while i < n:
+                if sql_text[i] == "'" and sql_text[i + 1 : i + 2] == "'":
+                    out.append("  ")
+                    i += 2
+                    continue
+                if sql_text[i] == "'":
+                    out.append(" ")
+                    i += 1
+                    break
+                out.append("\n" if sql_text[i] == "\n" else " ")
+                i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def column_names(sql_text: str) -> list[str]:
     """The column names declared by a CREATE TABLE.
 
-    Only used to suggest a correction when someone misspells one, so a definition
-    this cannot parse costs nothing -- it just means no suggestion.
+    Used to suggest a correction when someone misspells one, and to show the
+    available columns while a job is being written.
     """
+    return [name for name, _ in columns_of(sql_text)]
+
+
+def columns_of(sql_text: str) -> list[tuple[str, str]]:
+    """The (name, type) pairs declared by a CREATE TABLE, in declared order."""
+    sql_text = strip_noise(sql_text)
     open_paren = sql_text.find("(")
     if open_paren < 0:
         return []
@@ -362,9 +421,15 @@ def column_names(sql_text: str) -> list[str]:
             current += ch
     out.append(current)
 
-    names = []
+    columns: list[tuple[str, str]] = []
     for part in out:
-        m = _COLUMN_LINE.match(part)
-        if m and m.group("name").lower() not in _RESERVED:
-            names.append(m.group("name"))
-    return names
+        m = _COLUMN_LINE.match(part.strip())
+        if not m:
+            continue
+        name = m.group("quoted") or m.group("name")
+        if not name or name.lower() in _RESERVED:
+            continue
+        # Whatever follows is the type, possibly with a METADATA or
+        # computed-column clause; collapse it to one line.
+        columns.append((name, " ".join(m.group("rest").split())))
+    return columns

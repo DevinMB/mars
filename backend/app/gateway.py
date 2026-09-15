@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+
+log = logging.getLogger(__name__)
 
 # A Flink job id as it appears in an INSERT result: 32 lowercase hex characters.
 _JOB_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -125,6 +129,87 @@ class SqlGatewayClient:
         """
         stripped = statement.strip().rstrip(";")
         await self.execute(session, f"EXPLAIN PLAN FOR {stripped}")
+
+    async def select_rows(
+        self,
+        session: str,
+        statement: str,
+        limit: int,
+        budget: float = 45.0,
+    ) -> StatementResult:
+        """Runs a SELECT and collects rows as they stream back.
+
+        Results do not arrive with the response. The operation reports FINISHED as
+        soon as the job is *accepted*, and rows then appear across a chain of
+        result pages -- empty ones at first, because a Flink job has to be
+        scheduled and started before it reads anything. Against a live topic here
+        the first row landed on page 57, roughly twenty seconds in, so anything
+        that reads only the first page concludes the topic is empty.
+
+        The operation is always cancelled afterwards: a streaming SELECT is a real
+        job occupying a slot, and abandoning it on a small cluster is an outage.
+        """
+        deadline = time.monotonic() + budget
+        result = StatementResult(operation_handle="", statement=statement)
+
+        async with self._client() as c:
+            r = await c.post(
+                f"/v1/sessions/{session}/statements", json={"statement": statement}
+            )
+            if r.status_code >= 400:
+                raise GatewayError(
+                    _friendly_error(r.text), detail=r.text, statement=statement
+                )
+            handle = r.json()["operationHandle"]
+            result.operation_handle = handle
+
+            try:
+                status = await self._await_completion(c, session, handle, statement)
+                if status == "ERROR":
+                    detail = await self._fetch_raw(c, session, handle)
+                    raise GatewayError(
+                        _friendly_error(detail), detail=detail, statement=statement
+                    )
+
+                uri = f"/v1/sessions/{session}/operations/{handle}/result/0"
+                while time.monotonic() < deadline:
+                    page = await c.get(uri)
+                    if page.status_code >= 400:
+                        break
+                    payload = page.json()
+
+                    body = payload.get("results") or {}
+                    if body.get("columns") and not result.columns:
+                        result.columns = [
+                            col.get("name", "") for col in body["columns"]
+                        ]
+                    for row in body.get("data", []):
+                        # A streaming result can retract rows it already sent;
+                        # for a sample those are noise, not data.
+                        if row.get("kind") in ("DELETE", "UPDATE_BEFORE"):
+                            continue
+                        result.rows.append(row.get("fields", []))
+
+                    if len(result.rows) >= limit or payload.get("resultType") == "EOS":
+                        break
+                    next_uri = payload.get("nextResultUri")
+                    if not next_uri:
+                        break
+                    uri = next_uri
+                    await asyncio.sleep(0.25)
+            finally:
+                await self._cancel(c, session, handle)
+
+        del result.rows[limit:]
+        return result
+
+    async def _cancel(self, c: httpx.AsyncClient, session: str, handle: str) -> None:
+        for path in (f"/v1/sessions/{session}/operations/{handle}/cancel",
+                     f"/v1/sessions/{session}/operations/{handle}/close"):
+            try:
+                await c.post(path) if path.endswith("cancel") else await c.delete(path)
+            except httpx.HTTPError as exc:  # pragma: no cover - best effort
+                log.debug("Preview cleanup on %s: %s", path, exc)
 
     # -- internals ----------------------------------------------------------
 
