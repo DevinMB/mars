@@ -639,6 +639,71 @@ roadmap and are both exactly what a business buyer needs and a hobbyist does not
 over time, retained. Metering is useless applied retrospectively, and a usage view
 is worth having even if nothing is ever charged for.
 
+## Migrating an existing application onto MARS
+
+**Large, and deliberately not started.** Recorded now because this installation was
+built by doing it by hand, and what made it hard is not what it looks like from outside.
+
+Ten Kafka applications became nine Flink jobs here: a Java Kafka Streams app, five
+copies of one Python CouchDB sink at five different versions, a sessionizer, an
+Ollama-backed enricher and a Home Assistant controller. Writing the SQL was the small
+part. The work was establishing what the old code actually did, and then proving the new
+job did the same.
+
+### What a conversion actually consists of
+
+1. **Reading the existing behaviour.** Rarely as clean as reading a repository. The
+   stacks here downloaded a tarball from GitHub at container start, so the running code
+   existed only inside a volume, and one of them had been edited in place and differed
+   from its tag.
+2. **Pinning the semantics that are load-bearing.** The document id strategy, the exact
+   float formatting Python produces, the precedence between a regex and a model, whether
+   a restart replays. Each of these is invisible until it differs.
+3. **Proving parity.** The part worth building.
+4. **Running both** until the evidence is in.
+5. **Cutting over** and retiring the old thing.
+
+### The feature that would matter
+
+Not "paste in Java, receive SQL". Drafting a statement is the part MARS can already do —
+describe the job, it writes the statement, compiles it and shows the rows. What is
+missing is everything around that:
+
+- **Shadow deployment.** Given an existing job, create its catalog entries pointed at
+  `-flink` suffixed topics and databases, with their own consumer groups, so the new job
+  runs beside the old one and touches nothing it owns.
+- **A parity harness.** Compare what the two produce, by natural key, and report what
+  differs. This was hand-written per job here, and generalising it is the feature.
+- **Cutover.** Repoint the sinks to the real destinations, stop the old application,
+  confirm its consumer group disappears.
+
+### Traps to design around, each of which cost time here
+
+- **Do not compare against retained output.** `device-status` is compacted, so 7,696
+  offsets had left three readable records; `sit-topic` covered a different span of
+  history than its replacement could see. Counts proved nothing. The only sound method
+  was to run a reference implementation over the *same input* and compare against that.
+- **Parity means matching correct behaviour, not old behaviour.** The deployed sinks had
+  no document id handling at all, so `car-counts` held 366,237 documents for 17,664
+  distinct readings — 20.7 times over. The Flink job was right and the incumbent was
+  wrong, and a harness that reported "not identical" would have been reporting success.
+- **Deterministic ids are what make parallel running safe.** They make a sink idempotent,
+  so a replay converges instead of doubling. A conversion tool should push hard toward
+  one and warn loudly about `id.mode=auto`.
+- **Some behaviour cannot be replayed.** Re-running the enricher meant 7,210 model calls
+  at roughly a minute each against one GPU. The light controller would have flipped a
+  real switch. Both needed a bounded sample and a dry run rather than a full replay.
+- **Never reuse the incumbent's consumer group.** A shadow that joins it takes partitions
+  from the application still in production.
+
+### Honest scoping
+
+The generic half — shadow entries, a comparison harness, a cutover checklist — is real
+product work and worth doing. The half that reads an arbitrary Java or Python
+application and infers its semantics is not a feature; it is a consulting engagement
+with a language model attached. Drafting from a *description* already works and is the
+right shape. Anything more ambitious should be treated with suspicion.
+
 ## Later
 
 - **Multi-user in earnest.** Roles exist; per-job ownership and audit do not.
