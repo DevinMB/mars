@@ -22,7 +22,7 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
       onClick={() => onChange(id)}
       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
         value === id
-          ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+          ? 'bg-surface text-slate-900 shadow-sm ring-1 ring-slate-200'
           : 'text-slate-600 hover:text-slate-900'
       }`}
     >

@@ -150,7 +150,7 @@ export function useCompletion({ value, onChange, taRef, items, mode = 'sql' }) {
 export function CompletionList({ matches, active, onPick }) {
   if (!matches.length) return null
   return (
-    <div className="mt-1 border border-slate-200 rounded-md bg-white shadow-card overflow-hidden">
+    <div className="mt-1 border border-slate-200 rounded-md bg-surface shadow-card overflow-hidden">
       <ul className="max-h-56 overflow-y-auto">
         {matches.map((item, i) => (
           <li key={`${item.kind}-${item.label}-${item.detail}-${i}`}>

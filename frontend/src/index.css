@@ -2,7 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Two palettes, one set of class names.
+ *
+ * Every page here already used the slate scale consistently for text, borders and
+ * surfaces, so the theme switch happens in the palette rather than in 393 class
+ * names across 33 files. The dark scale is not an inversion: the steps are chosen
+ * so that what was quiet stays quiet and what was emphatic stays emphatic, which
+ * a numeric flip does not give you.
+ */
 @layer base {
+  :root {
+    --s-50: 248 250 252;
+    --s-100: 241 245 249;
+    --s-200: 226 232 240;
+    --s-300: 203 213 225;
+    --s-400: 148 163 184;
+    --s-500: 100 116 139;
+    --s-600: 71 85 105;
+    --s-700: 51 65 85;
+    --s-800: 30 41 59;
+    --s-900: 15 23 42;
+    --surface: 255 255 255;
+
+    --code-bg: 15 23 42;
+    --code-fg: 241 245 249;
+
+    --brand-50: 255 247 237;
+    --accent-50: 255 247 237;
+    --red-50: 254 242 242;
+    --red-200: 254 202 202;
+    --red-300: 252 165 165;
+    --red-600: 220 38 38;
+    --red-700: 185 28 28;
+    --red-800: 153 27 27;
+    --red-900: 127 29 29;
+    --amber-50: 255 251 235;
+    --amber-200: 253 230 138;
+    --amber-700: 180 83 9;
+    --amber-800: 146 64 14;
+    --amber-900: 120 53 15;
+    --emerald-50: 236 253 245;
+    --emerald-200: 167 243 208;
+    --emerald-700: 4 120 87;
+    --emerald-900: 6 78 59;
+  }
+
+  .dark {
+    /* Neutral with a faint warm bias, so orange sits on it rather than against
+       it. A pure blue-grey dark makes the brand colour look borrowed. */
+    --s-50: 24 24 27;
+    --s-100: 34 34 38;
+    --s-200: 48 48 54;
+    --s-300: 66 66 74;
+    --s-400: 128 128 138;
+    --s-500: 156 156 166;
+    --s-600: 182 182 192;
+    --s-700: 208 208 216;
+    --s-800: 228 228 234;
+    --s-900: 244 244 247;
+    --surface: 31 31 35;
+
+    /* Still the darkest thing on the page, just not black-on-black. */
+    --code-bg: 15 15 18;
+    --code-fg: 228 228 234;
+
+    /* Tints become dark washes of the same hue. The text that sits on them is
+       lightened to match, or the alert reads as a hole in the page. */
+    --brand-50: 43 26 16;
+    --accent-50: 43 26 16;
+    --red-50: 48 20 20;
+    --red-200: 86 32 32;
+    --red-300: 120 45 45;
+    --red-600: 248 113 113;
+    --red-700: 252 165 165;
+    --red-800: 254 202 202;
+    --red-900: 254 226 226;
+    --amber-50: 48 33 12;
+    --amber-200: 92 62 20;
+    --amber-700: 252 211 77;
+    --amber-800: 253 230 138;
+    --amber-900: 254 243 199;
+    --emerald-50: 15 40 32;
+    --emerald-200: 25 70 55;
+    --emerald-700: 110 231 183;
+    --emerald-900: 209 250 229;
+  }
+
   html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   body { @apply bg-slate-50 text-slate-900 text-[14px]; }
   /* Counts, offsets and durations line up in columns when they are tabular. */
@@ -12,7 +98,7 @@
 @layer components {
   /* Surfaces lean on hairline borders rather than shadow, which keeps dense
      screens calm when several panels sit next to each other. */
-  .card { @apply bg-white border border-slate-200 rounded-lg shadow-card; }
+  .card { @apply bg-surface border border-slate-200 rounded-lg shadow-card; }
 
   .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px]
           font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed
@@ -21,11 +107,11 @@
      colour, not because orange means anything in particular. */
   .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800
                   shadow-sm shadow-brand-600/20; }
-  .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300
+  .btn-secondary { @apply btn bg-surface text-slate-700 border border-slate-300
                     hover:bg-slate-50 hover:border-slate-400; }
-  .btn-danger { @apply btn bg-white text-red-700 border border-red-300 hover:bg-red-50; }
+  .btn-danger { @apply btn bg-surface text-red-700 border border-red-300 hover:bg-red-50; }
 
-  .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 text-[13px]
+  .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 bg-surface text-[13px]
            text-slate-900 placeholder:text-slate-400 transition-shadow
            focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-400; }
 

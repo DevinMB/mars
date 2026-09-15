@@ -66,7 +66,7 @@ export default function CatalogHistory({ name, usedBy = [] }) {
                 </span>
               </button>
               {open === v.version && (
-                <pre className="mono text-xs bg-slate-900 text-slate-100 rounded-md p-3
+                <pre className="mono text-xs bg-code-bg text-code-fg rounded-md p-3
                                 mt-2 overflow-x-auto">{v.sql_text}</pre>
               )}
             </div>

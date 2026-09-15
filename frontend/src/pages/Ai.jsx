@@ -335,10 +335,21 @@ export default function Ai() {
 
           <div className="card p-4">
             <h3 className="text-sm font-medium text-slate-900 mb-2">Where this is used</h3>
-            <p className="text-xs text-slate-500">
-              Features ask for the configured model rather than carrying an endpoint
-              of their own, so changing it here changes it everywhere. Nothing uses
-              it yet; drafting a job from a description is the first that will.
+            <ul className="text-xs text-slate-500 space-y-1.5">
+              <li>
+                <span className="text-slate-700">Drafting a job from a description</span>{' '}
+                — in the job editor, grounded in the tables that job uses.
+              </li>
+              <li>
+                <span className="text-slate-700">Changing a statement you already have</span>{' '}
+                — described in words, returned as a diff.
+              </li>
+            </ul>
+            <p className="text-xs text-slate-500 mt-2">
+              Both compile the result before showing it, and both land in the editor
+              for you to approve. Nothing is ever run. Features ask for the configured
+              model rather than carrying an endpoint of their own, so changing it here
+              changes it everywhere.
             </p>
           </div>
 

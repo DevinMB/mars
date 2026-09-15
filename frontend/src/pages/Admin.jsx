@@ -144,7 +144,7 @@ function TokenPanel({ username, onIssued }) {
           {' '}<code className="mono">Authorization: Bearer …</code>
         </p>
       ) : (
-        <table className="tbl mb-2 bg-white rounded border border-slate-200">
+        <table className="tbl mb-2 bg-surface rounded border border-slate-200">
           <thead><tr><th>Name</th><th>Prefix</th><th>Last used</th><th></th></tr></thead>
           <tbody>
             {tokens.map((t) => (

@@ -31,7 +31,7 @@ const STATE_STYLES = {
   failed:      'bg-red-50 text-red-700 ring-red-600/20',
   canceled:    'bg-slate-100 text-slate-500 ring-slate-400/20',
   submitting:  'bg-brand-50 text-brand-700 ring-brand-600/20',
-  never:       'bg-white text-slate-400 ring-slate-300',
+  never:       'bg-surface text-slate-400 ring-slate-300',
 }
 
 const STATE_LABELS = {
@@ -124,7 +124,7 @@ export function Field({ label, hint, error, required, children }) {
 
 export function CodeBlock({ children, className = '' }) {
   return (
-    <pre className={`mono bg-slate-900 text-slate-100 rounded-md p-4 overflow-x-auto
+    <pre className={`mono bg-code-bg text-code-fg rounded-md p-4 overflow-x-auto
                      leading-relaxed ${className}`}>
       {children}
     </pre>

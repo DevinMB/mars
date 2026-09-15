@@ -45,7 +45,7 @@ function SqlEditorInner(
 
   return (
     <>
-    <div className="flex border border-slate-300 rounded-md overflow-hidden bg-white
+    <div className="flex border border-slate-300 rounded-md overflow-hidden bg-surface
                     focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-500">
       <div
         ref={gutterRef}

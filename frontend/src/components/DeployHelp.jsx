@@ -10,7 +10,7 @@ function Copyable({ children }) {
   const text = String(children).trim()
   return (
     <div className="relative group">
-      <pre className="mono text-[11.5px] bg-slate-900 text-slate-100 rounded-md p-3 pr-16
+      <pre className="mono text-[11.5px] bg-code-bg text-code-fg rounded-md p-3 pr-16
                       overflow-x-auto leading-relaxed">{text}</pre>
       <button
         type="button"

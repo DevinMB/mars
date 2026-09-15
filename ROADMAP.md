@@ -553,7 +553,30 @@ page becomes a browser rather than an editor for everyone.
 Worth noting for sequencing: steps 1 and 2 are additive and could be done any time.
 Step 3 is where the value is, and it depends on savepoints.
 
-## Dark mode
+## Dark mode — **DONE**
+
+Light, dark, or follow the machine — three states, because "follow the system" is a real
+preference and not the absence of one. Applied by an inline script before React paints,
+so a dark-mode viewer never gets a white flash first.
+
+The switch happens in the **palette**, not in the markup. Every page already used the
+slate scale consistently, so the scale itself became CSS variables and 393 class names
+across 33 files kept working untouched. Editing them by hand would have meant getting
+three of them wrong and not noticing.
+
+Four things that needed deciding rather than inverting:
+
+- **The dark scale is not a numeric flip.** The steps are chosen so what was quiet stays
+  quiet and what was emphatic stays emphatic; reversing 50 and 900 does not give you that.
+- **A faint warm bias in the dark neutrals**, so orange sits on them rather than against
+  them. A pure blue-grey dark makes the brand colour look borrowed.
+- **Tints become dark washes of their own hue**, and the text on them lightens to match,
+  or an alert reads as a hole punched in the page.
+- **Some things are dark on purpose.** Code blocks and the editor gutter were slate-900;
+  inverting them would have turned them white. They use a fixed scale that does not
+  follow the theme.
+
+The notes below are kept because they are what the work turned out to need.
 
 A toggle, defaulting to the system preference.
 

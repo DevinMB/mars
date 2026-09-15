@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import MarsMark from './MarsMark'
+import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../lib/auth'
 
 const NAV = [
@@ -83,7 +84,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="bg-surface border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-stretch justify-between h-12 gap-4">
             <div className="flex items-stretch gap-5 min-w-0">
@@ -124,6 +125,8 @@ export default function Layout({ children }) {
                 than by guessing at gaps. Previously the slot count, the username and
                 the sign-out link were three different sizes sitting together. */}
             <div className="flex items-center gap-3 shrink-0 self-center text-[12px]">
+              <ThemeToggle />
+              <span className="w-px h-4 bg-slate-200" aria-hidden="true" />
               <ClusterDot />
               <span className="w-px h-4 bg-slate-200" aria-hidden="true" />
               <span className="hidden sm:flex items-center gap-1.5">
@@ -155,7 +158,7 @@ export default function Layout({ children }) {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">{children}</main>
 
-      <footer className="border-t border-slate-200 bg-white">
+      <footer className="border-t border-slate-200 bg-surface">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2
                         text-[11px] text-slate-400">
           <MarsMark size={14} className="shrink-0 opacity-80" />
