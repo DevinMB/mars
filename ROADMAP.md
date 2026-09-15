@@ -4,6 +4,32 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 
 ## Next up — resume here
 
+### Polish, done
+
+- ~~Catalog entries are versioned~~ — the asymmetry was backwards: one entry feeds many
+  jobs, so the edit with the widest blast radius was the one with no history. The editor
+  now also names the jobs a change will affect, before the save.
+- ~~Checkpoint staleness on the jobs list~~ — absent while healthy, and only speaks up
+  after two minutes without a checkpoint. `checkpoint_age_ms` had been declared in the
+  schema and never populated.
+- ~~An example on first install~~ — a generator, a print sink and a job that labels
+  readings, on built-in connectors only. Seeded once, when the first administrator is
+  created, so it cannot resurrect anything deleted.
+- ~~Duplicate a job or catalog entry~~ — opens a prefilled draft rather than writing a
+  copy immediately.
+
+### Still worth doing
+
+- **Sampling in the catalog editor.** "Look inside" exists only in the job editor's
+  sidebar, but defining a source is exactly when you want to see what is in the topic --
+  and it would confirm the connection at the same moment as the health check.
+- **An activity view.** Runs are only visible per job, so "what happened overnight?"
+  means opening every job in turn. One reverse-chronological list would answer it.
+- **A CI drift check.** An import dry run with `replace` already reports everything that
+  differs; it needs a command and an exit code, not new logic.
+
+
+
 Ordered. Each entry carries enough detail to start without re-deriving it.
 
 ### 1. Clean-room install test — **DONE**
