@@ -6,10 +6,25 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 
 Ordered. Each entry carries enough detail to start without re-deriving it.
 
-### 1. Finish the clean-room install test
+### 1. Clean-room install test — **DONE**
 
-**Status: started, aborted, four defects found and fixed (b24e9ed). Whether a fresh
-install now works end to end is unverified.**
+**16 assertions, all passing, from a fresh clone against a nested daemon.**
+`scripts/clean-room-test.sh` is the durable artifact; run it before a release.
+
+It found a fifth defect the first round had missed, and a better diagnosis of the
+first. A fresh install came up working but *silent* -- no connector list, no
+"Application startup complete", and no administrator password, so the documented way
+in returned nothing. The cause was not buffering (that fix was worth making but was
+not it): alembic's `env.py` calls `logging.config.fileConfig`, which both disables
+existing loggers and re-levels the root logger to WARNING from its ini. What made it
+so hard to see is that `upgrade_to_head` returns early when the schema is current, so
+alembic only runs on a **first install or an upgrade** -- exactly the run that prints
+the generated password, and no other. Running in-process, alembic no longer touches
+logging at all.
+
+Two harness bugs also masqueraded as product bugs, which is worth remembering: nested
+`sh -c` quoting ate the `-H 'Content-Type: …'` header, and `/api/connectors` needs a
+session. A test that lies costs more than no test.
 
 The first attempt ran on this host rather than a separate machine, and the two stacks
 collided: the second deployment's TaskManager registered with the production
@@ -49,9 +64,19 @@ actually broken:
 **Deliverable: `scripts/clean-room-test.sh`**, so this runs before every release
 rather than once. A one-off test that found four defects will find a fifth.
 
-### 2. Backup, restore, and export
+### 2. Backup, restore, and export — **mostly done**
 
-**Nothing exists today.** Every job, catalog entry, schedule, target, user and
+Export and import are built and verified: `GET /api/export` emits YAML with SQL as
+block literals so it diffs a line at a time, and `POST /api/import` defaults to a dry
+run. Round-tripping this installation reports all 30 definitions **unchanged**, which
+is the check that matters -- an export that cannot be re-imported cleanly is not a
+backup. Secret values are never exported; the file lists the names it needs.
+
+Remaining: a UI for both (an Export button and an import screen showing the dry run
+before it is applied), and `replace` deserves a confirmation that names what it will
+overwrite.
+
+**The original gap, for context:** Every job, catalog entry, schedule, target, user and
 encrypted secret lives in one Docker volume, `mars_console-data`. Two consequences,
 both worth stating to anyone who deploys this:
 

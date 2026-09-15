@@ -140,8 +140,29 @@ def export_all(db: Session, store: SecretStore) -> dict[str, Any]:
     }
 
 
+class _Dumper(yaml.SafeDumper):
+    """Emits multi-line strings as block literals.
+
+    Left to itself PyYAML writes a SQL statement as one double-quoted scalar with
+    escaped newlines, which is valid and unreadable: every change to a statement
+    shows up as one enormous modified line. Half the point of exporting YAML is
+    reviewing it in a diff, so multi-line strings are written as `|` blocks and
+    diff a line at a time.
+    """
+
+
+def _literal_str(dumper: yaml.SafeDumper, value: str):
+    style = "|" if "\n" in value else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+
+_Dumper.add_representer(str, _literal_str)
+
+
 def to_yaml(payload: dict[str, Any]) -> str:
-    return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True, width=100)
+    return yaml.dump(
+        payload, Dumper=_Dumper, sort_keys=False, allow_unicode=True, width=100
+    )
 
 
 def parse(text: str) -> dict[str, Any]:

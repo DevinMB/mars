@@ -62,6 +62,34 @@ on boot comes up without them the first time someone else's network is slow.
 New connectors need no changes to the console: drop in a jar with a manifest and the
 forms build themselves from it.
 
+## Backing it up
+
+Two different things, and both matter.
+
+**Definitions** — every catalog entry, job, schedule and target — export as YAML:
+
+```bash
+curl -u … http://localhost:8080/api/export > mars-export.yaml
+```
+
+Readable, diffable, and safe to commit: secret **values** are never included. The file
+lists the secret *names* it needs under `secrets_required`, and importing it into a
+fresh install tells you which are missing. Import defaults to a dry run and reports what
+it would create, update or skip before anything is written.
+
+**Everything else** lives in the console's data volume, and YAML cannot carry it: the
+encryption key, run history, and user accounts.
+
+```bash
+docker run --rm -v mars_console-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/mars-data.tgz -C /data .
+```
+
+Worth being blunt about one thing: `secret.key` sits in that volume beside the database
+it decrypts. The volume is therefore both the only copy of your data and the means to
+read it — losing it loses both, and a copy of it is a copy of every credential. Keep the
+backup somewhere you would keep a password.
+
 ## How it fits together
 
 A **catalog entry** is one `CREATE TABLE` — a source or a sink. A **job** is the statement
