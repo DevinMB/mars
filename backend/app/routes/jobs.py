@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
@@ -389,10 +390,17 @@ async def job_diagnostics(
     except UnknownTargetError as e:
         return DiagnosticsOut(available=False, reason=str(e))
 
+    path = f"/#/job/{run.flink_job_id}/overview"
     out = DiagnosticsOut(
         flink_job_id=run.flink_job_id,
         target=target.name,
-        flink_ui_url=f"{target.flink_rest_url.rstrip('/')}/#/job/{run.flink_job_id}/overview",
+        # Only absolute when the target says where a browser can reach it. Building
+        # one from flink_rest_url is what produced links to "http://jobmanager:8081",
+        # which resolves only inside the container network. When it is unset the
+        # console derives the host from its own address instead.
+        flink_ui_url=f"{target.ui_url.rstrip('/')}{path}" if target.ui_url else None,
+        flink_ui_port=_port_of(target.flink_rest_url),
+        flink_ui_path=path,
     )
 
     try:
@@ -430,6 +438,19 @@ async def job_diagnostics(
         db, store, detail.exception or run.error_detail or run.error_summary
     )
     return out
+
+
+def _port_of(url: str) -> int | None:
+    """The port MARS reaches this cluster on, as a hint for the browser's link.
+
+    The stock compose file publishes the Flink UI on the same port it serves it
+    internally, so this guesses right for a default deployment. A deployment that
+    remaps the port or fronts it with a proxy sets the target's ui_url instead.
+    """
+    try:
+        return urlsplit(url).port or (443 if urlsplit(url).scheme == "https" else 80)
+    except ValueError:
+        return None
 
 
 def _redacted(db: Session, store: SecretStore, text: str | None) -> str | None:

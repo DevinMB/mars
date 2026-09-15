@@ -92,6 +92,11 @@ class Target(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(String(512))
     flink_rest_url: Mapped[str] = mapped_column(String(512))
     gateway_url: Mapped[str] = mapped_column(String(512))
+    # Where a *browser* can reach this cluster's own web UI, which is rarely where
+    # MARS reaches it: the backend talks to "http://jobmanager:8081" over the
+    # container network, and a link to that name is unreachable from a laptop.
+    # Optional -- when it is unset the console derives one from its own address.
+    ui_url: Mapped[str | None] = mapped_column(String(512))
     # Free-form labels, e.g. {"zone": "rack-1", "profile": "memory"}. Not used for
     # routing yet; they exist so a fleet can be described before it needs to be.
     labels: Mapped[str] = mapped_column(Text, default="{}")

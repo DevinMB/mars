@@ -9,6 +9,22 @@ function operatorName(name) {
   return name.replace(/\[\d+\]/g, '').trim()
 }
 
+// Where this viewer's browser can reach the Flink UI.
+//
+// The backend cannot answer this. It talks to the cluster over the container
+// network at "http://jobmanager:8081", and that name resolves nowhere else -- a
+// link to it is a dead link for everyone. So an absolute URL is used only when
+// the target declares one; otherwise the link is built from the address the
+// console itself was opened at, which is by definition reachable, plus the port
+// the cluster is served on. That is correct for the stock compose file, where
+// both ports are published on the same host.
+function flinkUrl(d) {
+  if (d.flink_ui_url) return d.flink_ui_url
+  if (!d.flink_ui_path || !d.flink_ui_port) return null
+  const { protocol, hostname } = window.location
+  return `${protocol}//${hostname}:${d.flink_ui_port}${d.flink_ui_path}`
+}
+
 function Stat({ label, value, tone = 'slate', hint }) {
   const tones = {
     slate: 'text-slate-900',
@@ -224,8 +240,8 @@ export default function Diagnostics({ data, loading, onRefresh }) {
         <button className="btn-secondary text-sm" onClick={onRefresh} disabled={loading}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
-        {data.flink_ui_url && (
-          <a href={data.flink_ui_url} target="_blank" rel="noreferrer" className="text-sm link">
+        {flinkUrl(data) && (
+          <a href={flinkUrl(data)} target="_blank" rel="noreferrer" className="text-sm link">
             Open in the Flink UI
           </a>
         )}

@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     # --- Flink ---
     flink_rest_url: str = "http://jobmanager:8081"
+    # The address to put in links to Flink's own UI, for deployments where the
+    # browser cannot use flink_rest_url -- behind a reverse proxy, or with the UI
+    # port remapped. Left empty, the console derives it from its own URL, which is
+    # right for the stock compose file.
+    flink_ui_url: str = ""
     sql_gateway_url: str = "http://sql-gateway:8083"
 
     # --- storage ---

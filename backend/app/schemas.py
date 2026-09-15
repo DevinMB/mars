@@ -165,7 +165,12 @@ class DiagnosticsOut(BaseModel):
     vertices: list[VertexOut] = []
     # Full stack trace, with any known secret value replaced by its placeholder.
     exception: str | None = None
+    # Absolute, and only when the target declares a browser-reachable address.
+    # Otherwise the console builds the link from its own location -- the backend
+    # cannot know what the viewer's browser can resolve.
     flink_ui_url: str | None = None
+    flink_ui_port: int | None = None
+    flink_ui_path: str | None = None
 
 
 class ScheduleIn(BaseModel):
@@ -272,6 +277,7 @@ class TargetIn(BaseModel):
     description: str | None = None
     flink_rest_url: str
     gateway_url: str
+    ui_url: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
     is_default: bool = False
@@ -282,6 +288,7 @@ class TargetOut(BaseModel):
     description: str | None
     flink_rest_url: str
     gateway_url: str
+    ui_url: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
     enabled: bool
     is_default: bool

@@ -28,6 +28,7 @@ def _out(db: Session, t: Target, live: dict | None = None) -> TargetOut:
         description=t.description,
         flink_rest_url=t.flink_rest_url,
         gateway_url=t.gateway_url,
+        ui_url=t.ui_url,
         labels=labels_of(t),
         enabled=t.enabled,
         is_default=t.is_default,
@@ -138,6 +139,7 @@ def create_target(
         description=body.description,
         flink_rest_url=body.flink_rest_url.rstrip("/"),
         gateway_url=body.gateway_url.rstrip("/"),
+        ui_url=(body.ui_url or "").rstrip("/") or None,
         labels=json.dumps(body.labels),
         enabled=body.enabled,
     )
@@ -170,6 +172,7 @@ def update_target(
     target.description = body.description
     target.flink_rest_url = body.flink_rest_url.rstrip("/")
     target.gateway_url = body.gateway_url.rstrip("/")
+    target.ui_url = (body.ui_url or "").rstrip("/") or None
     target.labels = json.dumps(body.labels)
     target.enabled = body.enabled
     if body.is_default:

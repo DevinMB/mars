@@ -59,6 +59,7 @@ class TargetRegistry:
                 description="The cluster MARS was configured with.",
                 flink_rest_url=s.flink_rest_url,
                 gateway_url=s.sql_gateway_url,
+                ui_url=s.flink_ui_url or None,
             )
             db.add(target)
         target.is_default = True

@@ -11,6 +11,7 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
   const [description, setDescription] = useState(initial?.description || '')
   const [restUrl, setRestUrl] = useState(initial?.flink_rest_url || '')
   const [gatewayUrl, setGatewayUrl] = useState(initial?.gateway_url || '')
+  const [uiUrl, setUiUrl] = useState(initial?.ui_url || '')
   const [labels, setLabels] = useState(
     Object.entries(initial?.labels || {}).map(([k, v]) => `${k}=${v}`).join(', '),
   )
@@ -54,6 +55,7 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
       description: description || null,
       flink_rest_url: restUrl,
       gateway_url: gatewayUrl,
+      ui_url: uiUrl.trim() || null,
       labels: parsedLabels(),
       enabled,
       is_default: isDefault,
@@ -125,6 +127,16 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
         <Field label="SQL Gateway url" required hint="Used to submit jobs.">
           <input className="input mono" value={gatewayUrl} placeholder="http://newhost:8083"
                  onChange={(e) => { setGatewayUrl(e.target.value); setProbe(null) }} />
+        </Field>
+
+        <Field
+          label="Flink UI url"
+          hint="Optional. Where your browser can reach this cluster, if that differs
+                from the address above. Leave blank and MARS uses the host you opened
+                the console on."
+        >
+          <input className="input mono" value={uiUrl} placeholder="http://newhost:8081"
+                 onChange={(e) => setUiUrl(e.target.value)} />
         </Field>
 
         <Field label="Labels" hint="Free-form, comma separated. Descriptive only for now.">

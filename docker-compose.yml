@@ -98,6 +98,8 @@ services:
       - TZ=${TZ:-UTC}
       - MARS_FLINK_REST_URL=http://jobmanager:8081
       - MARS_SQL_GATEWAY_URL=http://sql-gateway:8083
+      # Optional; see .env.example. Unset is correct for a stock deployment.
+      - MARS_FLINK_UI_URL=${MARS_FLINK_UI_URL:-}
       - MARS_CONNECTOR_LIB_DIR=/jars
     mem_limit: 512m
     cpus: 0.5
