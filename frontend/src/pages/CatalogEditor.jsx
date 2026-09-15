@@ -26,11 +26,23 @@ export default function CatalogEditor() {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
+  const cloneOf = new URLSearchParams(window.location.search).get('from')
+
   useEffect(() => {
     (async () => {
       const [all, secrets] = await Promise.all([api.connectors(), api.secrets().catch(() => [])])
       setConnectors(all)
       setSecretNames(secrets.map((s) => s.name))
+
+      if (!editing && cloneOf) {
+        const e = await api.catalogEntry(cloneOf)
+        setKind(e.kind)
+        setConnectorId(e.connector)
+        setName(`${e.name}_copy`)
+        setDescription(e.description || '')
+        setValues(e.options || {})
+        setColumns((e.columns || []).map((c) => ({ name: c.name, sqlType: c.type })))
+      }
 
       if (editing) {
         const e = await api.catalogEntry(editing)
@@ -48,7 +60,7 @@ export default function CatalogEditor() {
         setColumns(own.length ? own : declared.map((c) => ({ name: c.name, sqlType: c.sqlType })))
       }
     })().catch((err) => setError(err.message))
-  }, [editing])
+  }, [editing, cloneOf])
 
   const connector = useMemo(
     () => (connectors || []).find((c) => c.connector === connectorId) || null,
@@ -88,7 +100,7 @@ export default function CatalogEditor() {
   return (
     <>
       <PageHeader
-        title={editing ? `Edit ${editing}` : `New ${kind}`}
+        title={editing ? `Edit ${editing}` : cloneOf ? `Copy of ${cloneOf}` : `New ${kind}`}
         back={{ to: '/catalog', label: 'Catalog' }}
         actions={
           <button className="btn-primary" disabled={saving || !name || !connectorId} onClick={save}>

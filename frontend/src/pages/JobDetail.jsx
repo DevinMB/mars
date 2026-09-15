@@ -157,6 +157,10 @@ export default function JobDetail() {
               {busy === 'validate' ? 'Checking…' : 'Validate'}
             </button>
             <Link to={`/jobs/${encodeURIComponent(job.name)}/edit`} className="btn-secondary">Edit</Link>
+            <Link to={`/jobs/new?from=${encodeURIComponent(job.name)}`} className="btn-secondary"
+                  title="Start a new job from this one. Nothing is saved until you name it.">
+              Duplicate
+            </Link>
             {isActive ? (
               <>
                 {/* The safe stop is the default. Discarding state is still one

@@ -32,12 +32,28 @@ export default function JobEditor() {
   const [docFields, setDocFields] = useState({})
   const [ai, setAi] = useState(null)
 
+  // ?from=<name> opens a copy of an existing job as a new draft. A clone that
+  // saved itself immediately would create a half-considered duplicate; this way
+  // it is an ordinary unsaved job until someone names it and presses Create.
+  const cloneOf = new URLSearchParams(window.location.search).get('from')
+
   useEffect(() => {
     (async () => {
       setEntries(await api.catalog())
       setTargets(await api.targets().catch(() => []))
       // A viewer without access to the AI settings simply does not see the box.
       setAi(await api.aiProvider().catch(() => null))
+      if (!editing && cloneOf) {
+        const j = await api.job(cloneOf)
+        setName(`${j.name}_copy`)
+        setDescription(j.description || '')
+        setJobType(j.job_type)
+        setSql(j.sql_text)
+        setRefs(j.catalog_refs)
+        setTarget(j.target_name || '')
+        if ((j.catalog_refs || []).length) setPickerOpen(false)
+      }
+
       if (editing) {
         const j = await api.job(editing)
         setName(j.name)
@@ -51,7 +67,7 @@ export default function JobEditor() {
         if ((j.catalog_refs || []).length) setPickerOpen(false)
       }
     })().catch((err) => setError(err.message))
-  }, [editing])
+  }, [editing, cloneOf])
 
   // Checking costs a Flink planner round trip, so it waits for a pause in typing
   // rather than firing on every keystroke. Each result carries the text it was
@@ -136,7 +152,7 @@ export default function JobEditor() {
   return (
     <>
       <PageHeader
-        title={editing ? `Edit ${editing}` : 'New job'}
+        title={editing ? `Edit ${editing}` : cloneOf ? `Copy of ${cloneOf}` : 'New job'}
         back={{ to: editing ? `/jobs/${encodeURIComponent(editing)}` : '/jobs', label: editing ? editing : 'Jobs' }}
         actions={
           <>

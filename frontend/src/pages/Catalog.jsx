@@ -49,6 +49,9 @@ export default function Catalog() {
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   <Link to={`/catalog/${encodeURIComponent(e.name)}/edit`}
                         className="link text-sm mr-3">Edit</Link>
+                  <Link to={`/catalog/new?from=${encodeURIComponent(e.name)}`}
+                        title="Start a new entry from this one. Nothing is saved until you name it."
+                        className="link text-sm mr-3">Duplicate</Link>
                   <button onClick={() => remove(e.name)}
                           className="text-slate-400 hover:text-red-600 text-sm">Delete</button>
                 </td>
