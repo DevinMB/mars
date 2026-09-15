@@ -122,6 +122,25 @@ class JobSubmitter:
         db.add(run)
         db.flush()
 
+        # Ask the cluster, not just our own records. MARS refuses to start a job
+        # it believes is running, but that belief is a row in a database: if it
+        # goes stale -- a cluster briefly unreachable, a reconcile against the
+        # wrong one -- the supervisor happily starts a second copy of something
+        # already running, and duplicated output is the worst failure a pipeline
+        # has. The cluster is the authority on what is running on it.
+        existing = await self._running_copy(job)
+        if existing:
+            _fail(
+                run,
+                f"'{job.name}' is already running on this cluster as {existing}. "
+                f"Starting another copy would duplicate its output.",
+            )
+            db.commit()
+            raise SubmissionError(
+                f"'{job.name}' is already running on the cluster (job {existing}). "
+                f"MARS did not start a second copy."
+            )
+
         try:
             resolved = [self._store.resolve(db, s) for s in statements]
         except Exception as exc:
@@ -169,6 +188,24 @@ class JobSubmitter:
             raise SubmissionError(summary, detail) from exc
         finally:
             await self._gateway.close_session(session)
+
+    async def _running_copy(self, job: Job) -> str | None:
+        """The id of a job already running under this name, if there is one.
+
+        Jobs are submitted with pipeline.name = "mars:<name>", which is what makes
+        this answerable at all. A cluster that cannot be reached returns None: a
+        submission should not be blocked because the check failed, only because
+        the check succeeded and found something.
+        """
+        try:
+            for overview in await self._cluster.list_jobs():
+                if overview.state == "RUNNING" and overview.name == f"mars:{job.name}":
+                    return overview.job_id
+        except Exception as exc:
+            log.warning(
+                "Could not check whether '%s' is already running: %s", job.name, exc
+            )
+        return None
 
     async def cancel(self, db: Session, run: JobRun) -> None:
         if run.flink_job_id:
