@@ -696,13 +696,46 @@ missing is everything around that:
 - **Never reuse the incumbent's consumer group.** A shadow that joins it takes partitions
   from the application still in production.
 
-### Honest scoping
+### Converting from a repository or a jar
 
-The generic half — shadow entries, a comparison harness, a cutover checklist — is real
-product work and worth doing. The half that reads an arbitrary Java or Python
-application and infers its semantics is not a feature; it is a consulting engagement
-with a language model attached. Drafting from a *description* already works and is the
-right shape. Anything more ambitious should be treated with suspicion.
+Taking a Kafka Streams application and producing the Flink job, rather than asking
+someone to describe it. This is more tractable than "read arbitrary Java and infer what
+it means", because a Streams topology is not arbitrary Java: it is a declarative DAG
+over a small operator vocabulary that maps closely onto Flink SQL.
+
+Four tiers, and only one of them guesses:
+
+| | How | Reliability |
+|---|---|---|
+| **Topology** | `Topology.describe()` on the jar, or parse the builder calls: input and output topics, the operator DAG, windowing, joins, state stores | Deterministic |
+| **Schemas** | Sample the real topics — MARS already does this — for the field names and types actually present | Empirical |
+| **Expressions** | The logic inside `mapValues`, `filter`, a custom serde | **A model guesses, and can be wrong** |
+| **Audit** | Run both over the same input and diff the output | Mechanical |
+
+The fourth tier is what makes the rest worth building. Proving two programs equivalent
+is undecidable; *testing* whether they agree on real input is neither hard nor
+open-ended, and it is what was done by hand here — `device_status` matched 8438 of 8438
+records against a reference implementation, and nothing about the conversion was trusted
+until it did. An imperfect translator with a rigorous audit is valuable. A perfect
+translator is not on offer from anyone.
+
+Kafka Streams also offers something better than was available during this conversion:
+**`TopologyTestDriver`** runs the original topology against recorded input with no
+cluster and no deployment. Both implementations can be fed the same recorded messages
+and diffed offline, which removes the need to run the incumbent in parallel at all for
+the classes of job where that is possible.
+
+Where it stays hard, and should be designed for rather than discovered:
+
+- **Side effects inside operators** — an HTTP call or a database lookup in a `mapValues`.
+  Statically detectable, and should be reported rather than translated.
+- **Punctuators and wall-clock timers** — no clean SQL equivalent; a person has to decide.
+- **Custom serdes, Avro, Protobuf** — largely a schema-registry question.
+- **Non-determinism** — anything reading the clock or a random source will never diff
+  clean. The harness must be told which fields to exclude, exactly as `classified_at`
+  and `sentiment_reason` had to be excluded here.
+- **Coverage** — a clean diff proves agreement on the inputs tested, and nothing more.
+  The harness should say how much of the topology it actually exercised.
 
 ## Later
 
