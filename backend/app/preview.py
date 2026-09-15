@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import secrets as _secrets
 from dataclasses import dataclass, field
 from typing import Any
@@ -26,7 +27,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from .gateway import GatewayError, SqlGatewayClient
-from .guards import columns_of, parse_options
+from .guards import columns_of, parse_options, strip_noise
 from .models import CatalogEntry
 from .secrets import SecretStore
 
@@ -180,4 +181,99 @@ async def sample_source(
         nested = infer_nested(values)
         if nested:
             out.nested[name] = nested
+    return out
+
+# ---------------------------------------------------------------------------
+# Previewing a whole statement, rather than one source.
+
+_INSERT = re.compile(
+    r"^\s*INSERT\s+INTO\s+(?:`[^`]+`|[\w.]+)\s*(?:\([^)]*\))?\s*(?=SELECT|WITH|VALUES)",
+    re.I | re.S,
+)
+
+
+def select_of(sql_text: str) -> str:
+    """The query half of an INSERT, so it can be run without writing anything.
+
+    Refuses a statement set rather than guessing which of its inserts was meant:
+    a preview that silently shows one branch of a fan-out is worse than one that
+    says it cannot.
+    """
+    cleaned = strip_noise(sql_text)
+    if re.search(r"\bEXECUTE\s+STATEMENT\s+SET\b", cleaned, re.I):
+        raise ValueError(
+            "This job writes to more than one sink at once. Preview the statements "
+            "one at a time."
+        )
+    # Matched against the comment-stripped text, because a stored statement
+    # usually opens with a paragraph explaining itself. strip_noise preserves
+    # length, so offsets still line up with the original and the slice keeps any
+    # comments that sit inside the query.
+    match = _INSERT.search(cleaned)
+    if not match:
+        if re.match(r"^\s*(SELECT|WITH)\b", cleaned, re.I):
+            return sql_text.strip().rstrip(";")
+        raise ValueError(
+            "Only an INSERT INTO ... SELECT can be previewed; this statement does "
+            "not have a query to run."
+        )
+    return sql_text[match.end():].strip().rstrip(";")
+
+
+async def preview_statement(
+    gateway: SqlGatewayClient,
+    store: SecretStore,
+    db: Session,
+    sources: list[CatalogEntry],
+    sql_text: str,
+    limit: int = 20,
+    start: str = "earliest",
+) -> SampleResult:
+    """Runs a job's query and returns the rows it would have written.
+
+    Only the *source* tables are created. The sink is never defined, so nothing
+    here can write to Kafka, to a database, or to a light switch -- the preview
+    is unable to have a side effect rather than merely choosing not to.
+    """
+    try:
+        query = select_of(sql_text)
+    except ValueError as exc:
+        return SampleResult(error=str(exc))
+
+    wanted = max(1, min(limit, 100))
+    session = await gateway.open_session({"parallelism.default": "1"})
+    try:
+        for entry in sources:
+            # Each source keeps its own name, so the query needs no rewriting, but
+            # gets a throwaway consumer group: a preview must not take partitions
+            # from the job that owns the real one.
+            ddl = build_preview_ddl(entry, entry.name, start)
+            await gateway.execute(session, store.resolve(db, ddl))
+
+        result = await gateway.select_rows(
+            session, f"SELECT * FROM ({query}) LIMIT {wanted}", wanted
+        )
+        out = SampleResult(
+            columns=list(result.columns), rows=[list(r) for r in result.rows]
+        )
+    except GatewayError as exc:
+        message = store.redact(db, exc.summary)
+        if "did not settle" in message:
+            message = (
+                "The cluster did not start the query in time. It may have no free slots."
+            )
+        return SampleResult(error=message)
+    except ValueError as exc:
+        return SampleResult(error=str(exc))
+    finally:
+        try:
+            await gateway.close_session(session)
+        except Exception as exc:  # pragma: no cover - cleanup must not mask results
+            log.warning("Could not close preview session: %s", exc)
+
+    if not out.rows:
+        out.error = (
+            "The query produced no rows within the time limit. The sources may be "
+            "empty, or nothing may match."
+        )
     return out

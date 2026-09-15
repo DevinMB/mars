@@ -116,6 +116,7 @@ export const api = {
   validateJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/validate`, { method: 'POST' }),
   validateDraft: (body) => request('/api/jobs/validate', { method: 'POST', body }),
   draftJob: (body) => request('/api/jobs/draft', { method: 'POST', body }),
+  previewJob: (body) => request('/api/jobs/preview', { method: 'POST', body }),
   runJob: (name, fromSavepoint = 'latest') =>
     request(`/api/jobs/${encodeURIComponent(name)}/run?from_savepoint=${encodeURIComponent(fromSavepoint)}`,
             { method: 'POST' }),

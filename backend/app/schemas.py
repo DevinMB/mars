@@ -382,6 +382,17 @@ class DraftResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class PreviewRequest(BaseModel):
+    """A statement to run without writing anything, plus the tables it reads."""
+
+    sql_text: str
+    catalog_refs: list[str] = Field(default_factory=list)
+    target_name: str | None = None
+    limit: int = 20
+    # earliest replays from the start of the topic; latest waits for new records.
+    start: str = "earliest"
+
+
 class ImportRequest(BaseModel):
     yaml_text: str
     # Defaults to a dry run: this writes over definitions jobs are running from,

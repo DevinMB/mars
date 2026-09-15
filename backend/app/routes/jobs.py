@@ -12,6 +12,7 @@ from ..cluster import FlinkClusterClient
 from ..db import get_session
 from ..deps import (
     current_principal,
+    get_gateway,
     get_cluster,
     get_secret_store,
     get_submitter,
@@ -20,6 +21,8 @@ from ..deps import (
 )
 from ..ai import AiClient
 from ..drafting import draft_statement
+from ..gateway import SqlGatewayClient
+from ..preview import preview_statement
 from ..explain import Context as ExplainContext
 from ..explain import explain
 from ..guards import check_job, column_names, columns_of
@@ -29,6 +32,9 @@ from ..schemas import (
     DraftJobIn,
     DraftRequest,
     DraftResponse,
+    NestedFieldOut,
+    PreviewRequest,
+    SampleOut,
     DiagnosticsOut,
     JobIn,
     JobOut,
@@ -493,6 +499,49 @@ async def draft_job(
         hint=result.hint,
         attempts=result.attempts,
         notes=[store.redact(db, n) for n in result.notes],
+    )
+
+
+@router.post("/preview", response_model=SampleOut)
+async def preview_statement_route(
+    body: PreviewRequest,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    gateway: SqlGatewayClient = Depends(get_gateway),
+    store: SecretStore = Depends(get_secret_store),
+) -> SampleOut:
+    """Shows the rows a statement would produce, without writing them anywhere.
+
+    Only the source tables are created for this: the sink is never defined, so a
+    preview cannot write to Kafka, a database or a light switch. It is unable to
+    have a side effect rather than merely declining to.
+    """
+    if not body.sql_text.strip():
+        raise HTTPException(status_code=400, detail="There is no statement to preview.")
+
+    sources = [
+        e
+        for e in db.query(CatalogEntry)
+        .filter(CatalogEntry.name.in_(body.catalog_refs))
+        .all()
+        if e.kind == "source"
+    ] if body.catalog_refs else []
+
+    result = await preview_statement(
+        gateway, store, db, sources, body.sql_text,
+        limit=body.limit, start=body.start,
+    )
+    return SampleOut(
+        columns=result.columns,
+        rows=result.rows,
+        nested={
+            column: [
+                NestedFieldOut(name=f.name, type=f.type, example=f.example)
+                for f in fields
+            ]
+            for column, fields in result.nested.items()
+        },
+        error=result.error,
     )
 
 

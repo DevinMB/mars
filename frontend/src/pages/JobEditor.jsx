@@ -6,6 +6,7 @@ import ValidationPanel from '../components/ValidationPanel'
 import TablePicker from '../components/TablePicker'
 import SchemaPanel from '../components/SchemaPanel'
 import PromptPanel from '../components/PromptPanel'
+import OutputPreview from '../components/OutputPreview'
 import { buildCompletions } from '../components/Completion'
 import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 
@@ -236,6 +237,7 @@ export default function JobEditor() {
               completions={completions}
             />
             <ValidationPanel result={check} checking={checking} dirty={dirty} />
+            <OutputPreview sql={sql} refs={refs} targetName={target} />
           </div>
 
           {editing && (

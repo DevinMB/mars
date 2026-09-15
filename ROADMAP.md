@@ -128,15 +128,27 @@ Build, in this order:
 This is the GitOps item already on the list, promoted: the disaster case is more urgent
 than the workflow, and the same round-trip serves both.
 
-### 3. Preview a job's output before deploying
+### 3. Preview a job's output before deploying — **DONE**
 
 The other half of the sampling work. Sources can already be sampled; a whole statement
 cannot. Most of the machinery exists: `gateway.select_rows` pages a streaming SELECT
 with a time budget and cancels the operation afterwards, and `preview.py` already
 rebuilds a table definition with a throwaway consumer group.
 
-The work is turning `INSERT INTO sink SELECT ...` into a bounded `SELECT ...` and
-showing the rows. Hazards already learned: use a throwaway group so a preview cannot
+A "Show me the output" button under the editor runs the query and shows the rows it
+would have written.
+
+The safety property is structural rather than a promise: **only the source tables are
+created**. The sink is never defined, so a preview cannot write to Kafka, a database or
+a light switch -- it is unable to have a side effect rather than choosing not to. Each
+source gets a throwaway consumer group, verified against the running pipeline:
+mars-device-status still at offset 8468, no preview group left behind, no slot leaked.
+
+A statement set is refused rather than guessed at, since showing one branch of a
+fan-out without saying so is worse than declining. And the INSERT is found in the
+comment-stripped text, because a stored statement usually opens with a paragraph
+explaining itself -- matching the raw text found nothing and reported every real job as
+unpreviewable. Hazards already learned: use a throwaway group so a preview cannot
 take partitions from the running job, cancel the operation on every path out because a
 streaming SELECT holds a slot, and expect ten to thirty seconds before the first row
 because Flink has to schedule the job.
