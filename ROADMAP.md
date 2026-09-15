@@ -2,6 +2,101 @@
 
 Ordered roughly by when each becomes necessary rather than by appeal.
 
+## Next up — resume here
+
+Ordered. Each entry carries enough detail to start without re-deriving it.
+
+### 1. Finish the clean-room install test
+
+**Status: started, aborted, four defects found and fixed (b24e9ed). Whether a fresh
+install now works end to end is unverified.**
+
+The first attempt ran on this host rather than a separate machine, and the two stacks
+collided: the second deployment's TaskManager registered with the production
+JobManager, the production console began resolving `jobmanager` to the wrong cluster
+and started duplicate jobs, and rebuilding the shared image tag from a fresh checkout
+(where `flink/jars/` is empty) replaced production's Flink image with one that had no
+connectors. Roughly ten minutes of downtime. All four causes are fixed; the lesson is
+that this test needs a daemon of its own.
+
+**Venue: Docker-in-Docker.** A nested daemon shares no images, networks, volumes or
+container names with the host's, which is exactly the class of failure above.
+
+```bash
+docker run -d --name mars-cleanroom --privileged --cpus 1.2 -m 9g \
+  -e DOCKER_TLS_CERTDIR= -v cleanroom-docker:/var/lib/docker \
+  docker:27-dind --storage-driver=overlay2
+until docker exec mars-cleanroom docker info >/dev/null 2>&1; do sleep 2; done
+# clone on the host, copy in, then run the four README commands inside
+```
+
+Cap the CPU: this host has two, and production Flink wants them. Remove the container
+and the `cleanroom-docker` volume afterwards.
+
+**What it must assert** — each of these is a regression test for something that was
+actually broken:
+
+- the console reaches "Application startup complete"
+- **the generated admin password appears in `docker logs`** (the buffering defect)
+- migrations run from empty to head, with no manual step
+- `/healthz` and the UI both answer 200
+- logging in with the printed password works
+- the connector list is exactly what the README claims for a bare install
+- after `scripts/build-connectors.sh`, `couchdb` appears in that list
+- a source, a sink and a job can be created through the API and run to RUNNING
+- **nothing on the host's daemon changed**: no new images, networks or containers
+
+**Deliverable: `scripts/clean-room-test.sh`**, so this runs before every release
+rather than once. A one-off test that found four defects will find a fifth.
+
+### 2. Backup, restore, and export
+
+**Nothing exists today.** Every job, catalog entry, schedule, target, user and
+encrypted secret lives in one Docker volume, `mars_console-data`. Two consequences,
+both worth stating to anyone who deploys this:
+
+- Lose that volume and every definition is gone, with no way back.
+- `secret.key` sits *beside* `mars.db` in it. The volume is both the only copy of the
+  data and the means to decrypt it: losing it loses both, and copying it copies every
+  credential in plaintext-equivalent form.
+
+Build, in this order:
+
+1. **Export** every catalog entry, job, schedule and target as YAML through the API.
+   Deliberately excluding secret *values* — an export is a thing people mail around and
+   commit. Export the `${secret:...}` references and let the import say which secrets it
+   needs.
+2. **Import**, with a dry run that reports what would be created, updated and skipped.
+   Same guard rails as the editor: validate before writing.
+3. **Document the volume backup** for the parts YAML cannot carry — the encryption key,
+   run history, password hashes — and say plainly that the key is in there.
+
+This is the GitOps item already on the list, promoted: the disaster case is more urgent
+than the workflow, and the same round-trip serves both.
+
+### 3. Preview a job's output before deploying
+
+The other half of the sampling work. Sources can already be sampled; a whole statement
+cannot. Most of the machinery exists: `gateway.select_rows` pages a streaming SELECT
+with a time budget and cancels the operation afterwards, and `preview.py` already
+rebuilds a table definition with a throwaway consumer group.
+
+The work is turning `INSERT INTO sink SELECT ...` into a bounded `SELECT ...` and
+showing the rows. Hazards already learned: use a throwaway group so a preview cannot
+take partitions from the running job, cancel the operation on every path out because a
+streaming SELECT holds a slot, and expect ten to thirty seconds before the first row
+because Flink has to schedule the job.
+
+### 4. Connector health checks
+
+Manifests already declare `supportsHealthCheck` and nothing reads it. Probing a
+connector's target when someone presses Save turns "the job restarts forever" into
+"this database does not exist" at the moment the mistake is made. The CouchDB sink
+already fails with exactly that at runtime — see the diagnostics trace naming
+`CouchDbClient.checkDatabaseExists`.
+
+---
+
 ## Near term
 
 - ~~Alembic migrations run on startup~~ **DONE**, and needed sooner than expected:
