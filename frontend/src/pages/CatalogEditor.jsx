@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import HealthCheck from '../components/HealthCheck'
 import ColumnEditor from '../components/ColumnEditor'
 import ConnectorForm from '../components/ConnectorForm'
 import ConnectorPicker from '../components/ConnectorPicker'
@@ -143,6 +144,8 @@ export default function CatalogEditor() {
                   onChange={(k, v) => setValues((prev) => ({ ...prev, [k]: v }))}
                   secretNames={secretNames}
                 />
+
+                <HealthCheck connector={connectorId} options={values} />
               </div>
 
               <div className="card p-6">

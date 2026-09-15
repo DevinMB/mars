@@ -382,6 +382,20 @@ class DraftResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class HealthRequest(BaseModel):
+    """A connector and its options, checked before anything depends on them."""
+
+    connector: str
+    options: dict[str, str] = Field(default_factory=dict)
+
+
+class HealthResultOut(BaseModel):
+    # null means there was nothing meaningful to check, which is not a failure.
+    ok: bool | None = None
+    detail: str = ""
+    hint: str | None = None
+
+
 class PreviewRequest(BaseModel):
     """A statement to run without writing anything, plus the tables it reads."""
 

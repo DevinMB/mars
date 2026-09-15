@@ -59,6 +59,10 @@ export const api = {
 
   // catalog
   catalog: (kind) => request(`/api/catalog${kind ? `?kind=${kind}` : ''}`),
+  checkHealth: (connector, options) =>
+    request('/api/catalog/health', { method: 'POST', body: { connector, options } }),
+  checkEntryHealth: (name) =>
+    request(`/api/catalog/${encodeURIComponent(name)}/health`, { method: 'POST' }),
   sampleEntry: (name, limit = 5, start = 'earliest') =>
     request(`/api/catalog/${encodeURIComponent(name)}/sample?limit=${limit}&start=${start}`,
             { method: 'POST' }),

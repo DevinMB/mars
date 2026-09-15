@@ -19,17 +19,20 @@ from ..deps import (
 from ..guards import check_catalog_entry, columns_of, parse_options
 from ..models import CatalogEntry, Job
 from ..gateway import SqlGatewayClient
+from ..health import probe
 from ..preview import sample_source
 from ..registry import ConnectorRegistry
 from ..schemas import (
     CatalogEntryIn,
+    HealthRequest,
+    HealthResultOut,
     CatalogEntryOut,
     ColumnOut,
     NestedFieldOut,
     SampleOut,
     WarningOut,
 )
-from ..secrets import SecretStore
+from ..secrets import SecretError, SecretStore
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
@@ -252,3 +255,53 @@ async def sample_entry(
         },
         error=result.error,
     )
+
+@router.post("/health", response_model=HealthResultOut)
+async def check_health(
+    body: HealthRequest,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    store: SecretStore = Depends(get_secret_store),
+) -> HealthResultOut:
+    """Probes a connector's target from the form, before it is saved.
+
+    Deliberately takes options rather than a saved entry: the point is to catch a
+    wrong address or a missing database at the moment someone types it, not after
+    a job has been created and has begun restarting.
+    """
+    try:
+        resolved = {k: store.resolve(db, v) for k, v in body.options.items()}
+    except SecretError as exc:
+        return HealthResultOut(ok=False, detail=store.redact(db, str(exc)))
+
+    result = await probe(body.connector, resolved)
+    return HealthResultOut(
+        ok=result.ok,
+        detail=store.redact(db, result.detail),
+        hint=result.hint,
+    )
+
+
+@router.post("/{name}/health", response_model=HealthResultOut)
+async def check_entry_health(
+    name: str,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    store: SecretStore = Depends(get_secret_store),
+) -> HealthResultOut:
+    entry = db.query(CatalogEntry).filter(CatalogEntry.name == name).one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No catalog entry named '{name}'")
+
+    options = parse_options(entry.sql_text)
+    connector = options.pop("connector", entry.connector)
+    try:
+        resolved = {k: store.resolve(db, v) for k, v in options.items()}
+    except SecretError as exc:
+        return HealthResultOut(ok=False, detail=store.redact(db, str(exc)))
+
+    result = await probe(connector, resolved)
+    return HealthResultOut(
+        ok=result.ok, detail=store.redact(db, result.detail), hint=result.hint
+    )
+
