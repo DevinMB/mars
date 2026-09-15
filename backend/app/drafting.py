@@ -51,6 +51,9 @@ class DraftResult:
     # compile and was repaired.
     attempts: int = 0
     notes: list[str] = field(default_factory=list)
+    # True when this was a change to an existing statement rather than a fresh
+    # draft, so the console knows to show a diff rather than a replacement.
+    amended: bool = False
 
 
 def _clean(text: str) -> str:
@@ -104,6 +107,32 @@ def describe_tables(tables: list[dict]) -> str:
     return "\n".join(lines).strip()
 
 
+AMEND_SYSTEM = SYSTEM + """
+
+You are changing an existing statement. Keep everything the request does not ask
+you to change: the same tables, the same columns in the same order, the same
+expressions and the same formatting. Change only what was asked for, and reply
+with the complete statement, not a fragment or a diff."""
+
+
+def build_amend_prompt(
+    description: str, tables: list[dict], job_type: str, current_sql: str
+) -> str:
+    """A change to an existing statement, rather than a fresh draft.
+
+    Showing the current statement is what makes "also write the username" a
+    sensible request. Without it the model has to be told the whole job again,
+    and whatever was hand-tuned in the original is quietly lost.
+    """
+    catalog = describe_tables(tables) or "No tables have been selected for this job."
+    return (
+        f"{catalog}\n\n"
+        f"The current statement is:\n{current_sql.strip()}\n\n"
+        f"Change it as follows, leaving everything else exactly as it is:\n"
+        f"{description.strip()}"
+    )
+
+
 def build_prompt(description: str, tables: list[dict], job_type: str) -> str:
     catalog = describe_tables(tables) or "No tables have been selected for this job."
     kind = (
@@ -124,6 +153,7 @@ async def draft_statement(
     job_type: str,
     validate,
     repair: bool = True,
+    current_sql: str = "",
 ) -> DraftResult:
     """Drafts, validates, and repairs once if the first attempt does not compile.
 
@@ -133,8 +163,17 @@ async def draft_statement(
     """
     result = DraftResult()
 
+    amending = bool(current_sql.strip())
+    system = AMEND_SYSTEM if amending else SYSTEM
+    prompt = (
+        build_amend_prompt(description, tables, job_type, current_sql)
+        if amending
+        else build_prompt(description, tables, job_type)
+    )
+    result.amended = amending
+
     try:
-        raw = await client.complete(build_prompt(description, tables, job_type), SYSTEM)
+        raw = await client.complete(prompt, system)
     except AiError as exc:
         result.error = str(exc)
         return result
@@ -158,14 +197,14 @@ async def draft_statement(
     # produces, which is at least as useful to a model as it is to a person.
     result.notes.append(f"The first draft did not compile: {error}")
     retry = (
-        f"{build_prompt(description, tables, job_type)}\n\n"
+        f"{prompt}\n\n"
         f"A previous attempt was:\n{result.sql}\n\n"
         f"It failed to compile with: {error}\n"
         f"{('Hint: ' + hint) if hint else ''}\n"
         f"Correct it. Reply with the corrected statement only."
     )
     try:
-        repaired = _clean(await client.complete(retry, SYSTEM))
+        repaired = _clean(await client.complete(retry, system))
     except AiError as exc:
         result.error, result.hint = error, hint
         result.notes.append(f"The repair attempt failed: {exc}")

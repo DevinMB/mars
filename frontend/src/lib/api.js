@@ -107,8 +107,12 @@ export const api = {
   validateJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/validate`, { method: 'POST' }),
   validateDraft: (body) => request('/api/jobs/validate', { method: 'POST', body }),
   draftJob: (body) => request('/api/jobs/draft', { method: 'POST', body }),
-  runJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/run`, { method: 'POST' }),
+  runJob: (name, fromSavepoint = 'latest') =>
+    request(`/api/jobs/${encodeURIComponent(name)}/run?from_savepoint=${encodeURIComponent(fromSavepoint)}`,
+            { method: 'POST' }),
   cancelJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
+  stopJob: (name, drain = false) =>
+    request(`/api/jobs/${encodeURIComponent(name)}/stop?drain=${drain}`, { method: 'POST' }),
   jobRuns: (name) => request(`/api/jobs/${encodeURIComponent(name)}/runs`),
   jobVersions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/versions`),
   jobDiagnostics: (name) => request(`/api/jobs/${encodeURIComponent(name)}/diagnostics`),

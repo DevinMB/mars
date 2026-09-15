@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { Alert, Badge, Spinner } from './ui'
 import { CompletionList, useCompletion } from './Completion'
+import SqlDiff from './SqlDiff'
 
 // Describe the job in words; a model drafts the statement. Two things make this
 // worth offering rather than a novelty: the model is told exactly which tables
@@ -11,6 +12,7 @@ import { CompletionList, useCompletion } from './Completion'
 // submit anything.
 export default function PromptPanel({
   enabled, refs, completions, onDraft, jobType, targetName, jobName, documentFields,
+  currentSql = '',
 }) {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
@@ -32,9 +34,14 @@ export default function PromptPanel({
         target_name: targetName || null,
         name: jobName || 'draft',
         document_fields: documentFields,
+        // With a statement already written, ask for a change to it rather than a
+        // replacement, so a small request stays a small change.
+        current_sql: currentSql,
       })
+      // Nothing is applied here. The proposal is shown as a diff and waits for a
+      // decision: a draft that silently replaced the editor would destroy work
+      // that was never offered up for changing.
       setResult(r)
-      if (r.sql) onDraft(r.sql)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -61,9 +68,10 @@ export default function PromptPanel({
     <div className="card p-5">
       <h2 className="font-medium text-slate-900 mb-1">Describe it instead</h2>
       <p className="text-xs text-slate-500 mb-3">
-        Say what the job should do. Type <code className="mono">@</code> to refer to a
-        table, column or document field. The draft is compiled before it is shown, and
-        always lands in the editor for you to check — it is never run.
+        Say what the job should do, or what to change about it. Type{' '}
+        <code className="mono">@</code> to refer to a table, column or document field.
+        Whatever comes back is compiled first and shown as a diff — nothing is applied
+        until you say so, and nothing is ever run.
       </p>
 
       {refs.length === 0 && (
@@ -81,7 +89,9 @@ export default function PromptPanel({
           className="input mono h-24 resize-y"
           value={prompt}
           spellCheck={false}
-          placeholder="Take each whisper and write @message and @username into the whispers sink"
+          placeholder={currentSql
+            ? 'also write @doc.username'
+            : 'Take each whisper and write @doc.message and @doc.username into the whispers sink'}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => { completion.onKeyDown(e) }}
         />
@@ -97,26 +107,44 @@ export default function PromptPanel({
       {error && <div className="mt-3"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
       {result && (
-        <div className="mt-3">
+        <div className="mt-3 space-y-2">
           {result.ok ? (
             <Alert level="success">
-              Drafted and it compiles
-              {result.attempts > 1 && ' (after one correction)'}. It is in the editor
-              below — read it before saving.
+              {result.amended ? 'Changed' : 'Drafted'} and it compiles
+              {result.attempts > 1 && ' (after one correction)'}. Nothing has been
+              applied yet.
             </Alert>
           ) : (
-            <Alert level="warning" title="Drafted, but it does not compile">
+            <Alert level="warning" title="This does not compile">
               {result.error || 'The draft could not be checked.'}
               {result.hint && <div className="mt-1">{result.hint}</div>}
               <div className="mt-1 text-xs">
-                It is in the editor below; fix it there, or describe the job
-                differently and try again.
+                You can still apply it and fix it in the editor, or describe the
+                change differently and try again.
               </div>
             </Alert>
           )}
+
           {(result.notes || []).map((n, i) => (
-            <p key={i} className="text-xs text-slate-400 mt-1">{n}</p>
+            <p key={i} className="text-xs text-slate-400">{n}</p>
           ))}
+
+          {result.sql && (
+            <>
+              <SqlDiff before={currentSql} after={result.sql} />
+              <div className="flex items-center gap-2">
+                <button
+                  className="btn-primary text-sm"
+                  onClick={() => { onDraft(result.sql); setResult(null); setPrompt('') }}
+                >
+                  {currentSql ? 'Apply this change' : 'Use this statement'}
+                </button>
+                <button className="btn-secondary text-sm" onClick={() => setResult(null)}>
+                  Discard
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

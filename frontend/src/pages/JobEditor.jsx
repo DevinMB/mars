@@ -215,6 +215,7 @@ export default function JobEditor() {
             targetName={target}
             jobName={editing || name}
             documentFields={docFields}
+            currentSql={sql}
             onDraft={(text) => { setSql(text); setCheck(null) }}
           />
 

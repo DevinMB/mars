@@ -74,6 +74,8 @@ def _run_out(run: JobRun | None) -> RunOut | None:
         restarts=run.restarts,
         triggered_by_schedule=run.triggered_by_schedule,
         submitted_by=run.submitted_by,
+        savepoint_path=run.savepoint_path,
+        restored_from=run.restored_from,
     )
 
 
@@ -102,6 +104,7 @@ def _out(job: Job) -> JobOut:
         enabled=job.enabled,
         version=job.version,
         target_name=job.target_name,
+        latest_savepoint=job.latest_savepoint,
         updated_at=job.updated_at,
         latest_run=_run_out(latest),
         schedule=_schedule_out(job.schedule),
@@ -479,11 +482,13 @@ async def draft_job(
         return True, None, None
 
     result = await draft_statement(
-        AiClient(config), body.prompt, tables, body.job_type, _validate
+        AiClient(config), body.prompt, tables, body.job_type, _validate,
+        current_sql=body.current_sql,
     )
     return DraftResponse(
         sql=result.sql,
         ok=result.ok,
+        amended=result.amended,
         error=store.redact(db, result.error) if result.error else None,
         hint=result.hint,
         attempts=result.attempts,
@@ -494,6 +499,9 @@ async def draft_job(
 @router.post("/{name}/run", response_model=RunOut, status_code=status.HTTP_202_ACCEPTED)
 async def run_job(
     name: str,
+    # "latest" resumes from the most recent savepoint; "none" starts with empty
+    # state; anything else is treated as an explicit savepoint path.
+    from_savepoint: str = "latest",
     principal: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
     targets: TargetRegistry = Depends(get_targets),
@@ -515,8 +523,17 @@ async def run_job(
             ),
         )
 
+    if from_savepoint == "none":
+        savepoint = None
+    elif from_savepoint in ("latest", ""):
+        savepoint = job.latest_savepoint
+    else:
+        savepoint = from_savepoint
+
     try:
-        run = await targets.for_job_submitter(db, job).submit(db, job, submitted_by=principal.username)
+        run = await targets.for_job_submitter(db, job).submit(
+            db, job, submitted_by=principal.username, savepoint_path=savepoint
+        )
     except SubmissionError as exc:
         raise HTTPException(status_code=400, detail=exc.summary) from exc
     return _run_out(run)  # type: ignore[return-value]
@@ -541,6 +558,57 @@ async def cancel_job(
     if active is None:
         raise HTTPException(status_code=409, detail="This job is not running.")
     await targets.for_job_submitter(db, job).cancel(db, active)
+
+
+@router.post("/{name}/stop", response_model=RunOut)
+async def stop_job(
+    name: str,
+    drain: bool = False,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+) -> RunOut:
+    """Saves the job's state, then stops it, so it can resume where it left off.
+
+    ``drain`` advances the watermark to the end of time first, flushing pending
+    windows. Correct when retiring a job for good; wrong when it is coming back,
+    because event time cannot go backwards after that.
+    """
+    job = _get(db, name)
+    active = next((r for r in job.runs if r.state in _ACTIVE), None)
+    if active is None:
+        raise HTTPException(status_code=409, detail="This job is not running.")
+
+    try:
+        await targets.for_job_submitter(db, job).stop_with_savepoint(
+            db, active, drain=drain
+        )
+    except SubmissionError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"{exc.summary} {exc.detail}".strip(),
+        ) from exc
+    return _run_out(active)  # type: ignore[return-value]
+
+
+@router.get("/{name}/savepoints")
+def list_savepoints(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> dict:
+    job = _get(db, name)
+    saved = [
+        {
+            "run_id": r.id,
+            "path": r.savepoint_path,
+            "taken_at": r.ended_at,
+            "job_version": r.job_version,
+        }
+        for r in job.runs
+        if r.savepoint_path
+    ]
+    return {"latest": job.latest_savepoint, "savepoints": saved}
 
 
 @router.get("/{name}/runs", response_model=list[RunOut])

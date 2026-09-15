@@ -195,6 +195,56 @@ class FlinkClusterClient:
             r.raise_for_status()
             return r.json()["request-id"]
 
+    async def stop_with_savepoint(
+        self, job_id: str, target_dir: str | None = None, drain: bool = False
+    ) -> str:
+        """Stops a job after writing its state, and returns the request id.
+
+        Not the same as cancelling. Cancel throws the state away; this writes it
+        somewhere durable first so the job can be started again where it left
+        off. ``drain`` advances the watermark to the end of time first, which
+        flushes pending windows -- correct when retiring a job for good, wrong
+        when it is coming back, since event time cannot go backwards afterwards.
+        """
+        body: dict[str, Any] = {"drain": drain}
+        if target_dir:
+            body["targetDirectory"] = target_dir
+        async with self._client() as c:
+            r = await c.post(f"/jobs/{job_id}/stop", json=body)
+            r.raise_for_status()
+            return r.json()["request-id"]
+
+    async def await_savepoint(
+        self, job_id: str, request_id: str, budget: float = 180.0
+    ) -> str:
+        """Waits for a savepoint to finish and returns where it was written.
+
+        Raises RuntimeError with Flink's own reason if it fails. A savepoint that
+        fails must not be reported as success: the caller would record a path
+        that does not exist and a later resume would fail at submission, long
+        after anyone connected the two.
+        """
+        deadline = time.monotonic() + budget
+        delay = 0.25
+        while time.monotonic() < deadline:
+            body = await self.savepoint_status(job_id, request_id)
+            status = (body.get("status") or {}).get("id")
+            if status == "COMPLETED":
+                operation = body.get("operation") or {}
+                failure = operation.get("failure-cause")
+                if failure:
+                    raise RuntimeError(
+                        failure.get("stack-trace")
+                        or str(failure.get("serialized-throwable", "Savepoint failed"))
+                    )
+                location = operation.get("location")
+                if not location:
+                    raise RuntimeError("Flink reported no savepoint location.")
+                return location
+            await asyncio.sleep(delay)
+            delay = min(delay * 1.4, 2.0)
+        raise RuntimeError(f"The savepoint did not finish within {budget:.0f}s.")
+
     async def savepoint_status(self, job_id: str, request_id: str) -> dict[str, Any]:
         async with self._client() as c:
             r = await c.get(f"/jobs/{job_id}/savepoints/{request_id}")

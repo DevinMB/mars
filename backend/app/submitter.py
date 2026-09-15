@@ -107,6 +107,7 @@ class JobSubmitter:
         job: Job,
         submitted_by: str | None = None,
         by_schedule: bool = False,
+        savepoint_path: str | None = None,
     ) -> JobRun:
         statements = self.build_script(db, job)
 
@@ -116,6 +117,7 @@ class JobSubmitter:
             state=RunState.SUBMITTING.value,
             submitted_by=submitted_by,
             triggered_by_schedule=by_schedule,
+            restored_from=savepoint_path or None,
         )
         db.add(run)
         db.flush()
@@ -131,6 +133,14 @@ class JobSubmitter:
             {"pipeline.name": f"mars:{job.name}"}
         )
         try:
+            if savepoint_path:
+                # Must be set on the session before the statement that starts the
+                # job; Flink reads it when the job graph is submitted, so setting
+                # it afterwards silently does nothing and the job starts empty.
+                await self._gateway.execute(
+                    session,
+                    f"SET 'execution.savepoint.path' = '{savepoint_path}'",
+                )
             results = await self._gateway.execute_script(session, resolved)
             job_id = next((r.job_id for r in reversed(results) if r.job_id), None)
 
@@ -166,6 +176,38 @@ class JobSubmitter:
         run.state = RunState.CANCELED.value
         run.ended_at = utcnow()
         db.commit()
+
+    async def stop_with_savepoint(
+        self, db: Session, run: JobRun, target_dir: str | None = None,
+        drain: bool = False,
+    ) -> str:
+        """Writes the job's state somewhere durable, then stops it.
+
+        The run is only marked stopped once Flink confirms the savepoint was
+        written. A failure here leaves the job running on purpose: stopping a
+        stateful job whose state was not saved is the outcome this exists to
+        prevent, and doing it anyway while reporting an error would be worse than
+        not trying.
+        """
+        if not run.flink_job_id:
+            raise SubmissionError("This run has no job on the cluster to stop.")
+
+        try:
+            request_id = await self._cluster.stop_with_savepoint(
+                run.flink_job_id, target_dir, drain=drain
+            )
+            location = await self._cluster.await_savepoint(run.flink_job_id, request_id)
+        except Exception as exc:
+            raise SubmissionError(
+                "Could not save this job's state, so it has been left running.",
+                detail=self._store.redact(db, str(exc)),
+            ) from exc
+
+        run.savepoint_path = location
+        run.state = RunState.CANCELED.value
+        run.ended_at = utcnow()
+        db.commit()
+        return location
 
     async def refresh_states(self, db: Session, target_name: str | None = ...) -> int:
         """Reconciles MARS's view of runs with what this cluster reports.

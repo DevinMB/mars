@@ -163,8 +163,24 @@ class Scheduler:
                     log.error("Scheduler cannot place job '%s': %s", job.name, exc)
                     return
             try:
-                await submitter.submit(db, job, submitted_by="scheduler", by_schedule=True)
-                log.info("Scheduler started job '%s' (%s)", job.name, mode)
+                # Supervising a stateful job means putting it back as it was, not
+                # merely running it again: restarting from empty state loses a
+                # half-finished window or a running count without saying so.
+                # Cron jobs are bounded and deliberately start clean each time.
+                savepoint = (
+                    job.latest_savepoint
+                    if mode == ScheduleMode.SUPERVISOR.value
+                    else None
+                )
+                await submitter.submit(
+                    db, job, submitted_by="scheduler", by_schedule=True,
+                    savepoint_path=savepoint,
+                )
+                log.info(
+                    "Scheduler started job '%s' (%s)%s",
+                    job.name, mode,
+                    f" from savepoint {savepoint}" if savepoint else "",
+                )
             except SubmissionError as exc:
                 # The failure is already recorded against a JobRun; the schedule
                 # stays enabled so a transient outage self-heals.

@@ -245,6 +245,20 @@ class Job(Base, TimestampMixin):
     runs: Mapped[list["JobRun"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobRun.id.desc()"
     )
+
+    @property
+    def latest_savepoint(self) -> str | None:
+        """The most recent state saved for this job, if any.
+
+        Runs come back newest first, so the first one carrying a path is the most
+        recent. Lives here rather than in a route because the scheduler needs the
+        same answer, and a service importing a route module to get it would be
+        the wrong way round.
+        """
+        for run in self.runs:
+            if run.savepoint_path:
+                return run.savepoint_path
+        return None
     schedule: Mapped["Schedule | None"] = relationship(
         back_populates="job", cascade="all, delete-orphan", uselist=False
     )
@@ -281,6 +295,13 @@ class JobRun(Base):
     # The one-line summary, with the full trace kept beside it.
     error_summary: Mapped[str | None] = mapped_column(String(512))
     error_detail: Mapped[str | None] = mapped_column(Text)
+    # Where this run's state was written when it was stopped with a savepoint.
+    # A stateful job resumed without one restarts from committed offsets with an
+    # empty state: a half-finished session window, a running count, a join buffer
+    # are all simply gone. This is what makes a restart safe.
+    savepoint_path: Mapped[str | None] = mapped_column(String(1024))
+    # The savepoint this run started from, if any.
+    restored_from: Mapped[str | None] = mapped_column(String(1024))
     # How many times the cluster has been seen restarting this job. A number that
     # keeps climbing is a restart loop, not a transient blip.
     restarts: Mapped[int] = mapped_column(Integer, default=0)

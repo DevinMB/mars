@@ -115,6 +115,12 @@ Ordered roughly by when each becomes necessary rather than by appeal.
     submitted. That rule lives in the drafting module rather than the UI: it returns text
     and has no way to run anything.
 
+  Amending an existing statement works the same way, with the current statement supplied
+  so a small request stays a small change: "also uppercase the username" produced a
+  one-line diff against a four-line statement rather than a rewrite. Nothing is applied
+  until the diff is accepted -- a draft that silently replaced the editor would destroy
+  work that was never offered up for changing.
+
   The repair loop is worth keeping. Asked for something Flink rejects -- sorting an
   unbounded stream -- the first draft failed, the plain-language explanation was fed back,
   and the second attempt compiled. An error message written for a person turns out to be
@@ -160,10 +166,31 @@ Ordered roughly by when each becomes necessary rather than by appeal.
     that is not pulled on the server; a bare ping would pass and the failure would appear
     only when someone first used it. Test lists what is there and suggests the near match.
 
-- **Savepoint-aware restarts.** Cancel-with-savepoint and resume-from-savepoint through
-  the console. Supervisor mode currently resubmits from scratch, which is wrong for any
-  job with meaningful state. Now also a prerequisite for credential rotation, since
-  picking up a rotated password means restarting the jobs that hold the old one.
+- ~~Savepoint-aware restarts~~ **DONE.** "Stop and save state" writes a savepoint and
+  stops; starting again resumes from it. Supervisor mode resumes rather than restarting
+  from scratch, and cron jobs deliberately do not -- a bounded job is meant to start
+  clean each time.
+
+  Decisions worth keeping:
+
+  - **The safe stop is the default action.** Discarding state is still one click away but
+    has to be chosen, and says what will be lost.
+  - **A failed savepoint leaves the job running.** Stopping a stateful job whose state was
+    not saved is precisely the outcome this exists to prevent; doing it anyway and
+    reporting an error afterwards would be worse than not trying.
+  - **`execution.savepoint.path` must be set on the session before the statement that
+    starts the job.** Flink reads it when the graph is submitted, so setting it afterwards
+    silently does nothing and the job starts empty -- the exact failure this feature
+    exists to stop, and one that looks like success.
+  - **Drain is offered but not the default.** It advances the watermark to the end of time
+    to flush pending windows, which is right when retiring a job and wrong when it is
+    coming back, since event time cannot go backwards afterwards.
+
+  Verified on the live `sit_sessionize`, which holds MATCH_RECOGNIZE state: stopped with a
+  savepoint and resumed with `restored: 1`, running again in under three seconds.
+
+  This also unblocks credential rotation, which needs a restart of whatever holds the old
+  password.
 - **GitOps export/import.** Round-trip every catalog entry, job and schedule as YAML so a
   deployment can be reviewed and version-controlled outside MARS.
 - **Connector health checks.** Manifests already declare `supportsHealthCheck`. Probing a

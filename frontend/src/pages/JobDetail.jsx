@@ -158,15 +158,52 @@ export default function JobDetail() {
             </button>
             <Link to={`/jobs/${encodeURIComponent(job.name)}/edit`} className="btn-secondary">Edit</Link>
             {isActive ? (
-              <button className="btn-danger" disabled={busy === 'cancel'}
-                      onClick={() => act('cancel', () => api.cancelJob(name))}>
-                {busy === 'cancel' ? 'Stopping…' : 'Stop'}
-              </button>
+              <>
+                {/* The safe stop is the default. Discarding state is still one
+                    click away, but it has to be chosen. */}
+                <button className="btn-primary" disabled={busy === 'stop'}
+                        title="Writes the job's state to a savepoint first, so it can resume where it left off."
+                        onClick={() => act('stop', () => api.stopJob(name))}>
+                  {busy === 'stop' ? 'Saving state…' : 'Stop and save state'}
+                </button>
+                <button className="btn-danger" disabled={busy === 'cancel'}
+                        title="Stops immediately and throws away any in-flight state."
+                        onClick={() => {
+                          if (!confirm(
+                            `Stop "${job.name}" without saving its state?\n\n` +
+                            'Anything in progress — a half-finished window, a running ' +
+                            'count — is lost. Use "Stop and save state" to resume later.'
+                          )) return
+                          act('cancel', () => api.cancelJob(name))
+                        }}>
+                  {busy === 'cancel' ? 'Stopping…' : 'Stop without saving'}
+                </button>
+              </>
             ) : (
-              <button className="btn-primary" disabled={busy === 'run'}
-                      onClick={() => act('run', () => api.runJob(name))}>
-                {busy === 'run' ? 'Starting…' : 'Run'}
-              </button>
+              <>
+                <button className="btn-primary" disabled={busy === 'run'}
+                        title={job.latest_savepoint
+                          ? 'Resumes from the last saved state.'
+                          : 'No saved state, so this starts fresh.'}
+                        onClick={() => act('run', () => api.runJob(name, 'latest'))}>
+                  {busy === 'run'
+                    ? 'Starting…'
+                    : job.latest_savepoint ? 'Resume' : 'Run'}
+                </button>
+                {job.latest_savepoint && (
+                  <button className="btn-secondary" disabled={busy === 'run-fresh'}
+                          title="Ignores the saved state and starts with an empty one."
+                          onClick={() => {
+                            if (!confirm(
+                              'Start with empty state?\n\nThe saved state is ignored, ' +
+                              'and the job begins as though it had never run.'
+                            )) return
+                            act('run-fresh', () => api.runJob(name, 'none'))
+                          }}>
+                    {busy === 'run-fresh' ? 'Starting…' : 'Start fresh'}
+                  </button>
+                )}
+              </>
             )}
           </>
         }
@@ -315,7 +352,35 @@ export default function JobDetail() {
                   <dd className="mono text-xs text-slate-600 truncate max-w-[9rem]">{run.flink_job_id}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Saved state</dt>
+                <dd className="text-slate-800 text-right">
+                  {job.latest_savepoint ? (
+                    <span className="text-emerald-700" title={job.latest_savepoint}>
+                      available
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">none</span>
+                  )}
+                </dd>
+              </div>
+              {run?.restored_from && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Resumed from</dt>
+                  <dd className="text-xs text-slate-600 truncate max-w-[9rem]"
+                      title={run.restored_from}>
+                    {run.restored_from.split('/').pop()}
+                  </dd>
+                </div>
+              )}
             </dl>
+
+            {job.job_type === 'streaming' && !job.latest_savepoint && (
+              <p className="text-xs text-slate-500 mt-3">
+                No state has been saved. Stopping with "Stop and save state" writes
+                one, so the job can resume instead of starting over.
+              </p>
+            )}
           </div>
 
           <div className="card p-4">

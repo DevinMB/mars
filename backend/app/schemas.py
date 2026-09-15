@@ -144,6 +144,10 @@ class RunOut(BaseModel):
     restarts: int = 0
     triggered_by_schedule: bool
     submitted_by: str | None
+    # Where this run's state was saved when it was stopped, and where it resumed
+    # from when it started. Both null for a stateless job nobody bothered to save.
+    savepoint_path: str | None = None
+    restored_from: str | None = None
 
 
 class CheckpointOut(BaseModel):
@@ -230,6 +234,9 @@ class JobOut(BaseModel):
     enabled: bool
     version: int
     target_name: str | None = None
+    # The most recent state saved for this job. Its presence is what makes a
+    # restart resume where it left off rather than start over with empty state.
+    latest_savepoint: str | None = None
     updated_at: UtcDatetime
     latest_run: RunOut | None = None
     schedule: ScheduleOut | None = None
@@ -360,11 +367,15 @@ class DraftRequest(BaseModel):
     # Supplied by the console from any samples the user has already taken, so the
     # model is told what is in a document rather than guessing at it.
     document_fields: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    # The statement as it stands. When present the model is asked to change it
+    # rather than write a new one, so a small request stays a small change.
+    current_sql: str = ""
 
 
 class DraftResponse(BaseModel):
     sql: str = ""
     ok: bool = False
+    amended: bool = False
     error: str | None = None
     hint: str | None = None
     attempts: int = 0
