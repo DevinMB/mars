@@ -2,58 +2,289 @@
   "manifestVersion": 1,
   "connector": "kafka",
   "displayName": "Kafka",
-  "kinds": ["source", "sink"],
+  "kinds": [
+    "source",
+    "sink"
+  ],
   "description": "Reads from and writes to Apache Kafka topics.",
   "docsUrl": "https://nightlies.apache.org/flink/flink-docs-stable/docs/connectors/table/kafka/",
   "supportsHealthCheck": false,
   "options": [
-    { "key": "topic", "label": "Topic", "type": "string", "required": true, "secret": false,
-      "group": "Connection", "placeholder": "my-topic",
-      "help": "Topic to read from or write to." },
-    { "key": "properties.bootstrap.servers", "label": "Bootstrap servers", "type": "string",
-      "required": true, "secret": false, "group": "Connection",
+    {
+      "key": "topic",
+      "label": "Topic",
+      "type": "string",
+      "required": true,
+      "secret": false,
+      "group": "Connection",
+      "placeholder": "my-topic",
+      "help": "Topic to read from or write to."
+    },
+    {
+      "key": "properties.bootstrap.servers",
+      "label": "Bootstrap servers",
+      "type": "string",
+      "required": true,
+      "secret": false,
+      "group": "Connection",
       "placeholder": "kafka:9092",
-      "help": "Comma-separated broker list." },
-    { "key": "properties.group.id", "label": "Consumer group", "type": "string",
-      "required": false, "secret": false, "group": "Connection",
-      "help": "Required for sources. Pick a name unique to this job, or it will share offsets with another." },
-
-    { "key": "scan.startup.mode", "label": "Start reading from", "type": "enum",
-      "required": false, "secret": false, "group": "Source",
+      "help": "Comma-separated broker list."
+    },
+    {
+      "key": "properties.group.id",
+      "label": "Consumer group",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Connection",
+      "help": "Required for sources. Pick a name unique to this job, or it will share offsets with another."
+    },
+    {
+      "key": "scan.startup.mode",
+      "label": "Start reading from",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Source",
       "default": "group-offsets",
-      "choices": ["group-offsets", "earliest-offset", "latest-offset", "timestamp", "specific-offsets"],
-      "help": "Where a source begins when it has no committed offset." },
-    { "key": "scan.startup.timestamp-millis", "label": "Start timestamp (ms)", "type": "string",
-      "required": false, "secret": false, "group": "Source",
-      "visibleWhen": { "option": "scan.startup.mode", "equals": "timestamp" } },
-
-    { "key": "format", "label": "Format", "type": "enum", "required": true, "secret": false,
-      "group": "Format", "default": "json",
-      "choices": ["json", "csv", "avro", "raw", "debezium-json"],
-      "help": "How records are encoded. Use 'raw' with a single STRING column to pass whole documents through untouched." },
-    { "key": "json.ignore-parse-errors", "label": "Ignore parse errors", "type": "boolean",
-      "required": false, "secret": false, "group": "Format", "default": "false",
-      "visibleWhen": { "option": "format", "equals": "json" },
-      "help": "Skip malformed records instead of failing the job. Off by default: silent data loss is rarely what you want." },
-    { "key": "json.timestamp-format.standard", "label": "Timestamp format", "type": "enum",
-      "required": false, "secret": false, "group": "Format", "default": "SQL",
-      "choices": ["SQL", "ISO-8601"],
-      "visibleWhen": { "option": "format", "equals": "json" } },
-
-    { "key": "sink.partitioner", "label": "Partitioner", "type": "enum", "required": false,
-      "secret": false, "group": "Sink", "default": "default",
-      "choices": ["default", "fixed", "round-robin"],
-      "help": "How produced records are assigned to partitions." },
-
-    { "key": "properties.security.protocol", "label": "Security protocol", "type": "enum",
-      "required": false, "secret": false, "group": "Security",
-      "choices": ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"] },
-    { "key": "properties.sasl.mechanism", "label": "SASL mechanism", "type": "enum",
-      "required": false, "secret": false, "group": "Security",
-      "choices": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"] },
-    { "key": "properties.sasl.jaas.config", "label": "SASL JAAS config", "type": "password",
-      "required": false, "secret": true, "group": "Security",
-      "help": "Full JAAS line. Store it as a secret and reference it here." }
+      "choices": [
+        "group-offsets",
+        "earliest-offset",
+        "latest-offset",
+        "timestamp",
+        "specific-offsets"
+      ],
+      "help": "Where a source begins when it has no committed offset."
+    },
+    {
+      "key": "scan.startup.timestamp-millis",
+      "label": "Start timestamp (ms)",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Source",
+      "visibleWhen": {
+        "option": "scan.startup.mode",
+        "equals": "timestamp"
+      }
+    },
+    {
+      "key": "format",
+      "label": "Format",
+      "type": "enum",
+      "required": true,
+      "secret": false,
+      "group": "Format",
+      "default": "json",
+      "choices": [
+        "json",
+        "csv",
+        "avro",
+        "raw",
+        "debezium-json"
+      ],
+      "help": "How records are encoded. Use 'raw' with a single STRING column to pass whole documents through untouched."
+    },
+    {
+      "key": "json.ignore-parse-errors",
+      "label": "Ignore parse errors",
+      "type": "boolean",
+      "required": false,
+      "secret": false,
+      "group": "Format",
+      "default": "false",
+      "visibleWhen": {
+        "option": "format",
+        "equals": "json"
+      },
+      "help": "Skip malformed records instead of failing the job. Off by default: silent data loss is rarely what you want."
+    },
+    {
+      "key": "json.timestamp-format.standard",
+      "label": "Timestamp format",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Format",
+      "default": "SQL",
+      "choices": [
+        "SQL",
+        "ISO-8601"
+      ],
+      "visibleWhen": {
+        "option": "format",
+        "equals": "json"
+      }
+    },
+    {
+      "key": "sink.partitioner",
+      "label": "Partitioner",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Sink",
+      "default": "default",
+      "choices": [
+        "default",
+        "fixed",
+        "round-robin"
+      ],
+      "help": "How produced records are assigned to partitions."
+    },
+    {
+      "key": "sink.delivery-guarantee",
+      "label": "Delivery guarantee",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Delivery",
+      "default": "at-least-once",
+      "choices": [
+        "at-least-once",
+        "exactly-once",
+        "none"
+      ],
+      "help": "How hard this sink works to not lose or duplicate records. At-least-once flushes on every checkpoint and may write a record twice after a failure. Exactly-once wraps each checkpoint in a Kafka transaction, so readers set to read_committed see each record once, at the cost of latency: nothing is visible until the checkpoint completes. None is fire and forget."
+    },
+    {
+      "key": "sink.transactional-id-prefix",
+      "label": "Transactional id prefix",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Delivery",
+      "placeholder": "mars-my-job",
+      "visibleWhen": {
+        "option": "sink.delivery-guarantee",
+        "equals": "exactly-once"
+      },
+      "help": "Required for exactly-once, and must be unique per job. Two jobs sharing a prefix will fence each other's transactions off and neither will make progress."
+    },
+    {
+      "key": "properties.acks",
+      "label": "Acknowledgements",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Delivery",
+      "default": "all",
+      "choices": [
+        "all",
+        "1",
+        "0"
+      ],
+      "help": "How many brokers must confirm a write before Kafka calls it done. 'all' waits for every in-sync replica and is the only setting that survives a broker failure. '1' waits for the leader alone. '0' does not wait, which means Flink cannot tell whether a record arrived -- that silently defeats any delivery guarantee above."
+    },
+    {
+      "key": "properties.compression.type",
+      "label": "Compression",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Delivery",
+      "default": "none",
+      "choices": [
+        "none",
+        "gzip",
+        "snappy",
+        "lz4",
+        "zstd"
+      ],
+      "help": "Compresses batches before they are sent. zstd and lz4 usually pay for themselves on JSON, which compresses well."
+    },
+    {
+      "key": "properties.transaction.timeout.ms",
+      "label": "Transaction timeout (ms)",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Delivery",
+      "placeholder": "900000",
+      "visibleWhen": {
+        "option": "sink.delivery-guarantee",
+        "equals": "exactly-once"
+      },
+      "help": "Must be longer than the checkpoint interval, or a transaction expires before its checkpoint completes and the job loses data. It must also not exceed the broker's transaction.max.timeout.ms, which defaults to 15 minutes -- the broker rejects anything larger."
+    },
+    {
+      "key": "properties.linger.ms",
+      "label": "Linger (ms)",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Tuning",
+      "placeholder": "0",
+      "help": "How long the producer waits to fill a batch before sending. Raising it trades latency for throughput."
+    },
+    {
+      "key": "properties.batch.size",
+      "label": "Batch size (bytes)",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Tuning",
+      "placeholder": "16384",
+      "help": "Maximum bytes per batch per partition."
+    },
+    {
+      "key": "properties.max.poll.records",
+      "label": "Max records per poll",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Tuning",
+      "placeholder": "500",
+      "help": "How many records a source fetches at a time. Only worth changing when a source is the bottleneck."
+    },
+    {
+      "key": "properties.isolation.level",
+      "label": "Isolation level",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Tuning",
+      "choices": [
+        "read_uncommitted",
+        "read_committed"
+      ],
+      "help": "Set read_committed when reading a topic written by an exactly-once producer; otherwise this source will see records from transactions that were later aborted."
+    },
+    {
+      "key": "properties.security.protocol",
+      "label": "Security protocol",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Security",
+      "choices": [
+        "PLAINTEXT",
+        "SSL",
+        "SASL_PLAINTEXT",
+        "SASL_SSL"
+      ]
+    },
+    {
+      "key": "properties.sasl.mechanism",
+      "label": "SASL mechanism",
+      "type": "enum",
+      "required": false,
+      "secret": false,
+      "group": "Security",
+      "choices": [
+        "PLAIN",
+        "SCRAM-SHA-256",
+        "SCRAM-SHA-512"
+      ]
+    },
+    {
+      "key": "properties.sasl.jaas.config",
+      "label": "SASL JAAS config",
+      "type": "password",
+      "required": false,
+      "secret": true,
+      "group": "Security",
+      "help": "Full JAAS line. Store it as a secret and reference it here."
+    }
   ],
   "columns": []
 }

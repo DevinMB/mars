@@ -46,6 +46,32 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   written from memory: the wording changes between releases, and a table built from
   recollection quietly stops matching.
 
+- ~~Delivery and producer/consumer settings~~ **DONE.** They were always available --
+  Flink's Kafka connector passes anything prefixed `properties.` straight to the Kafka
+  client, and adds `sink.delivery-guarantee` of its own -- but none of it was in the
+  form, so reaching them meant hand-editing DDL. Delivery and Tuning groups now expose
+  the guarantee, transactional id prefix, acks, compression, transaction timeout,
+  linger/batch, poll size and isolation level.
+
+  Where they come into play is worth stating, because Flink changes the usual answers:
+
+  - **Offsets are not committed by the consumer.** Flink checkpoints them, so
+    `enable.auto.commit` does nothing and `auto.offset.reset` is replaced by
+    `scan.startup.mode`. The consumer group is used for reporting and for
+    `group-offsets` startup, not for partition assignment in the usual sense.
+  - **`acks` sits underneath the delivery guarantee rather than beside it.** Flink
+    accepts `acks=0` with `exactly-once` without complaint; the producer then never
+    learns whether a record arrived, so flushing at a checkpoint proves nothing. Now a
+    danger-level warning, because nothing else reports it.
+  - **Exactly-once is fenced by the transactional id prefix.** Two jobs sharing one abort
+    each other's transactions and both stall. Now checked across jobs.
+  - **Reading a transactional topic needs `read_committed`**, or the reader sees records
+    from transactions that were later aborted. Now checked whenever a source reads a
+    topic some exactly-once sink writes.
+
+  Still missing: `transaction.timeout.ms` must exceed the checkpoint interval, which MARS
+  knows per cluster and could check rather than only document.
+
 - **Preview the output before deploying.** The largest remaining gap in authoring. Today
   a statement goes from the editor to production with nothing in between; the SQL Gateway
   can run a bounded SELECT, so the editor could show twenty real rows first. The same

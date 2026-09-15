@@ -75,6 +75,60 @@ def check_catalog_entry(entry_sql: str, kind: str, connector: str) -> list[Warni
                 )
             )
 
+    if connector == "kafka" and kind == "sink":
+        guarantee = opts.get("sink.delivery-guarantee", "at-least-once")
+        acks = opts.get("properties.acks")
+
+        # Flink accepts acks=0 without complaint. The producer then never learns
+        # whether a record arrived, so flushing at a checkpoint proves nothing and
+        # the delivery guarantee above it is decorative.
+        if acks == "0" and guarantee != "none":
+            out.append(
+                Warning_(
+                    "danger",
+                    "kafka_acks_zero",
+                    f"Acknowledgements are set to 0, so the producer never learns "
+                    f"whether a record arrived. That cancels the '{guarantee}' "
+                    f"guarantee set on this sink: records will be lost on any broker "
+                    f"hiccup and nothing will report it. Use 'all'.",
+                )
+            )
+        elif acks == "1" and guarantee == "exactly-once":
+            out.append(
+                Warning_(
+                    "warning",
+                    "kafka_acks_one",
+                    "Only the partition leader has to confirm a write. A transaction "
+                    "can then commit records that no replica holds, and they are lost "
+                    "if that broker fails before they replicate. Use 'all' with "
+                    "exactly-once.",
+                )
+            )
+
+        if guarantee == "exactly-once" and not opts.get("sink.transactional-id-prefix"):
+            out.append(
+                Warning_(
+                    "danger",
+                    "kafka_no_txn_prefix",
+                    "Exactly-once needs a transactional id prefix, and this sink has "
+                    "none. The job will be rejected when it is submitted.",
+                )
+            )
+
+        # Brokers default transaction.max.timeout.ms to 15 minutes and reject
+        # anything longer, at submission rather than at authoring time.
+        timeout = opts.get("properties.transaction.timeout.ms")
+        if timeout and timeout.isdigit() and int(timeout) > 900_000:
+            out.append(
+                Warning_(
+                    "warning",
+                    "kafka_txn_timeout",
+                    f"A transaction timeout of {timeout}ms is above the broker default "
+                    f"limit of 900000ms (transaction.max.timeout.ms). Unless that limit "
+                    f"has been raised, the broker will refuse this producer.",
+                )
+            )
+
     if connector == "couchdb" and kind == "sink":
         mode = opts.get("id.mode", "kafka_key")
         if mode == "auto":
@@ -157,6 +211,71 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
                             f"see every record twice.",
                         )
                     )
+
+    # A transactional producer is fenced by its id: when two jobs share a prefix,
+    # each one starting up aborts the other's open transactions. Both stall, and
+    # neither reports anything more specific than transactions timing out.
+    prefixes = {
+        parse_options(e.sql_text).get("sink.transactional-id-prefix")
+        for e in sinks.values()
+        if e.connector == "kafka"
+    } - {None, ""}
+    if prefixes:
+        for other in db.query(Job).filter(Job.id != job.id).all():
+            other_refs = _refs(other)
+            if not other_refs:
+                continue
+            for e in (
+                db.query(CatalogEntry)
+                .filter(CatalogEntry.name.in_(other_refs), CatalogEntry.kind == "sink")
+                .all()
+            ):
+                if e.connector != "kafka":
+                    continue
+                prefix = parse_options(e.sql_text).get("sink.transactional-id-prefix")
+                if prefix and prefix in prefixes:
+                    out.append(
+                        Warning_(
+                            "danger",
+                            "kafka_shared_txn_prefix",
+                            f"Job '{other.name}' uses the same transactional id prefix "
+                            f"'{prefix}'. Kafka fences producers by that id, so the two "
+                            f"jobs will abort each other's transactions and neither will "
+                            f"make progress. Give each job its own prefix.",
+                        )
+                    )
+
+    # Reading a topic that an exactly-once producer writes, without asking for
+    # committed records only, means seeing writes from transactions that were
+    # later aborted -- records that, as far as the producer is concerned, never
+    # happened.
+    transactional_topics: set[str] = set()
+    for e in db.query(CatalogEntry).filter(CatalogEntry.kind == "sink").all():
+        if e.connector != "kafka":
+            continue
+        o = parse_options(e.sql_text)
+        if o.get("sink.delivery-guarantee") == "exactly-once" and o.get("topic"):
+            transactional_topics.add(o["topic"])
+
+    for name, e in sources.items():
+        if e.connector != "kafka":
+            continue
+        o = parse_options(e.sql_text)
+        topic = o.get("topic")
+        if (
+            topic in transactional_topics
+            and o.get("properties.isolation.level") != "read_committed"
+        ):
+            out.append(
+                Warning_(
+                    "warning",
+                    "kafka_uncommitted_read",
+                    f"'{name}' reads topic '{topic}', which is written by an "
+                    f"exactly-once producer, but does not set isolation level to "
+                    f"read_committed. It will see records from transactions that were "
+                    f"later aborted.",
+                )
+            )
 
     # Two sinks writing the same CouchDB database is fine when ids are
     # deterministic, and silently doubling when they are not.
