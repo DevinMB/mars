@@ -82,9 +82,28 @@ changes nothing, and they cannot express what a job needs beyond its statement â
 tables it declares, its schedule, its target, its type. The YAML export carries all of
 that, which is what makes git-as-source-of-truth possible rather than decorative.
 
-Still missing for that workflow: a drift check that can run in CI. The mechanism already
-exists -- an import dry run with `replace` reports `updated` for everything that differs
--- it needs an exit code and a command, not new logic.
+### Git as the source of truth, per environment
+
+A button in a console is a hobby workflow; nobody at a company clicks Export on
+production. The plumbing is right and the delivery is not. What changes it:
+
+- **Ownership differs per environment, not per object.** Development authors in the
+  console, because that is the better interface for figuring out what you want. QA and
+  production are applied from git by CI and are read-mostly: run, stop, diagnose, but
+  not edit. This resolves the drift problem more cleanly than marking individual
+  objects as managed -- there is one answer per environment rather than one per row,
+  and it matches how a change actually travels.
+- **A CLI usable in CI**: `mars diff`, `mars apply -f defs/`, a token, a meaningful
+  exit code. Thin over the API that exists; the import dry run is already the diff and
+  already reports `updated` for everything that differs.
+- **Per-environment targets.** The same definitions must land on different clusters.
+  Secrets already work this way -- values are never exported, so each environment
+  supplies its own -- but the target name is baked into a job and should be overridable.
+- **Audit.** `JobVersion` records a note and a username; applied-from-git versions
+  should record the commit.
+
+Not urgent for a single-operator install, where the console is genuinely the better
+interface. It is what a buyer's platform team will ask about on the first call.
 
 **The original gap, for context:** Every job, catalog entry, schedule, target, user and
 encrypted secret lives in one Docker volume, `mars_console-data`. Two consequences,
