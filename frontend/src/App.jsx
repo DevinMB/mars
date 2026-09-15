@@ -13,6 +13,7 @@ import Secrets from './pages/Secrets'
 import Cluster from './pages/Cluster'
 import Account from './pages/Account'
 import Admin from './pages/Admin'
+import Ai from './pages/Ai'
 
 function Protected({ children }) {
   const { user, loading } = useAuth()
@@ -38,6 +39,7 @@ function Shell() {
       <Route path="/cluster" element={<Protected><Cluster /></Protected>} />
       <Route path="/account" element={<Protected><Account /></Protected>} />
       <Route path="/admin" element={<Protected><Admin /></Protected>} />
+      <Route path="/ai" element={<Protected><Ai /></Protected>} />
       <Route path="*" element={<Navigate to="/jobs" replace />} />
     </Routes>
   )

@@ -1,10 +1,12 @@
 """The model MARS talks to. Administrators configure it; features consume it."""
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..ai import DEFAULT_BASE_URL, NEEDS_KEY, AiClient, AiConfig
+from ..ai import DEFAULT_BASE_URL, AiClient, AiConfig
 from ..auth import Principal
 from ..db import get_session
 from ..deps import current_principal, get_secret_store, require_admin
@@ -39,7 +41,21 @@ def config_for(db: Session, store: SecretStore, row: AiProvider | None = None) -
         model=row.model,
         api_key=key,
         timeout_seconds=row.timeout_seconds,
+        auth_method=row.auth_method,
+        auth_header=row.auth_header,
+        auth_username=row.auth_username,
+        extra_headers=_headers_of(row.extra_headers),
+        temperature=row.temperature,
+        max_tokens=row.max_tokens,
     )
+
+
+def _headers_of(raw: str | None) -> dict[str, str]:
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in value.items()} if isinstance(value, dict) else {}
 
 
 def _out(db: Session, store: SecretStore, row: AiProvider) -> AiProviderOut:
@@ -50,6 +66,12 @@ def _out(db: Session, store: SecretStore, row: AiProvider) -> AiProviderOut:
         secret_name=row.secret_name,
         enabled=row.enabled,
         timeout_seconds=row.timeout_seconds,
+        auth_method=row.auth_method,
+        auth_header=row.auth_header,
+        auth_username=row.auth_username,
+        extra_headers=_headers_of(row.extra_headers),
+        temperature=row.temperature,
+        max_tokens=row.max_tokens,
         configured=row.enabled and config_for(db, store, row).configured,
         updated_by=row.updated_by,
     )
@@ -80,10 +102,18 @@ def set_provider(
                 status_code=400,
                 detail=f"No secret named '{body.secret_name}'. Add it under Secrets first.",
             )
-    if body.enabled and body.kind in NEEDS_KEY and not body.secret_name:
+    if body.enabled and body.auth_method != "none" and not body.secret_name:
         raise HTTPException(
             status_code=400,
-            detail=f"{body.kind} needs an API key. Store it under Secrets and select it here.",
+            detail=(
+                f"'{body.auth_method}' authentication needs a credential. Store it "
+                f"under Secrets and select it here."
+            ),
+        )
+    if body.enabled and body.auth_method == "header" and not body.auth_header.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Name the header the credential should be sent in, for example x-api-key.",
         )
     if body.enabled and not body.model.strip():
         raise HTTPException(status_code=400, detail="Choose a model.")
@@ -95,6 +125,14 @@ def set_provider(
     row.secret_name = body.secret_name or None
     row.enabled = body.enabled
     row.timeout_seconds = max(5, min(body.timeout_seconds, 600))
+    row.auth_method = body.auth_method
+    row.auth_header = body.auth_header.strip()
+    row.auth_username = body.auth_username.strip()
+    row.extra_headers = json.dumps(
+        {k.strip(): v for k, v in body.extra_headers.items() if k.strip()}
+    )
+    row.temperature = body.temperature
+    row.max_tokens = max(1, min(body.max_tokens, 32000))
     row.updated_by = principal.username
     db.commit()
     return _out(db, store, row)
@@ -123,6 +161,12 @@ async def test_provider(
             model=body.model,
             api_key=key,
             timeout_seconds=body.timeout_seconds,
+            auth_method=body.auth_method,
+            auth_header=body.auth_header,
+            auth_username=body.auth_username,
+            extra_headers=body.extra_headers,
+            temperature=body.temperature,
+            max_tokens=body.max_tokens,
         )
 
     status = await AiClient(config).status()

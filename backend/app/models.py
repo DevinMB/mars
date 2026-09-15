@@ -130,6 +130,23 @@ class AiProvider(Base, TimestampMixin):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=120)
     updated_by: Mapped[str | None] = mapped_column(String(64))
 
+    # How the credential is presented. Providers disagree: Anthropic wants
+    # x-api-key, OpenAI-compatible servers want a bearer token, Azure wants
+    # api-key, and some gateways sit behind basic auth. Rather than hard-code a
+    # rule per provider and be wrong for the next one, the method is a setting.
+    # none | bearer | header | basic
+    auth_method: Mapped[str] = mapped_column(String(16), default="none")
+    # The header name when auth_method is "header".
+    auth_header: Mapped[str] = mapped_column(String(64), default="")
+    # The user half of basic auth; the password half is the referenced secret.
+    auth_username: Mapped[str] = mapped_column(String(128), default="")
+    # Anything else the endpoint insists on -- an API version, a project or
+    # organisation id, a gateway's routing header. JSON object of header -> value.
+    extra_headers: Mapped[str] = mapped_column(Text, default="{}")
+    # Generation settings, kept here so every feature behaves consistently.
+    temperature: Mapped[str] = mapped_column(String(16), default="0")
+    max_tokens: Mapped[int] = mapped_column(Integer, default=1500)
+
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"

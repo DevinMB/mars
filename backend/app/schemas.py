@@ -356,6 +356,12 @@ class AiProviderIn(BaseModel):
     secret_name: str | None = None
     enabled: bool = False
     timeout_seconds: int = 120
+    auth_method: str = "none"
+    auth_header: str = ""
+    auth_username: str = ""
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+    temperature: str = "0"
+    max_tokens: int = 1500
 
     @field_validator("kind")
     @classmethod
@@ -366,6 +372,15 @@ class AiProviderIn(BaseModel):
             raise ValueError(f"kind must be one of: {', '.join(KINDS)}")
         return v
 
+    @field_validator("auth_method")
+    @classmethod
+    def _auth(cls, v: str) -> str:
+        from .ai import AUTH_METHODS
+
+        if v not in AUTH_METHODS:
+            raise ValueError(f"auth_method must be one of: {', '.join(AUTH_METHODS)}")
+        return v
+
 
 class AiProviderOut(BaseModel):
     kind: str
@@ -374,6 +389,12 @@ class AiProviderOut(BaseModel):
     secret_name: str | None = None
     enabled: bool
     timeout_seconds: int
+    auth_method: str = "none"
+    auth_header: str = ""
+    auth_username: str = ""
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+    temperature: str = "0"
+    max_tokens: int = 1500
     # True when this is complete enough to use. Features check this rather than
     # inspecting the fields themselves.
     configured: bool = False

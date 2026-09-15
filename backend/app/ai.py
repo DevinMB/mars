@@ -18,6 +18,7 @@ notice afterwards:
 """
 from __future__ import annotations
 
+import base64
 import logging
 from dataclasses import dataclass, field
 
@@ -38,6 +39,24 @@ DEFAULT_BASE_URL = {ANTHROPIC: "https://api.anthropic.com"}
 # What each kind needs before it can be used at all.
 NEEDS_KEY = {ANTHROPIC, OPENAI}
 
+# How a credential is presented.
+AUTH_NONE = "none"
+AUTH_BEARER = "bearer"
+AUTH_HEADER = "header"
+AUTH_BASIC = "basic"
+AUTH_METHODS = (AUTH_NONE, AUTH_BEARER, AUTH_HEADER, AUTH_BASIC)
+
+# What each provider usually expects, offered as a starting point rather than
+# enforced -- a gateway in front of any of them can change the answer.
+SUGGESTED_AUTH = {
+    OLLAMA: (AUTH_NONE, ""),
+    ANTHROPIC: (AUTH_HEADER, "x-api-key"),
+    OPENAI: (AUTH_BEARER, ""),
+}
+
+# Headers a provider needs regardless of how it authenticates.
+REQUIRED_HEADERS = {ANTHROPIC: {"anthropic-version": "2023-06-01"}}
+
 
 class AiError(RuntimeError):
     """Something went wrong talking to the model. The message is user-facing."""
@@ -57,12 +76,24 @@ class AiConfig:
     model: str = ""
     api_key: str | None = None
     timeout_seconds: int = 120
+    auth_method: str = AUTH_NONE
+    auth_header: str = ""
+    auth_username: str = ""
+    extra_headers: dict[str, str] = field(default_factory=dict)
+    temperature: str = "0"
+    max_tokens: int = 1500
+
+    @property
+    def needs_credential(self) -> bool:
+        return self.auth_method in (AUTH_BEARER, AUTH_HEADER, AUTH_BASIC)
 
     @property
     def configured(self) -> bool:
         if self.kind not in KINDS or not self.model:
             return False
-        if self.kind in NEEDS_KEY and not self.api_key:
+        if self.needs_credential and not self.api_key:
+            return False
+        if self.auth_method == AUTH_HEADER and not self.auth_header.strip():
             return False
         return bool(self.base_url or DEFAULT_BASE_URL.get(self.kind))
 
@@ -90,7 +121,7 @@ class AiClient:
         try:
             async with self._client() as c:
                 if self._c.kind == OLLAMA:
-                    r = await c.get("/api/tags")
+                    r = await c.get("/api/tags", headers=self._headers())
                     r.raise_for_status()
                     models = [m.get("name", "") for m in r.json().get("models", [])]
                 elif self._c.kind == OPENAI:
@@ -124,15 +155,28 @@ class AiClient:
         return AiStatus(ok=True, detail="Reachable, and the model is present.", models=models)
 
     def _headers(self) -> dict[str, str]:
-        if self._c.kind == ANTHROPIC:
-            return {
-                "x-api-key": self._c.api_key or "",
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
-        if self._c.kind == OPENAI:
-            return {"Authorization": f"Bearer {self._c.api_key or ''}"}
-        return {}
+        """Credential, provider requirements, then the operator's own headers.
+
+        Applied in that order deliberately: an operator's explicit header is the
+        most specific statement of intent, so it wins over anything guessed here.
+        """
+        headers: dict[str, str] = {"content-type": "application/json"}
+        key = self._c.api_key or ""
+        method = self._c.auth_method
+
+        if method == AUTH_BEARER and key:
+            headers["Authorization"] = f"Bearer {key}"
+        elif method == AUTH_HEADER and key and self._c.auth_header.strip():
+            headers[self._c.auth_header.strip()] = key
+        elif method == AUTH_BASIC and key:
+            token = base64.b64encode(
+                f"{self._c.auth_username}:{key}".encode()
+            ).decode()
+            headers["Authorization"] = f"Basic {token}"
+
+        headers.update(REQUIRED_HEADERS.get(self._c.kind, {}))
+        headers.update({k: v for k, v in self._c.extra_headers.items() if k})
+        return headers
 
     async def complete(
         self, prompt: str, system: str = "", max_tokens: int = 1500
@@ -144,12 +188,13 @@ class AiClient:
         try:
             async with self._client() as c:
                 if self._c.kind == OLLAMA:
-                    r = await c.post("/api/generate", json={
+                    r = await c.post("/api/generate", headers=self._headers(), json={
                         "model": self._c.model,
                         "prompt": prompt,
                         "system": system,
                         "stream": False,
                         "think": False,
+                        "options": {"temperature": _number(self._c.temperature)},
                     })
                     r.raise_for_status()
                     return (r.json().get("response") or "").strip()
@@ -158,6 +203,7 @@ class AiClient:
                     body = {
                         "model": self._c.model,
                         "max_tokens": max_tokens,
+                        "temperature": _number(self._c.temperature),
                         "messages": [{"role": "user", "content": prompt}],
                     }
                     if system:
@@ -177,6 +223,7 @@ class AiClient:
                 r = await c.post("/v1/chat/completions", json={
                     "model": self._c.model,
                     "max_tokens": max_tokens,
+                    "temperature": _number(self._c.temperature),
                     "messages": messages,
                 }, headers=self._headers())
                 r.raise_for_status()
@@ -188,6 +235,13 @@ class AiClient:
             raise AiError(_http_message(exc)) from exc
         except httpx.HTTPError as exc:
             raise AiError(f"Could not reach {self._c.url}. {_why(exc)}") from exc
+
+
+def _number(value: str, fallback: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 def _why(exc: httpx.HTTPError) -> str:

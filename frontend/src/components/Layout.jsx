@@ -11,6 +11,8 @@ const NAV = [
   // stored credentials say something about an installation.
   { to: '/secrets', label: 'Secrets', adminOnly: true },
   { to: '/cluster', label: 'Cluster' },
+  // Configuring a model means handling a credential, so administrators only.
+  { to: '/ai', label: 'AI', adminOnly: true },
   // Only administrators may manage accounts, so only they are offered the tab.
   // The API enforces it regardless.
   { to: '/admin', label: 'Admin', adminOnly: true },
