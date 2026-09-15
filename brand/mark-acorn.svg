@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <defs>
+    <linearGradient id="nut" x1="8" y1="15" x2="24" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fb923c"/><stop offset=".6" stop-color="#ea580c"/><stop offset="1" stop-color="#b8430b"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="6" y1="6" x2="26" y2="15" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c2410c"/><stop offset="1" stop-color="#7c2d12"/>
+    </linearGradient>
+  </defs>
+  <path d="M1.6 11.8h5.2M1.6 16h3.4M1.6 20.2h4.4" stroke="#fdba74" stroke-width="2" stroke-linecap="round"/>
+  <rect x="15.6" y="1.8" width="2.2" height="4.6" rx="1.1" fill="#7c2d12"/>
+  <path d="M6.7 15.2c0-5.6 4.5-9.6 10-9.6s10 4 10 9.6Z" fill="url(#cap)"/>
+  <path d="M10.3 11.4h12.8M8.9 13.6h15.6" stroke="#fdba74" stroke-opacity=".28" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M16.7 30.2C11.7 27 7.9 22 7.9 16.9c0-1.3 1-2.2 2.3-2.2h13c1.3 0 2.3.9 2.3 2.2 0 5.1-3.8 10.1-8.8 13.3Z" fill="url(#nut)"/>
+  <path d="M13.1 19.4c0 3 1.2 5.6 3 7.4" stroke="#fff" stroke-opacity=".22" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
