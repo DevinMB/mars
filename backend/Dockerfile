@@ -29,6 +29,13 @@ RUN useradd --create-home --uid 10001 mars \
 USER mars
 
 ENV MARS_DATA_DIR=/data
+# Without this, Python block-buffers stdout when it is a pipe, which is exactly
+# what Docker gives it. The first administrator's generated password is printed
+# once at startup and then sits in that buffer indefinitely -- so on a fresh
+# install "docker logs mars-console | grep administrator" returned nothing and
+# there was no way in except resetting the password. Found by installing from a
+# clean clone rather than by reading the code.
+ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

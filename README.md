@@ -40,6 +40,28 @@ Four containers and nothing else to install:
 | `sql-gateway` | How MARS turns SQL into running jobs |
 | `console` | The API and the UI, on `:8080` |
 
+### Connectors
+
+Out of the box MARS can read and write **Kafka**, read and write **files**, and generate
+test data — everything Flink itself ships with. That is enough to build real pipelines
+between Kafka topics.
+
+The connectors that make it interesting elsewhere — **CouchDB**, a generic **HTTP**
+sink, **Home Assistant**, and an **Ollama** enrichment function — live in
+[mars-connectors](https://github.com/DevinMB/mars-connectors) and are built separately:
+
+```bash
+./scripts/build-connectors.sh
+docker compose build jobmanager && docker compose up -d
+```
+
+They are build output, so they are not committed here, and they are baked into the image
+rather than downloaded at container start — a cluster that fetches its own dependencies
+on boot comes up without them the first time someone else's network is slow.
+
+New connectors need no changes to the console: drop in a jar with a manifest and the
+forms build themselves from it.
+
 ## How it fits together
 
 A **catalog entry** is one `CREATE TABLE` — a source or a sink. A **job** is the statement

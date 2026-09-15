@@ -183,5 +183,14 @@ volumes:
   console-data:
 
 networks:
+  # Deliberately not given a fixed name. A pinned name is shared by every stack on
+  # the host, and Compose gives each service the same DNS alias regardless of
+  # project -- so a second MARS deployment joined the first one's network and its
+  # TaskManager registered with the *first* JobManager. Two installs on one host
+  # silently merged into one cluster. Left unnamed, Compose scopes the network to
+  # the project and they cannot see each other.
+  #
+  # Anything outside this stack that needs to reach these containers -- a
+  # Prometheus using docker_sd, for instance -- joins <project>_mars rather than
+  # the other way round.
   mars:
-    name: mars
