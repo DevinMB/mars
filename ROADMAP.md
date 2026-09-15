@@ -153,13 +153,23 @@ take partitions from the running job, cancel the operation on every path out bec
 streaming SELECT holds a slot, and expect ten to thirty seconds before the first row
 because Flink has to schedule the job.
 
-### 4. Connector health checks
+### 4. Connector health checks — **DONE**
 
-Manifests already declare `supportsHealthCheck` and nothing reads it. Probing a
-connector's target when someone presses Save turns "the job restarts forever" into
-"this database does not exist" at the moment the mistake is made. The CouchDB sink
-already fails with exactly that at runtime — see the diagnostics trace naming
-`CouchDbClient.checkDatabaseExists`.
+A Test connection button in the catalog form. CouchDB distinguishes all four ways it
+goes wrong — database present (and how many documents it holds), database missing,
+credentials rejected, host unreachable — and each carries its own fix. Kafka opens a
+TCP connection to every bootstrap server, and says plainly that this proves the broker
+answers, not that the topic exists. HTTP and Home Assistant check the base URL answers
+at all. A connector with nothing meaningful to check reports that rather than a pass:
+an absent check and a successful one are different facts.
+
+One limitation, stated wherever a result appears: **the probe runs from the console and
+the job runs from a TaskManager.** Usually the same network, occasionally not. A pass is
+strong evidence, not a guarantee; a failure is almost always real.
+
+Verified against the live installation: `car_counts_sink` reports 367,256 documents,
+`ha_light` answers on 192.168.1.5, `sit_raw` reaches the broker, and a deliberately
+wrong database, password, host and port each produce their own message.
 
 ---
 
