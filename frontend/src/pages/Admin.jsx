@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import BackupPanel from '../components/BackupPanel'
+import RegistryPanel from '../components/RegistryPanel'
 import { useAuth } from '../lib/auth'
 import { relativeTime } from '../lib/format'
 import SecretOnce from '../components/SecretOnce'
@@ -178,11 +179,16 @@ export default function Admin() {
   const [adding, setAdding] = useState(false)
   const [secret, setSecret] = useState(null)   // { label, value }
   const [expanded, setExpanded] = useState(null)
+  const [secretNames, setSecretNames] = useState([])
 
   const load = async () => {
     try { setUsers(await api.users()); setError(null) } catch (err) { setError(err.message) }
   }
   useEffect(() => { load() }, [])
+  // Only names: the picker offers a credential without one reaching the browser.
+  useEffect(() => {
+    api.secrets().then((ss) => setSecretNames(ss.map((x) => x.name))).catch(() => {})
+  }, [])
 
   const act = async (fn) => {
     setError(null)
@@ -207,6 +213,8 @@ export default function Admin() {
       {secret && (
         <SecretOnce label={secret.label} value={secret.value} onDone={() => setSecret(null)} />
       )}
+
+      <RegistryPanel secretNames={secretNames} />
 
       <BackupPanel />
 

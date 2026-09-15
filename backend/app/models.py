@@ -148,6 +148,28 @@ class AiProvider(Base, TimestampMixin):
     max_tokens: Mapped[int] = mapped_column(Integer, default=1500)
 
 
+class SchemaRegistry(Base, TimestampMixin):
+    """The Confluent Schema Registry, if there is one.
+
+    One row, and entirely optional: without it nothing about Avro appears in the
+    console, which is correct for the many installations that never touch it. The
+    credential is a reference into the secret store, exactly as the AI provider's
+    is -- one mechanism for credentials, not three.
+    """
+
+    __tablename__ = "schema_registry"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(String(512), default="")
+    # none | basic | bearer
+    auth_method: Mapped[str] = mapped_column(String(16), default="none")
+    username: Mapped[str] = mapped_column(String(128), default="")
+    secret_name: Mapped[str | None] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
 class User(Base, TimestampMixin):
     __tablename__ = "users"
 

@@ -421,6 +421,48 @@ class PreviewRequest(BaseModel):
     start: str = "earliest"
 
 
+class RegistryIn(BaseModel):
+    url: str = ""
+    auth_method: str = "none"
+    username: str = ""
+    secret_name: str | None = None
+    enabled: bool = False
+    timeout_seconds: int = 10
+
+
+class RegistryOut(BaseModel):
+    url: str
+    auth_method: str
+    username: str
+    secret_name: str | None = None
+    enabled: bool
+    timeout_seconds: int
+    # True when it is complete enough to use. The catalog editor checks this
+    # rather than inspecting the fields itself.
+    configured: bool = False
+    updated_by: str | None = None
+
+
+class RegistryStatusOut(BaseModel):
+    ok: bool
+    detail: str = ""
+
+
+class SchemaColumnOut(BaseModel):
+    name: str
+    sqlType: str
+    # Why this type, in the schema's own words.
+    note: str = ""
+
+
+class RegistrySchemaOut(BaseModel):
+    subject: str
+    version: int | None = None
+    schema_id: int | None = None
+    columns: list[SchemaColumnOut] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ImportRequest(BaseModel):
     yaml_text: str
     # Defaults to a dry run: this writes over definitions jobs are running from,

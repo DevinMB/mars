@@ -62,6 +62,22 @@ on boot comes up without them the first time someone else's network is slow.
 New connectors need no changes to the console: drop in a jar with a manifest and the
 forms build themselves from it.
 
+### Avro
+
+Flink ships `json` and `csv`; Avro is a separate artifact. Without it a table declaring
+`'format' = 'avro'` is accepted when you save it and fails when a job uses it, which
+looks like your SQL is wrong rather than your cluster being short a jar.
+
+```bash
+./scripts/fetch-formats.sh
+docker compose build jobmanager && docker compose up -d
+```
+
+Then, optionally, point MARS at a **schema registry** under Administration. With one
+configured, a Kafka source using Avro can have its columns read straight from the
+registered schema rather than typed by hand — which matters more for Avro than for JSON,
+because the columns *are* the contract and a mismatch fails at runtime.
+
 ## Backing it up
 
 Two different things, and both matter.

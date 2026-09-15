@@ -80,13 +80,55 @@
         "json",
         "csv",
         "avro",
+        "avro-confluent",
         "raw",
         "debezium-json"
       ],
-      "help": "How records are encoded. Use 'raw' with a single STRING column to pass whole documents through untouched. Leave blank if the definition sets key.format and value.format separately.",
+      "help": "How records are encoded. avro-confluent is the usual choice on Kafka: the schema lives in a registry and each message carries its id. Plain avro is for topics written without one, and then the columns below are the schema. Avro needs its jars in the image -- see scripts/fetch-formats.sh.",
       "satisfiedBy": [
         "value.format"
       ]
+    },
+    {
+      "key": "avro-confluent.url",
+      "label": "Schema registry URL",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Format",
+      "placeholder": "http://schema-registry:8081",
+      "visibleWhen": {
+        "option": "format",
+        "equals": "avro-confluent"
+      },
+      "help": "Where the registry is, as reachable from the TaskManager. Leave blank to use the registry configured under Schema registry."
+    },
+    {
+      "key": "avro-confluent.subject",
+      "label": "Subject",
+      "type": "string",
+      "required": false,
+      "secret": false,
+      "group": "Format",
+      "placeholder": "my-topic-value",
+      "visibleWhen": {
+        "option": "format",
+        "equals": "avro-confluent"
+      },
+      "help": "Which subject a sink registers its schema under. Sources do not need it: each message names its own schema by id."
+    },
+    {
+      "key": "avro-confluent.basic-auth.user-info",
+      "label": "Registry credentials",
+      "type": "string",
+      "required": false,
+      "secret": true,
+      "group": "Format",
+      "visibleWhen": {
+        "option": "format",
+        "equals": "avro-confluent"
+      },
+      "help": "user:password, when the registry needs it. Store it as a secret."
     },
     {
       "key": "json.ignore-parse-errors",

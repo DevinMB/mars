@@ -91,6 +91,14 @@ export const api = {
     request(`/api/users/${encodeURIComponent(username)}/tokens/${encodeURIComponent(name)}`,
             { method: 'DELETE' }),
 
+  // schema registry
+  schemaRegistry: () => request('/api/schema-registry'),
+  setSchemaRegistry: (body) => request('/api/schema-registry', { method: 'PUT', body }),
+  testSchemaRegistry: (body) => request('/api/schema-registry/test', { method: 'POST', body }),
+  registrySubjects: () => request('/api/schema-registry/subjects'),
+  registrySchema: (subject) =>
+    request(`/api/schema-registry/subjects/${encodeURIComponent(subject)}`),
+
   // backup and restore
   // The export is YAML, not JSON, so it bypasses the usual helper.
   exportDefinitions: async () => {

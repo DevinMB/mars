@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import HealthCheck from '../components/HealthCheck'
 import SourcePeek from '../components/SourcePeek'
+import SchemaFill from '../components/SchemaFill'
 import CatalogHistory from '../components/CatalogHistory'
 import ColumnEditor from '../components/ColumnEditor'
 import ConnectorForm from '../components/ConnectorForm'
@@ -177,6 +178,12 @@ export default function CatalogEditor() {
                   The shape of each record. The connector pre-fills what it expects.
                 </p>
                 <ColumnEditor columns={columns} onChange={setColumns} declared={connector.columns} />
+
+                {/* Only for Avro, where the columns are a contract rather than a
+                    convenience, and only when there is a registry to ask. */}
+                {String(values.format || '').startsWith('avro') && (
+                  <SchemaFill topic={values.topic} onColumns={setColumns} />
+                )}
               </div>
             </>
           )}
