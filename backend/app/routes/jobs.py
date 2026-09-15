@@ -154,10 +154,26 @@ async def list_jobs(
     except Exception:
         return out
 
+    running: list[str] = []
     for item in out:
         fid = item.latest_run.flink_job_id if item.latest_run else None
         if fid and fid in live:
             item.live_state = live[fid].state
+            if live[fid].state == "RUNNING":
+                running.append(fid)
+
+    # Checkpoint age is the earliest visible sign that a job has stopped making
+    # progress while still claiming to run, so it belongs on the list rather than
+    # one click into each job.
+    try:
+        ages = await cluster.checkpoint_ages(running)
+    except Exception:
+        return out
+
+    for item in out:
+        fid = item.latest_run.flink_job_id if item.latest_run else None
+        if fid in ages:
+            item.checkpoint_age_ms = ages[fid]
     return out
 
 

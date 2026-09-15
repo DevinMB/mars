@@ -179,6 +179,39 @@ class FlinkClusterClient:
         detail.restarts = _or(restarts, None)
         return detail
 
+    async def checkpoint_ages(self, job_ids: list[str]) -> dict[str, int]:
+        """Milliseconds since each job last completed a checkpoint.
+
+        Read from /checkpoints rather than the lastCheckpointCompletedTimestamp
+        metric. The metric lags: caught reporting 461 completed checkpoints while
+        /checkpoints already showed 462, and an age of 32s when the true age was
+        2s. On a 30s interval that is enough to paint a healthy job as stale,
+        which is the one thing an indicator like this must not do.
+
+        Jobs that fail to answer are simply absent: a missing dot is better than
+        a wrong one.
+        """
+        if not job_ids:
+            return {}
+
+        out: dict[str, int] = {}
+        now = int(time.time() * 1000)
+
+        async def one(c: httpx.AsyncClient, job_id: str) -> None:
+            r = await c.get(f"/jobs/{job_id}/checkpoints")
+            if r.status_code != 200:
+                return
+            latest = (r.json().get("latest") or {}).get("completed") or {}
+            stamp = _int(latest.get("latest_ack_timestamp"))
+            if stamp and stamp > 0:
+                out[job_id] = max(0, now - stamp)
+
+        async with self._client() as c:
+            await asyncio.gather(
+                *(one(c, job_id) for job_id in job_ids), return_exceptions=True
+            )
+        return out
+
     async def cancel(self, job_id: str) -> None:
         async with self._client() as c:
             r = await c.patch(f"/jobs/{job_id}?mode=cancel")

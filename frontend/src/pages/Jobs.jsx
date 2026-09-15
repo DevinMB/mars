@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
-import { relativeTime, duration } from '../lib/format'
+import { relativeTime, duration, millis } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
 
@@ -84,6 +84,26 @@ function ClusterHeading({ target, jobs }) {
   )
 }
 
+// How long since a job last checkpointed, as a dot.
+//
+// The thresholds here are a heuristic, not a judgement: this list does not know
+// each job's configured interval, and fetching it per row would double the
+// requests behind a view that refreshes every ten seconds. The Diagnostics tab
+// does know the interval and is the authority; this is a prompt to go and look.
+function Staleness({ ms }) {
+  if (ms === null || ms === undefined) return null
+  const tone =
+    ms < 120000 ? 'bg-emerald-500'
+      : ms < 600000 ? 'bg-amber-500'
+        : 'bg-red-500'
+  return (
+    <span
+      className={`inline-block w-1.5 h-1.5 rounded-full ${tone} shrink-0`}
+      title={`Last checkpoint ${millis(ms)} ago`}
+    />
+  )
+}
+
 function JobRow({ job, showCluster }) {
   const run = job.latest_run
   return (
@@ -103,7 +123,10 @@ function JobRow({ job, showCluster }) {
         )}
       </td>
       <td>
-        <StatePill state={run?.state} />
+        <span className="inline-flex items-center gap-2">
+          <StatePill state={run?.state} />
+          <Staleness ms={job.checkpoint_age_ms} />
+        </span>
         {run?.restarts > 0 && (
           <span className="ml-2 text-xs text-amber-700">
             {run.restarts} restart{run.restarts === 1 ? '' : 's'}
