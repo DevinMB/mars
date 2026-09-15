@@ -13,6 +13,7 @@ import Secrets from './pages/Secrets'
 import Cluster from './pages/Cluster'
 import Account from './pages/Account'
 import Admin from './pages/Admin'
+import Activity from './pages/Activity'
 import Ai from './pages/Ai'
 
 function Protected({ children }) {
@@ -37,6 +38,7 @@ function Shell() {
       <Route path="/catalog/:name/edit" element={<Protected><CatalogEditor /></Protected>} />
       <Route path="/secrets" element={<Protected><Secrets /></Protected>} />
       <Route path="/cluster" element={<Protected><Cluster /></Protected>} />
+      <Route path="/activity" element={<Protected><Activity /></Protected>} />
       <Route path="/account" element={<Protected><Account /></Protected>} />
       <Route path="/admin" element={<Protected><Admin /></Protected>} />
       <Route path="/ai" element={<Protected><Ai /></Protected>} />

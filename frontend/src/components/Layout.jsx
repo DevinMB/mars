@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth'
 const NAV = [
   { to: '/jobs', label: 'Jobs' },
   { to: '/catalog', label: 'Catalog' },
+  { to: '/activity', label: 'Activity' },
   // Secrets are administrator-only, and the API agrees. Even the names of
   // stored credentials say something about an installation.
   { to: '/secrets', label: 'Secrets', adminOnly: true },

@@ -20,11 +20,13 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 
 ### Still worth doing
 
-- **Sampling in the catalog editor.** "Look inside" exists only in the job editor's
-  sidebar, but defining a source is exactly when you want to see what is in the topic --
-  and it would confirm the connection at the same moment as the health check.
-- **An activity view.** Runs are only visible per job, so "what happened overnight?"
-  means opening every job in turn. One reverse-chronological list would answer it.
+- ~~Sampling in the catalog editor~~ — samples an *unsaved* definition, beside the health
+  check, so one screen answers both "can I reach this?" and "what is in it?". Nothing is
+  created: the form's values are rendered, used once, and discarded.
+- ~~An activity view~~ — every job's runs in one list, newest first, with a filter for
+  what went wrong. Needed one fix worth remembering: `/api/jobs/activity` was declared
+  after `/api/jobs/{name}`, so FastAPI matched the latter and reported "no job named
+  activity".
 - **A CI drift check.** An import dry run with `replace` already reports everything that
   differs; it needs a command and an exit code, not new logic.
 

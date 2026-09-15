@@ -177,6 +177,42 @@ async def list_jobs(
     return out
 
 
+@router.get("/activity")
+def recent_activity(
+    limit: int = 50,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+) -> list[dict]:
+    """Every job's runs, newest first.
+
+    Runs were only reachable one job at a time, so answering "what happened
+    overnight?" meant opening each job in turn. One list answers it.
+    """
+    rows = (
+        db.query(JobRun, Job.name)
+        .join(Job, Job.id == JobRun.job_id)
+        .order_by(JobRun.id.desc())
+        .limit(max(1, min(limit, 500)))
+        .all()
+    )
+    return [
+        {
+            "run_id": run.id,
+            "job": name,
+            "state": run.state,
+            "started_at": run.started_at,
+            "ended_at": run.ended_at,
+            "restarts": run.restarts,
+            "error_summary": run.error_summary,
+            "submitted_by": run.submitted_by,
+            "triggered_by_schedule": run.triggered_by_schedule,
+            "restored_from": run.restored_from,
+            "savepoint_path": run.savepoint_path,
+        }
+        for run, name in rows
+    ]
+
+
 @router.get("/{name}", response_model=JobOut)
 def get_job(
     name: str,
