@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import SqlEditor from '../components/SqlEditor'
+import ValidationPanel from '../components/ValidationPanel'
 import TablePicker from '../components/TablePicker'
 import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 
@@ -20,6 +21,9 @@ export default function JobEditor() {
   const [note, setNote] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [check, setCheck] = useState(null)
+  const [checking, setChecking] = useState(false)
+  const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -36,6 +40,40 @@ export default function JobEditor() {
       }
     })().catch((err) => setError(err.message))
   }, [editing])
+
+  // Checking costs a Flink planner round trip, so it waits for a pause in typing
+  // rather than firing on every keystroke. Each result carries the text it was
+  // computed from: replies can arrive out of order, and showing "compiles" for a
+  // statement two edits old is worse than showing nothing.
+  const latest = useRef(0)
+  const runCheck = useCallback(async (sqlText, catalogRefs, targetName, jobName, type) => {
+    if (!sqlText.trim()) { setCheck(null); setDirty(false); return }
+    const token = ++latest.current
+    setChecking(true)
+    try {
+      const r = await api.validateDraft({
+        name: jobName || 'draft',
+        sql_text: sqlText,
+        catalog_refs: catalogRefs,
+        target_name: targetName || null,
+        job_type: type,
+      })
+      if (token === latest.current) { setCheck(r); setDirty(false) }
+    } catch {
+      // A console that cannot reach its own API should not bury the editor in
+      // red; saving will report the real problem.
+      if (token === latest.current) setCheck(null)
+    } finally {
+      if (token === latest.current) setChecking(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!sql.trim()) { setCheck(null); return }
+    setDirty(true)
+    const t = setTimeout(() => runCheck(sql, refs, target, editing || name, jobType), 700)
+    return () => clearTimeout(t)
+  }, [sql, refs, target, jobType, name, editing, runCheck])
 
   const toggleRef = (entryName) =>
     setRefs((prev) =>
@@ -72,9 +110,16 @@ export default function JobEditor() {
         title={editing ? `Edit ${editing}` : 'New job'}
         back={{ to: editing ? `/jobs/${encodeURIComponent(editing)}` : '/jobs', label: editing ? editing : 'Jobs' }}
         actions={
-          <button className="btn-primary" disabled={saving || !name || !sql} onClick={save}>
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Create job'}
-          </button>
+          <>
+            {check && !check.ok && !dirty && (
+              <span className="text-xs text-red-700 self-center mr-1">
+                Will not compile
+              </span>
+            )}
+            <button className="btn-primary" disabled={saving || !name || !sql} onClick={save}>
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Create job'}
+            </button>
+          </>
         }
       />
 
@@ -140,7 +185,15 @@ export default function JobEditor() {
               The tables you tick on the right are created before this runs, so refer to
               them by name.
             </p>
-            <SqlEditor value={sql} onChange={setSql} rows={14} />
+            <SqlEditor
+              value={sql}
+              onChange={setSql}
+              rows={14}
+              marker={check && !check.ok && check.line
+                ? { line: check.line, message: check.error }
+                : null}
+            />
+            <ValidationPanel result={check} checking={checking} dirty={dirty} />
           </div>
 
           {editing && (

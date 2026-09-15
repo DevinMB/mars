@@ -201,3 +201,51 @@ def _dedupe(warnings: list[Warning_]) -> list[Warning_]:
             out.append(w)
     # Danger first: the console shows these in order.
     return sorted(out, key=lambda w: 0 if w.level == "danger" else 1)
+
+_COLUMN_LINE = re.compile(r"^\s*`?(?P<name>[A-Za-z_][\w$]*)`?\s+[A-Za-z]")
+_RESERVED = {"primary", "watermark", "constraint", "unique", "partitioned", "with"}
+
+
+def column_names(sql_text: str) -> list[str]:
+    """The column names declared by a CREATE TABLE.
+
+    Only used to suggest a correction when someone misspells one, so a definition
+    this cannot parse costs nothing -- it just means no suggestion.
+    """
+    open_paren = sql_text.find("(")
+    if open_paren < 0:
+        return []
+    depth = 0
+    end = -1
+    for i, ch in enumerate(sql_text[open_paren:], start=open_paren):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end < 0:
+        return []
+
+    out: list[str] = []
+    depth = 0
+    current = ""
+    for ch in sql_text[open_paren + 1 : end]:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(current)
+            current = ""
+        else:
+            current += ch
+    out.append(current)
+
+    names = []
+    for part in out:
+        m = _COLUMN_LINE.match(part)
+        if m and m.group("name").lower() not in _RESERVED:
+            names.append(m.group("name"))
+    return names

@@ -18,10 +18,13 @@ from ..deps import (
     get_targets,
     require_writer,
 )
-from ..guards import check_job
+from ..explain import Context as ExplainContext
+from ..explain import explain
+from ..guards import check_job, column_names
 from ..models import CatalogEntry, Job, JobRun, JobVersion, RunState, Schedule
 from ..schemas import (
     CheckpointOut,
+    DraftJobIn,
     DiagnosticsOut,
     JobIn,
     JobOut,
@@ -281,9 +284,129 @@ async def validate_job(
     try:
         await targets.for_job_submitter(db, job).validate(db, job)
     except SubmissionError as exc:
-        return ValidateResponse(
-            ok=False, error=exc.summary, detail=exc.detail, warnings=warnings
-        )
+        return _validated(db, job.sql_text, _refs(job), warnings, exc)
+    return ValidateResponse(ok=True, warnings=warnings)
+
+
+def _explanation_context(db: Session, refs: list[str]) -> ExplainContext:
+    """What the console knows that Flink does not.
+
+    Table suggestions come from the whole catalog rather than only the tables this
+    job declares, because the most common cause of "no such table" is precisely
+    that the table exists but was never ticked.
+    """
+    tables = [name for (name,) in db.query(CatalogEntry.name).all()]
+    columns: list[str] = []
+    if refs:
+        for entry in db.query(CatalogEntry).filter(CatalogEntry.name.in_(refs)).all():
+            columns.extend(column_names(entry.sql_text))
+    return ExplainContext(tables=tables, columns=sorted(set(columns)))
+
+
+def _statement_offset(sql_text: str, statement: str) -> tuple[int, int]:
+    """Where the failing statement begins inside what the user typed.
+
+    Flink numbers lines from the start of the statement it was given, and a job's
+    SQL is split before submission, so for anything but the first statement those
+    numbers land on the wrong line in the editor. Returns (lines, columns) to add.
+    When the statement cannot be located the offset is zero and the marker simply
+    stays where Flink put it -- a marker slightly off is better than none.
+    """
+    needle = (statement or "").strip()
+    if not needle:
+        return 0, 0
+    index = sql_text.find(needle)
+    if index < 0:
+        head = needle.split("\n")[0].strip()
+        index = sql_text.find(head) if head else -1
+        if index < 0:
+            return 0, 0
+    before = sql_text[:index]
+    line_offset = before.count("\n")
+    column_offset = index - (before.rfind("\n") + 1)
+    return line_offset, column_offset
+
+
+def _validated(
+    db: Session, sql_text: str, refs: list[str], warnings: list[WarningOut],
+    exc: SubmissionError | None,
+) -> ValidateResponse:
+    if exc is None:
+        return ValidateResponse(ok=True, warnings=warnings)
+
+    ex = explain(exc.summary, exc.detail or "", _explanation_context(db, refs))
+
+    line, column = ex.line, ex.column
+    end_line, end_column = ex.end_line, ex.end_column
+    if line is not None:
+        dl, dc = _statement_offset(sql_text, getattr(exc, "statement", ""))
+        # A column offset only applies to the statement's own first line.
+        column = (column + dc) if line == 1 and column is not None else column
+        if end_line == 1 and end_column is not None:
+            end_column = end_column + dc
+        line += dl
+        if end_line is not None:
+            end_line += dl
+
+    return ValidateResponse(
+        ok=False,
+        error=ex.message,
+        original_error=ex.original,
+        detail=exc.detail or None,
+        hint=ex.hint,
+        code=ex.code,
+        line=line,
+        column=column,
+        end_line=end_line,
+        end_column=end_column,
+        suggestions=ex.suggestions,
+        warnings=warnings,
+    )
+
+
+@router.post("/validate", response_model=ValidateResponse)
+async def validate_draft(
+    body: DraftJobIn,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+) -> ValidateResponse:
+    """Checks a job that has not been saved, so the editor can check as you type.
+
+    Unsaved on purpose: the existing per-job endpoint can only check something
+    already written to the database, which means the first time anyone learns a
+    statement is wrong is after they have saved it and navigated away.
+    """
+    if not body.sql_text.strip():
+        return ValidateResponse(ok=True)
+
+    # Transient and never added to the session: this must not create a job, and
+    # must not leave a half-built one behind if validation throws.
+    draft = Job(
+        name=body.name or "draft",
+        sql_text=body.sql_text,
+        job_type=body.job_type,
+        catalog_refs=json.dumps(body.catalog_refs),
+        target_name=body.target_name or None,
+    )
+    existing = db.query(Job).filter(Job.name == draft.name).one_or_none()
+    if existing is not None:
+        # So "another job writes this topic" does not fire against itself.
+        draft.id = existing.id
+
+    warnings = [
+        WarningOut(level=w.level, code=w.code, message=w.message)
+        for w in check_job(db, draft)
+    ]
+    try:
+        submitter = targets.for_job_submitter(db, draft)
+    except UnknownTargetError as exc:
+        return ValidateResponse(ok=False, error=str(exc), warnings=warnings)
+
+    try:
+        await submitter.validate(db, draft)
+    except SubmissionError as exc:
+        return _validated(db, body.sql_text, body.catalog_refs, warnings, exc)
     return ValidateResponse(ok=True, warnings=warnings)
 
 

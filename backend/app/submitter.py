@@ -29,10 +29,14 @@ log = logging.getLogger(__name__)
 
 
 class SubmissionError(RuntimeError):
-    def __init__(self, summary: str, detail: str = "") -> None:
+    def __init__(self, summary: str, detail: str = "", statement: str = "") -> None:
         super().__init__(summary)
         self.summary = summary
         self.detail = detail
+        # The statement that failed. Flink reports a line and column relative to
+        # this text, not to what the user typed, so the console needs it to put a
+        # marker in the right place.
+        self.statement = statement
 
 
 class JobSubmitter:
@@ -92,6 +96,7 @@ class JobSubmitter:
             raise SubmissionError(
                 self._store.redact(db, exc.summary),
                 detail=self._store.redact(db, exc.detail),
+                statement=statements[-1] if statements else "",
             ) from exc
         finally:
             await self._gateway.close_session(session)

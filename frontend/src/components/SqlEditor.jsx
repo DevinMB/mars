@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 // A deliberately small SQL editor: a monospace textarea with a line gutter and
 // tab handling. It keeps the bundle light and behaves predictably; a full
 // language server is a later upgrade, not a prerequisite.
-export default function SqlEditor({ value, onChange, rows = 16, readOnly = false }) {
+export default function SqlEditor({ value, onChange, rows = 16, readOnly = false, marker = null }) {
   const taRef = useRef(null)
   const gutterRef = useRef(null)
 
@@ -38,9 +38,20 @@ export default function SqlEditor({ value, onChange, rows = 16, readOnly = false
         className="mono select-none text-right text-slate-400 bg-slate-50 border-r
                    border-slate-200 py-3 px-2 overflow-hidden leading-relaxed"
       >
-        {Array.from({ length: lines }, (_, i) => (
-          <div key={i}>{i + 1}</div>
-        ))}
+        {Array.from({ length: lines }, (_, i) => {
+          // The line Flink objected to, called out where the eye already is.
+          const flagged = marker && marker.line === i + 1
+          return (
+            <div
+              key={i}
+              // The number stays: knowing it is line 7 is the point of a gutter.
+              className={flagged ? 'text-red-600 font-semibold bg-red-50 -mx-2 px-2' : undefined}
+              title={flagged ? marker.message : undefined}
+            >
+              {i + 1}
+            </div>
+          )
+        })}
       </div>
       <textarea
         ref={taRef}

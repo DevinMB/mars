@@ -326,9 +326,31 @@ class WarningOut(BaseModel):
 
 class ValidateResponse(BaseModel):
     ok: bool
+    # Rewritten into plain language where the failure is one MARS recognises;
+    # otherwise Flink's own words, unchanged.
     error: str | None = None
     detail: str | None = None
+    hint: str | None = None
+    code: str | None = None
+    # Flink's own wording, kept so a rewrite can never hide the real message.
+    original_error: str | None = None
+    # 1-based, already mapped onto the statement as the user typed it.
+    line: int | None = None
+    column: int | None = None
+    end_line: int | None = None
+    end_column: int | None = None
+    suggestions: list[str] = Field(default_factory=list)
     warnings: list[WarningOut] = Field(default_factory=list)
+
+
+class DraftJobIn(BaseModel):
+    """An unsaved job, for checking while it is still being written."""
+
+    name: str = "draft"
+    sql_text: str = ""
+    catalog_refs: list[str] = Field(default_factory=list)
+    target_name: str | None = None
+    job_type: str = "streaming"
 
 
 class ClusterOut(BaseModel):

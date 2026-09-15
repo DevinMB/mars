@@ -28,6 +28,42 @@ Ordered roughly by when each becomes necessary rather than by appeal.
   already has somewhere alerts go. The console's job is to explain a problem once someone
   is looking at it -- which is what the Diagnostics tab now does.
 
+- ~~Check the statement while it is being written~~ **DONE.** Validation existed but
+  ran only against a *saved* job, from the job's detail page -- so MARS could tell you
+  your job read and wrote the same topic, but only once you had written it, saved it and
+  navigated away. The editor now checks on a pause in typing, marks the line, and shows
+  the semantic warnings live.
+
+- ~~Flink errors in plain language~~ **DONE.** "Non-query expression encountered in
+  illegal context" is a typo; "doesn't support consuming update changes which is produced
+  by node GroupAggregate" is an aggregate feeding an append-only sink. Both are precise
+  and neither says what to change. Recognised failures are rewritten with a suggested
+  fix, near-miss table and column names are offered, and Flink's own wording stays one
+  click away. Unrecognised messages pass through untouched -- a translation layer that
+  swallows what it does not understand hides the one error nobody anticipated.
+
+  Every pattern was taken from a failure produced against this Flink version rather than
+  written from memory: the wording changes between releases, and a table built from
+  recollection quietly stops matching.
+
+- **Preview the output before deploying.** The largest remaining gap in authoring. Today
+  a statement goes from the editor to production with nothing in between; the SQL Gateway
+  can run a bounded SELECT, so the editor could show twenty real rows first. The same
+  mechanism gives the Catalog a "peek at this source" -- five live messages from a topic
+  -- which is how someone works out what to write in the first place.
+
+- **Schema-aware completion.** MARS knows every table and column in the catalog, which
+  Flink's own UI does not. Completing table names after FROM, then that table's columns,
+  is the feature people expect from a managed service and cannot get self-hosted. Needs a
+  real editor component; CodeMirror 6 rather than Monaco, for bundle size.
+
+- **An MCP server over the existing API.** The pieces an agent needs are already built:
+  the catalog describes every table, the manifests describe every connector option, and
+  `/api/jobs/validate` lets an agent check its own work before a human sees it. Exposing
+  that over MCP lets people build jobs from the tools they already use, without MARS
+  shipping an LLM integration or paying for inference. The rule that makes it safe is
+  that generated SQL lands in the editor for approval and is never submitted directly.
+
 - **Savepoint-aware restarts.** Cancel-with-savepoint and resume-from-savepoint through
   the console. Supervisor mode currently resubmits from scratch, which is wrong for any
   job with meaningful state. Now also a prerequisite for credential rotation, since
@@ -37,6 +73,33 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 - **Connector health checks.** Manifests already declare `supportsHealthCheck`. Probing a
   connector's target *before* submitting turns "job restarts forever" into "this database
   does not exist" at the moment a user presses Save.
+
+## Identity
+
+- **An acorn for the mark.** Flink's own logo is a squirrel, and a squirrel's acorn is
+  the obvious companion: a small, self-contained thing that gets stored, kept and found
+  again later, which is a fair description of a stream pipeline's state. It reads as
+  deliberately paired with Flink rather than derivative of it. Worth drawing properly as
+  a vector mark in the existing orange, keeping the current silhouette weight so the
+  favicon still reads at 16px.
+
+  One caution to respect: the association must stay visual. Flink is an Apache Software
+  Foundation trademark, so the mark can nod to the ecosystem, but the *name* cannot imply
+  endorsement -- "MARS, for Apache Flink®" stays the formulation.
+
+- **The name, and whether it expands.** MARS is settled as a name. The backronym is not,
+  and it should stay optional: Kafka, Flink, Grafana and Splunk all mean nothing, and the
+  tagline carries the explanation instead. If one is wanted, the honest candidates
+  describe the product rather than decorate it:
+
+  | Expansion | Note |
+  |---|---|
+  | **M**anage **A**nd **R**un **S**treams | Plainest, and literally what it does |
+  | **M**onitoring, **A**uthoring & **R**unning **S**treams | Maps to the actual tabs |
+  | **M**anaged **A**ccessible **R**ealtime **S**treams | Most marketing-shaped |
+
+  "Marsden" fits as the company or suite name above the product -- Marsden's MARS -- which
+  is the usual way that wish gets granted without straining the acronym.
 
 ## Execution targets — running jobs on specific workers — **DONE**
 
