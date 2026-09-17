@@ -1,3 +1,4 @@
+import { useConfirm } from './InteractionProvider'
 import { useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { Alert, Badge, Spinner } from './ui'
@@ -31,6 +32,7 @@ function Group({ label, items, tone }) {
 // installation and reviewing changes in version control, and they want the same
 // mechanism.
 export default function BackupPanel() {
+  const confirm = useConfirm()
   const [text, setText] = useState('')
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(null)
@@ -74,8 +76,7 @@ export default function BackupPanel() {
     result && (result.created.length > 0 || result.updated.length > 0)
 
   return (
-    <div className="card p-5 mb-4">
-      <h2 className="font-medium text-slate-900 mb-1">Backup and restore</h2>
+    <div className="max-w-3xl">
       <p className="text-xs text-slate-500 mb-4">
         Every catalog entry, job, schedule and cluster, as YAML. Safe to commit:
         secret <em>values</em> are never included — the file lists the names it needs
@@ -114,6 +115,7 @@ export default function BackupPanel() {
 
         <textarea
           className="input mono h-28 resize-y"
+          aria-label="YAML definitions to import"
           placeholder="…or paste an export here"
           value={text}
           spellCheck={false}
@@ -137,17 +139,17 @@ export default function BackupPanel() {
         <div className="flex items-center gap-2 mt-3">
           <button className="btn-secondary text-sm" onClick={check}
                   disabled={!text.trim() || busy === 'check'}>
-            {busy === 'check' ? 'Checking…' : 'Check what it would change'}
+            {busy === 'check' ? 'Checking…' : 'Preview changes'}
           </button>
           <button
             className={changesSomething ? 'btn-primary text-sm' : 'btn-secondary text-sm'}
             disabled={!result || !result.dry_run || !result.ok || busy === 'apply' || !changesSomething}
-            onClick={() => {
+            onClick={async () => {
               const summary = [
                 result.created.length ? `create ${result.created.length}` : null,
                 result.updated.length ? `overwrite ${result.updated.length}` : null,
               ].filter(Boolean).join(' and ')
-              if (!confirm(`This will ${summary}. Continue?`)) return
+              if (!await confirm(`This will ${summary}. Continue?`)) return
               apply()
             }}
           >
@@ -160,7 +162,7 @@ export default function BackupPanel() {
           <div className="mt-4 border-t border-slate-100 pt-3">
             <div className="flex items-center gap-2 mb-1">
               <h4 className="text-sm font-medium text-slate-900">
-                {result.dry_run ? 'What this would do' : 'Applied'}
+                {result.dry_run ? 'Proposed changes' : 'Applied'}
               </h4>
               {result.dry_run
                 ? <Badge tone="slate">nothing written</Badge>

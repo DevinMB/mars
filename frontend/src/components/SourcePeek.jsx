@@ -36,7 +36,7 @@ export default function SourcePeek({ connector, options, columns, name }) {
         <button type="button" className="btn-secondary text-sm" onClick={run} disabled={busy}>
           {busy ? 'Reading…' : 'Look inside'}
         </button>
-        <select className="input w-auto text-sm" value={start} disabled={busy}
+        <select aria-label="Sample starting position" className="input w-auto text-sm" value={start} disabled={busy}
                 onChange={(e) => setStart(e.target.value)}>
           <option value="earliest">from the start</option>
           <option value="latest">only new records</option>

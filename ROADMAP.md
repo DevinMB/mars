@@ -6,6 +6,12 @@ Ordered roughly by when each becomes necessary rather than by appeal.
 
 ### Polish, done
 
+- **UI consistency pass (2026-09-16).** Grouped Settings, permanent Account access,
+  quieter headings and forms, optional AI drafting, consistent list filters and actions,
+  readable theme colors, accessible labels and confirmations, and unsaved-editor
+  protection. Legacy settings URLs redirect. Browser regression checks live in
+  `frontend/tests/browser_smoke.py` and intercept all API traffic with synthetic data.
+
 - ~~Catalog entries are versioned~~ — the asymmetry was backwards: one entry feeds many
   jobs, so the edit with the widest blast radius was the one with no history. The editor
   now also names the jobs a change will affect, before the save.

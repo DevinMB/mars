@@ -14,6 +14,7 @@ export default function PromptPanel({
   enabled, refs, completions, onDraft, jobType, targetName, jobName, documentFields,
   currentSql = '',
 }) {
+  const [focused, setFocused] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
@@ -49,29 +50,13 @@ export default function PromptPanel({
     }
   }
 
-  if (!enabled) {
-    return (
-      <div className="card p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <h2 className="font-medium text-slate-900">Describe it instead</h2>
-          <Badge tone="slate">Off</Badge>
-        </div>
-        <p className="text-xs text-slate-500">
-          Say what the job should do in plain words and have a draft written for you.
-          An administrator turns this on under AI by choosing a model.
-        </p>
-      </div>
-    )
-  }
+  if (!enabled) return null
 
   return (
-    <div className="card p-5">
-      <h2 className="font-medium text-slate-900 mb-1">Describe it instead</h2>
+    <div className="px-4 pb-4">
       <p className="text-xs text-slate-500 mb-3">
-        Say what the job should do, or what to change about it. Type{' '}
-        <code className="mono">@</code> to refer to a table, column or document field.
-        Whatever comes back is compiled first and shown as a diff — nothing is applied
-        until you say so, and nothing is ever run.
+        Describe a query or a change. Use <code className="mono">@</code> for tables and columns.
+        Review the proposed SQL before applying it. This does not run the job.
       </p>
 
       {refs.length === 0 && (
@@ -86,6 +71,8 @@ export default function PromptPanel({
       <div className="relative">
         <textarea
           ref={taRef}
+          aria-label="Describe the SQL to draft"
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           className="input mono h-24 resize-y"
           value={prompt}
           spellCheck={false}
@@ -95,7 +82,7 @@ export default function PromptPanel({
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => { completion.onKeyDown(e) }}
         />
-        {completion.open && (
+        {focused && completion.open && (
           <CompletionList
             matches={completion.matches}
             active={completion.active}
@@ -154,7 +141,7 @@ export default function PromptPanel({
           onClick={draft}
           disabled={busy || !prompt.trim() || refs.length === 0}
         >
-          {busy ? 'Drafting…' : 'Draft the statement'}
+          {busy ? 'Drafting…' : 'Draft SQL'}
         </button>
         {busy && <Spinner label="Asking the model, then compiling the answer" />}
       </div>

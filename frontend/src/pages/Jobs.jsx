@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import { relativeTime, duration, millis } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
 
-const COLUMNS = 7
+const COLUMNS = 6
 
 // A job with no target named runs on the default cluster. Resolving that here
 // rather than showing a blank keeps every job attributable to exactly one
@@ -111,14 +112,14 @@ function JobRow({ job, showCluster }) {
     <tr className="hover:bg-slate-50/60">
       <td>
         <Link to={`/jobs/${encodeURIComponent(job.name)}`}
-              className="font-medium text-slate-900 hover:text-brand-700">
+              className="block max-w-48 sm:max-w-md break-words font-medium text-slate-900 hover:text-brand-700">
           {job.name}
         </Link>
         {job.description && (
-          <div className="text-xs text-slate-500 truncate max-w-md">{job.description}</div>
+          <div className="text-xs text-slate-500 truncate max-w-48 sm:max-w-md">{job.description}</div>
         )}
         {run?.state === 'restarting' && run.error_summary && (
-          <div className="text-xs text-amber-700 truncate max-w-md mt-0.5">
+          <div className="text-xs text-amber-700 truncate max-w-48 sm:max-w-md mt-0.5">
             {run.error_summary}
           </div>
         )}
@@ -132,14 +133,14 @@ function JobRow({ job, showCluster }) {
           </span>
         )}
       </td>
-      <td className="text-slate-600">
+      {showCluster && <td className="text-slate-600">
         {/* Redundant once the rows are already grouped under their cluster. */}
         {showCluster ? (
           job.target_name
             ? <span className="mono text-[12px] text-slate-700">{job.target_name}</span>
             : <span className="text-slate-400">default</span>
         ) : null}
-      </td>
+      </td>}
       <td className="text-slate-600">{job.job_type}</td>
       <td className="text-slate-600">{relativeTime(run?.started_at)}</td>
       <td className="text-slate-600">{run ? duration(run.started_at, run.ended_at) : '—'}</td>
@@ -155,6 +156,10 @@ function JobRow({ job, showCluster }) {
 }
 
 export default function Jobs() {
+  const { user } = useAuth()
+  const canWrite = ['admin', 'editor'].includes(user?.role)
+  const [state, setState] = useState('all')
+  const [reload, setReload] = useState(0)
   const [jobs, setJobs] = useState(null)
   const [targets, setTargets] = useState([])
   const [error, setError] = useState(null)
@@ -181,7 +186,7 @@ export default function Jobs() {
     // Jobs change without the user doing anything, so the list refreshes itself.
     const t = setInterval(load, 10000)
     return () => { alive = false; clearInterval(t) }
-  }, [])
+  }, [reload])
 
   const defaultName = useMemo(
     () => targets.find((t) => t.is_default)?.name || 'default',
@@ -196,6 +201,7 @@ export default function Jobs() {
     if (!jobs) return []
     const q = query.trim().toLowerCase()
     return jobs.filter((j) => {
+      if (state !== 'all' && (j.latest_run?.state || 'never') !== state) return false
       if (multi && cluster !== 'all' && clusterOf(j, defaultName) !== cluster) return false
       if (!q) return true
       return (
@@ -207,7 +213,7 @@ export default function Jobs() {
         clusterOf(j, defaultName).toLowerCase().includes(q)
       )
     })
-  }, [jobs, query, cluster, multi, defaultName])
+  }, [jobs, query, cluster, multi, defaultName, state])
 
   const counts = useMemo(() => {
     const out = {}
@@ -218,7 +224,7 @@ export default function Jobs() {
     return out
   }, [jobs, defaultName])
 
-  if (error) return <Alert level="danger" title="Could not load jobs">{error}</Alert>
+  if (error && !jobs) return <Alert level="danger" title="Could not load jobs">{error}</Alert>
   if (!jobs) return <Spinner label="Loading jobs" />
 
   const grouped = multi && cluster === 'all'
@@ -244,19 +250,23 @@ export default function Jobs() {
         title="Jobs"
         subtitle={jobs.length ? `${jobs.length} job${jobs.length === 1 ? '' : 's'}${
           multi ? ` across ${targets.length} clusters` : ''}` : null}
-        actions={
-          <>
-            {jobs.length > 6 && (
-              <div className="w-56">
-                <SearchInput value={query} onChange={setQuery}
-                             placeholder="Filter jobs…" count={shown.length} />
-              </div>
-            )}
-            <Link to="/jobs/new" className="btn-primary">New job</Link>
-          </>
-        }
+        actions={canWrite && <Link to="/jobs/new" className="btn-primary">New job</Link>}
       />
+      {error && <div className="mb-4"><Alert level="warning" title="Updates paused">
+        Showing the last loaded jobs. {error}
+        <button className="link ml-2" onClick={() => setReload((n) => n + 1)}>Retry</button>
+      </Alert></div>}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="w-full sm:w-72"><SearchInput value={query} onChange={setQuery} placeholder="Search jobs…" count={shown.length} /></div>
+        <select className="input w-auto" aria-label="Filter by state" value={state} onChange={(e) => setState(e.target.value)}>
+          <option value="all">All states</option>
+          {['running', 'restarting', 'failed', 'finished', 'canceled', 'submitting', 'never'].map((s) =>
+            <option key={s} value={s}>{({ never: 'Never run', canceled: 'Cancelled', submitting: 'Starting' })[s] || s[0].toUpperCase() + s.slice(1)}</option>)}
+        </select>
+        <span className="text-xs text-slate-500 sm:ml-auto">{shown.length} of {jobs.length} jobs</span>
+      </div>
 
+      <p className="sm:hidden text-xs text-slate-500 mb-3">Scroll the table to see all columns.</p>
       {multi && (
         <ClusterTabs targets={targets} counts={counts} value={cluster}
                      onChange={setCluster} total={jobs.length} />
@@ -265,18 +275,18 @@ export default function Jobs() {
       {jobs.length === 0 ? (
         <EmptyState
           title="No jobs yet"
-          action={<Link to="/jobs/new" className="btn-primary">Create your first job</Link>}
+          action={canWrite && <Link to="/jobs/new" className="btn-primary">Create your first job</Link>}
         >
           A job is a SQL statement that moves data from a source to a sink. Define those
           in the Catalog first, then write the statement that connects them.
         </EmptyState>
       ) : (
-        <div className="card overflow-hidden">
+        <div className="table-scroll">
           <table className="tbl">
             <thead>
               <tr>
-                <th>Job</th><th>State</th><th>{grouped ? '' : 'Runs on'}</th><th>Type</th>
-                <th>Last run</th><th>For</th><th>Schedule</th>
+                <th>Job</th><th>State</th>{!grouped && <th>Cluster</th>}<th>Type</th>
+                <th>Last run</th><th>Duration</th><th>Schedule</th>
               </tr>
             </thead>
 
@@ -310,7 +320,7 @@ export default function Jobs() {
                       </td>
                     </tr>
                     {orphans.map((job) => (
-                      <JobRow key={job.id} job={job} showCluster />
+                      <JobRow key={job.id} job={job} showCluster={false} />
                     ))}
                   </tbody>
                 )}
@@ -319,13 +329,13 @@ export default function Jobs() {
               <tbody>
                 {shown.length === 0 ? (
                   <tr>
-                    <td colSpan={COLUMNS} className="px-4 py-8 text-sm text-slate-500 text-center">
+                    <td colSpan={grouped ? COLUMNS : COLUMNS + 1} className="px-4 py-8 text-sm text-slate-500 text-center">
                       No jobs match.
                     </td>
                   </tr>
                 ) : (
                   shown.map((job) => (
-                    <JobRow key={job.id} job={job} showCluster={!multi || cluster === 'all'} />
+                    <JobRow key={job.id} job={job} showCluster={!grouped} />
                   ))
                 )}
               </tbody>

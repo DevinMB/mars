@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import { duration, relativeTime } from '../lib/format'
 import { Alert, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
@@ -17,6 +18,8 @@ const isProblem = (r) =>
 // opening each job in turn — which is the question an operator actually asks, and
 // the one the console was worst at answering.
 export default function Activity() {
+  const { user } = useAuth()
+  const canWrite = ['admin', 'editor'].includes(user?.role)
   const [runs, setRuns] = useState(null)
   const [busy, setBusy] = useState(null)
   const [reload, setReload] = useState(0)
@@ -61,24 +64,26 @@ export default function Activity() {
             <input type="checkbox" checked={onlyProblems}
                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
                    onChange={(e) => setOnlyProblems(e.target.checked)} />
-            Only what went wrong
+            Outstanding issues
             {problems > 0 && <span className="text-xs text-slate-400">({problems})</span>}
           </label>
         }
       />
 
+      {error && <div className="mb-4"><Alert level="warning" title="Updates paused">Showing the last loaded activity. {error}</Alert></div>}
       {runs.length === 0 ? (
         <EmptyState title="Nothing has run yet">
           Runs from every job appear here as they happen.
         </EmptyState>
       ) : shown.length === 0 ? (
-        <EmptyState title="Nothing has gone wrong">
+        <EmptyState title="No outstanding issues">
           Nothing outstanding in the last {runs.length} runs. Failures that a later
           run has already replaced are not counted.
         </EmptyState>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="table-scroll">
+          <table className="tbl">
+            <thead><tr><th>State</th><th>Job</th><th>Started</th><th>Duration</th><th>Triggered by</th><th><span className="sr-only">Actions</span></th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((r) => (
                 <tr key={r.run_id} className="hover:bg-slate-50/60">
@@ -128,7 +133,7 @@ export default function Activity() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap w-px">
-                    {['failed', 'restarting'].includes(r.state) && !r.superseded && (
+                    {canWrite && ['failed', 'restarting'].includes(r.state) && !r.superseded && (
                       r.acknowledged ? (
                         <button className="text-xs link" disabled={busy === r.run_id}
                                 onClick={() => acknowledge(r, true)}>Undo</button>

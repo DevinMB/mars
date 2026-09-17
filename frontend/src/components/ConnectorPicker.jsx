@@ -54,6 +54,7 @@ export default function ConnectorPicker({ connectors, value, onChange, disabled 
               <button
                 key={c.connector}
                 type="button"
+                aria-pressed={on}
                 onClick={() => onChange(c.connector)}
                 className={`text-left px-3 py-2.5 rounded-md border transition-colors ${
                   on

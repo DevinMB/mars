@@ -49,7 +49,7 @@ export default function TypePicker({ value, onChange, id }) {
   const known = TYPES.find((t) => t.sql === (value || '').trim().toUpperCase())
 
   return (
-    <div className="relative w-56 shrink-0" ref={wrap}>
+    <div className="relative w-44 max-w-full shrink-0" ref={wrap} onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); e.stopPropagation() } }}>
       <div className="flex">
         {/* Still typeable: ARRAY<STRING>, ROW<...> and DECIMAL with its own
             precision are all valid and none of them belong in a dropdown. */}
@@ -79,14 +79,14 @@ export default function TypePicker({ value, onChange, id }) {
       )}
 
       {open && (
-        <div className="absolute z-20 mt-1 w-[19rem] right-0 border border-slate-200
+        <div className="absolute z-20 mt-1 w-[19rem] max-w-[calc(100vw-2rem)] left-0 sm:left-auto sm:right-0 border border-slate-200
                         rounded-md bg-surface shadow-card overflow-hidden">
           <ul className="max-h-72 overflow-y-auto">
             {TYPES.map((t) => (
               <li key={t.sql}>
                 <button
                   type="button"
-                  onMouseDown={(e) => { e.preventDefault(); onChange(t.sql); setOpen(false) }}
+                  onClick={() => { onChange(t.sql); setOpen(false) }}
                   className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 ${
                     t.sql === value ? 'bg-brand-50' : ''
                   }`}

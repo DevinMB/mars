@@ -1,9 +1,13 @@
+import { useConfirm, useNotify } from '../components/InteractionProvider'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { relativeTime } from '../lib/format'
 import { Alert, EmptyState, Field, PageHeader, Spinner } from '../components/ui'
 
 export default function Secrets() {
+  const confirm = useConfirm()
+  const notify = useNotify()
+  const [busy, setBusy] = useState(false)
   const [secrets, setSecrets] = useState(null)
   const [error, setError] = useState(null)
   const [adding, setAdding] = useState(false)
@@ -19,26 +23,29 @@ export default function Secrets() {
 
   const save = async (e) => {
     e.preventDefault()
+    setBusy(true)
     try {
       await api.putSecret(name, value, description || undefined)
       setName(''); setValue(''); setDescription(''); setAdding(false)
-      load()
-    } catch (err) { setError(err.message) }
+      load(); notify('Secret saved.')
+    } catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
   const remove = async (n) => {
-    if (!confirm(`Delete secret "${n}"?`)) return
-    try { await api.deleteSecret(n); load() }
-    catch (err) { setError(err.message) }
+    if (!await confirm({ title: `Delete secret ${n}?`, message: 'This permanently removes the stored credential. Secrets still in use cannot be deleted.', confirmLabel: 'Delete secret' })) return
+    setBusy(true)
+    try { await api.deleteSecret(n); load(); notify('Secret deleted.') }
+    catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
+  if (error && !secrets) return <Alert level="danger">{error}</Alert>
   if (!secrets) return <Spinner label="Loading secrets" />
 
   return (
     <>
       <PageHeader
         title="Secrets"
-        subtitle="Referenced from table definitions, never stored in them. Administrators only."
+        subtitle="Store credentials and reference them in your table definitions."
         actions={!adding && <button className="btn-primary" onClick={() => setAdding(true)}>New secret</button>}
       />
 
@@ -46,10 +53,8 @@ export default function Secrets() {
 
       <div className="mb-6">
         <Alert level="info">
-          A secret is written once and never readable again — not through the API, not by
-          an administrator. Table definitions hold a reference like{' '}
-          <code className="mono">{'${secret:couch_password}'}</code>, and the value is
-          substituted only as a job is handed to Flink.
+          Secret values cannot be retrieved after saving. Reference them as{' '}
+          <code className="mono">{'${secret:couch_password}'}</code>.
         </Alert>
       </div>
 
@@ -68,7 +73,7 @@ export default function Secrets() {
                    onChange={(e) => setDescription(e.target.value)} placeholder="CouchDB admin on 192.168.1.250" />
           </Field>
           <div className="flex gap-2">
-            <button className="btn-primary" disabled={!name || !value}>Save secret</button>
+            <button className="btn-primary" disabled={busy || !name || !value}>{busy ? 'Saving…' : 'Save secret'}</button>
             <button type="button" className="btn-secondary" onClick={() => setAdding(false)}>Cancel</button>
           </div>
         </form>
@@ -79,10 +84,10 @@ export default function Secrets() {
           Store connection passwords here so they stay out of your SQL.
         </EmptyState>
       ) : secrets.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="table-scroll">
+          <table className="tbl">
             <thead className="bg-slate-50 border-b border-slate-200">
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-left text-xs text-slate-500">
                 <th className="px-4 py-2.5 font-semibold">Name</th>
                 <th className="px-4 py-2.5 font-semibold">Description</th>
                 <th className="px-4 py-2.5 font-semibold">Updated</th>
@@ -96,7 +101,7 @@ export default function Secrets() {
                   <td className="px-4 py-3 text-slate-600">{s.description || '—'}</td>
                   <td className="px-4 py-3 text-slate-500">{relativeTime(s.updated_at)}</td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => remove(s.name)}
+                    <button disabled={busy} onClick={() => remove(s.name)}
                             className="text-slate-400 hover:text-red-600 text-sm">Delete</button>
                   </td>
                 </tr>

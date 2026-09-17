@@ -28,9 +28,9 @@ export default function OutputPreview({ sql, refs, targetName }) {
       <div className="flex items-center gap-3 flex-wrap">
         <button className="btn-secondary text-sm" onClick={run}
                 disabled={busy || !sql.trim() || refs.length === 0}>
-          {busy ? 'Running…' : 'Show me the output'}
+          {busy ? 'Running…' : 'Preview output'}
         </button>
-        <select className="input w-auto text-sm" value={start}
+        <select aria-label="Preview starting position" className="input w-auto text-sm" value={start}
                 onChange={(e) => setStart(e.target.value)} disabled={busy}>
           <option value="earliest">from the start of the topic</option>
           <option value="latest">only new records</option>

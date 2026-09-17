@@ -16,11 +16,12 @@ export default function ColumnEditor({ columns, onChange, declared = [] }) {
       {columns.map((col, i) => {
         const spec = declaredByName[col.name]
         return (
-          <div key={i} className="flex items-start gap-2">
-            <div className="flex-1">
+          <div key={i} className="flex flex-wrap sm:flex-nowrap items-start gap-2">
+            <div className="flex-1 min-w-28">
               <input
                 className="input mono"
                 placeholder="column_name"
+                aria-label={`Column ${i + 1} name`}
                 value={col.name}
                 onChange={(e) => update(i, { name: e.target.value })}
               />

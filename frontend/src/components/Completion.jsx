@@ -133,7 +133,7 @@ export function useCompletion({ value, onChange, taRef, items, mode = 'sql' }) {
     if (e.key === 'ArrowUp') {
       e.preventDefault(); setActive((i) => (i - 1 + matches.length) % matches.length); return true
     }
-    if (e.key === 'Enter' || e.key === 'Tab') {
+    if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) {
       // Enter must still make a new line when nothing is being completed, which
       // is why this only runs while the list is open.
       e.preventDefault(); accept(matches[Math.min(active, matches.length - 1)]); return true
@@ -158,7 +158,8 @@ export function CompletionList({ matches, active, onPick }) {
               type="button"
               // Mouse down rather than click: the textarea must not lose focus
               // before the insertion happens.
-              onMouseDown={(e) => { e.preventDefault(); onPick(item) }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onPick(item)}
               className={`w-full text-left px-3 py-1.5 flex items-baseline gap-2 ${
                 i === active ? 'bg-brand-50' : 'hover:bg-slate-50'
               }`}

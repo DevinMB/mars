@@ -22,7 +22,7 @@ export default function HealthCheck({ connector, options }) {
 
   return (
     <div className="mt-4 border-t border-slate-200 pt-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button type="button" className="btn-secondary text-sm" onClick={run} disabled={busy}>
           {busy ? 'Checking…' : 'Test connection'}
         </button>

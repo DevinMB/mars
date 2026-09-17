@@ -53,13 +53,13 @@ function HeaderRows({ value, onChange }) {
         return (
           <div key={i} className="flex gap-2">
             <input
-              className="input mono flex-1" placeholder="header" value={k}
+              className="input mono flex-1 min-w-0" aria-label={`Header ${i + 1} name`} placeholder="header" value={k}
               onChange={(e) => (isNew
                 ? onChange({ ...value, [e.target.value]: '' })
                 : rename(k, e.target.value))}
             />
             <input
-              className="input mono flex-1" placeholder="value" value={v}
+              className="input mono flex-1 min-w-0" aria-label={`Header ${i + 1} value`} placeholder="value" value={v}
               disabled={isNew}
               onChange={(e) => onChange({ ...value, [k]: e.target.value })}
             />
@@ -147,8 +147,8 @@ export default function Ai() {
   return (
     <>
       <PageHeader
-        title="AI"
-        subtitle="The model MARS uses, wherever it uses one."
+        title="AI provider"
+        subtitle="Configure the model used for SQL drafting."
         actions={
           <>
             <button className="btn-secondary" onClick={test} disabled={testing}>
@@ -187,9 +187,9 @@ export default function Ai() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card p-5">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
+        <div className="space-y-6 min-w-0">
+          <div className="form-section">
             <h2 className="font-medium text-slate-900 mb-1">Provider</h2>
             <p className="text-xs text-slate-500 mb-4">{kind.note}</p>
 
@@ -239,12 +239,10 @@ export default function Ai() {
             </div>
           </div>
 
-          <div className="card p-5">
+          <div className="form-section">
             <h2 className="font-medium text-slate-900 mb-1">Authentication</h2>
             <p className="text-xs text-slate-500 mb-4">
-              The credential itself lives in the secret store, encrypted, like any
-              other. Only its name is held here, and it is never sent back to this
-              page.
+              Choose a stored secret for the provider credential.
             </p>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -297,7 +295,7 @@ export default function Ai() {
             </div>
           </div>
 
-          <div className="card p-5">
+          <div className="form-section">
             <h2 className="font-medium text-slate-900 mb-4">Generation</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Temperature"
@@ -314,7 +312,7 @@ export default function Ai() {
         </div>
 
         <aside className="space-y-4">
-          <div className="card p-4">
+          <div className="border-b border-slate-200 pb-5">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-slate-900">Status</h3>
               {form.enabled ? <Badge tone="accent">On</Badge> : <Badge tone="slate">Off</Badge>}
@@ -333,7 +331,7 @@ export default function Ai() {
             </label>
           </div>
 
-          <div className="card p-4">
+          <div className="border-b border-slate-200 pb-5">
             <h3 className="text-sm font-medium text-slate-900 mb-2">Where this is used</h3>
             <ul className="text-xs text-slate-500 space-y-1.5">
               <li>
@@ -346,10 +344,7 @@ export default function Ai() {
               </li>
             </ul>
             <p className="text-xs text-slate-500 mt-2">
-              Both compile the result before showing it, and both land in the editor
-              for you to approve. Nothing is ever run. Features ask for the configured
-              model rather than carrying an endpoint of their own, so changing it here
-              changes it everywhere.
+              Review and apply proposed SQL in the job editor. Drafting does not run jobs.
             </p>
           </div>
 

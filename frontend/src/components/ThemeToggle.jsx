@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { applyTheme, readTheme, watchSystem, writeTheme } from '../lib/theme'
+import { useState } from 'react'
+import { readTheme, writeTheme } from '../lib/theme'
 
 const OPTIONS = [
   { id: 'light', label: 'Light' },
@@ -10,12 +10,6 @@ const OPTIONS = [
 export default function ThemeToggle() {
   const [theme, setTheme] = useState(readTheme)
 
-  useEffect(() => {
-    applyTheme(theme)
-    // "Auto" has to keep meaning auto while the page is open, or a laptop that
-    // dims at sunset leaves the console behind.
-    return watchSystem(() => applyTheme('system'))
-  }, [theme])
 
   return (
     <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-slate-100"

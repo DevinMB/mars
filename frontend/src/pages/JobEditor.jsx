@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import useUnsavedChanges from '../lib/useUnsavedChanges'
+import { useNotify } from '../components/InteractionProvider'
 import SqlEditor from '../components/SqlEditor'
 import ValidationPanel from '../components/ValidationPanel'
 import TablePicker from '../components/TablePicker'
@@ -13,6 +15,9 @@ import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 export default function JobEditor() {
   const { name: editing } = useParams()
   const navigate = useNavigate()
+  const notify = useNotify()
+  const [loaded, setLoaded] = useState(false)
+  const [initial, setInitial] = useState(null)
 
   const [entries, setEntries] = useState(null)
   const [targets, setTargets] = useState([])
@@ -66,6 +71,7 @@ export default function JobEditor() {
         // the columns instead.
         if ((j.catalog_refs || []).length) setPickerOpen(false)
       }
+      setLoaded(true)
     })().catch((err) => setError(err.message))
   }, [editing, cloneOf])
 
@@ -125,6 +131,11 @@ export default function JobEditor() {
       prev.includes(entryName) ? prev.filter((r) => r !== entryName) : [...prev, entryName],
     )
 
+  const serialized = JSON.stringify({ name, description, jobType, target, sql, refs, note })
+  useEffect(() => { if (loaded && initial === null) setInitial(serialized) }, [loaded, initial, serialized])
+  const unsaved = initial !== null && initial !== serialized
+  const allowNavigation = useUnsavedChanges(unsaved)
+
   const save = async () => {
     setSaving(true)
     setError(null)
@@ -136,6 +147,8 @@ export default function JobEditor() {
     try {
       if (editing) await api.updateJob(editing, body)
       else await api.createJob(body)
+      allowNavigation()
+      notify(editing ? 'Changes saved.' : 'Job created.')
       navigate(`/jobs/${encodeURIComponent(name)}`)
     } catch (err) {
       setError(err.message)
@@ -144,16 +157,15 @@ export default function JobEditor() {
     }
   }
 
-  if (!entries) return <Spinner />
-
-  const sources = entries.filter((e) => e.kind === 'source')
-  const sinks = entries.filter((e) => e.kind === 'sink')
+  if (!loaded && error) return <Alert level="danger">{error}</Alert>
+  if (!loaded || !entries) return <Spinner />
 
   return (
     <>
       <PageHeader
         title={editing ? `Edit ${editing}` : cloneOf ? `Copy of ${cloneOf}` : 'New job'}
         back={{ to: editing ? `/jobs/${encodeURIComponent(editing)}` : '/jobs', label: editing ? editing : 'Jobs' }}
+        subtitle={unsaved ? 'Unsaved changes' : null}
         actions={
           <>
             {check && !check.ok && !dirty && (
@@ -170,9 +182,9 @@ export default function JobEditor() {
 
       {error && <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card p-6 space-y-4">
+      <div className="editor-grid">
+        <div className="space-y-6 min-w-0">
+          <div className="form-section grid gap-4 sm:grid-cols-2">
             <Field label="Name" required>
               <input className="input mono" value={name} disabled={!!editing}
                      onChange={(e) => setName(e.target.value)} placeholder="whispers_to_couch" />
@@ -184,9 +196,7 @@ export default function JobEditor() {
               <Field
                 label="Runs on"
                 hint={
-                  'Which Flink cluster receives this job. A cluster schedules tasks into ' +
-                  'any free slot it has, so choosing where a job runs means choosing the ' +
-                  'cluster \u2014 not a machine within one.'
+                  'The cluster that will run this job.'
                 }
               >
                 <select className="input" value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -216,7 +226,7 @@ export default function JobEditor() {
               <div className="flex gap-2">
                 {['streaming', 'batch'].map((t) => (
                   <button key={t} type="button" onClick={() => setJobType(t)}
-                          className={jobType === t ? 'btn-primary' : 'btn-secondary'}>
+                          aria-pressed={jobType === t} className={`choice ${jobType === t ? 'choice-selected' : ''}`}>
                     {t === 'streaming' ? 'Streaming' : 'Batch'}
                   </button>
                 ))}
@@ -224,29 +234,31 @@ export default function JobEditor() {
             </Field>
           </div>
 
-          <PromptPanel
-            enabled={Boolean(ai?.configured)}
-            refs={refs}
-            completions={completions}
-            jobType={jobType}
-            targetName={target}
-            jobName={editing || name}
-            documentFields={docFields}
-            currentSql={sql}
-            onDraft={(text) => { setSql(text); setCheck(null) }}
-          />
 
-          <div className="card p-6">
+          <div className="form-section">
             <h2 className="font-medium text-slate-900 mb-1">Statement</h2>
             <p className="text-xs text-slate-500 mb-4">
-              The tables you tick on the right are created before this runs, so refer to
-              them by name.
+              Use the selected tables and columns to write your query.
             </p>
+            {ai?.configured && <details className="mb-4 border border-slate-200 rounded-lg bg-surface">
+              <summary className="cursor-pointer px-4 py-3 text-[13px] font-medium">Draft with AI</summary>
+              <PromptPanel
+                enabled={Boolean(ai?.configured)}
+                refs={refs}
+                completions={completions}
+                jobType={jobType}
+                targetName={target}
+                jobName={editing || name}
+                documentFields={docFields}
+                currentSql={sql}
+                onDraft={(text) => { setSql(text); setCheck(null) }}
+              />
+            </details>}
             <SqlEditor
               ref={sqlRef}
               value={sql}
               onChange={setSql}
-              rows={14}
+              rows={18}
               marker={check && !check.ok && check.line
                 ? { line: check.line, message: check.error }
                 : null}
@@ -257,8 +269,8 @@ export default function JobEditor() {
           </div>
 
           {editing && (
-            <div className="card p-6">
-              <Field label="What changed?" hint="Saved with this version, so the history reads like a story.">
+            <div className="form-section">
+              <Field label="Change note" hint="Included in version history.">
                 <input className="input" value={note} onChange={(e) => setNote(e.target.value)}
                        placeholder="Switched the sink to the -flink database" />
               </Field>
@@ -271,14 +283,14 @@ export default function JobEditor() {
               once, but the columns are consulted continuously while writing, and
               they were previously below a long list and off the bottom of the
               screen. */}
-          <div className="card p-4 sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto">
+          <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] overflow-y-auto border border-slate-200 bg-surface rounded-lg p-4">
             {refs.length > 0 && (
               <div className="mb-3">
                 <h3 className="text-sm font-medium text-slate-900 mb-1">
                   Columns available
                 </h3>
                 <p className="text-xs text-slate-500 mb-2">
-                  Click one to drop it into the statement at the cursor.
+                  Select a column to insert it at the cursor.
                 </p>
                 {refs
                   .map((r) => entries.find((e) => e.name === r))
@@ -292,11 +304,12 @@ export default function JobEditor() {
             <div className={refs.length > 0 ? 'border-t border-slate-200 pt-3' : ''}>
               <button
                 type="button"
+                aria-expanded={pickerOpen}
                 onClick={() => setPickerOpen((v) => !v)}
                 className="w-full flex items-center justify-between gap-2 text-left"
               >
                 <span className="text-sm font-medium text-slate-900">
-                  Tables this job uses
+                  Tables
                 </span>
                 <span className="text-xs text-slate-500 shrink-0">
                   {refs.length > 0 && `${refs.length} selected`}
@@ -307,7 +320,7 @@ export default function JobEditor() {
               {pickerOpen && (
                 <>
                   <p className="text-xs text-slate-500 mt-1 mb-3">
-                    Their definitions are replayed each time the job runs.
+                    Select the sources and sinks for this job.
                   </p>
                   <TablePicker
                     entries={entries}

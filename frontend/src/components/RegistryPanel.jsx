@@ -28,7 +28,7 @@ export default function RegistryPanel({ secretNames = [] }) {
   }, [])
 
   if (error && !form) return <Alert level="danger">{error}</Alert>
-  if (!form) return <div className="card p-5 mb-4"><Spinner /></div>
+  if (!form) return <div className="max-w-3xl"><Spinner /></div>
 
   const needsSecret = form.auth_method !== 'none'
   const set = (patch) => { setForm({ ...form, ...patch }); setResult(null); setSaved(false) }
@@ -41,13 +41,9 @@ export default function RegistryPanel({ secretNames = [] }) {
   }
 
   return (
-    <div className="card p-5 mb-4">
-      <h2 className="font-medium text-slate-900 mb-1">Schema registry</h2>
+    <div className="max-w-3xl">
       <p className="text-xs text-slate-500 mb-4">
-        Optional. With one configured, a Kafka source using Avro can have its columns
-        read straight from the registered schema instead of typed by hand — which
-        matters more for Avro than for JSON, because with Avro the columns are the
-        contract and a mismatch fails at runtime rather than arriving empty.
+        Connect a registry to fill Kafka source columns from an Avro schema.
       </p>
 
       {error && <div className="mb-3"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}

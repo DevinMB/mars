@@ -1,3 +1,4 @@
+import { useConfirm } from '../components/InteractionProvider'
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -24,7 +25,7 @@ function TargetCard({ target, canManage, onEdit, onRemove }) {
   const labels = Object.entries(target.labels || {})
   return (
     <div className="card p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="mono text-[13px] font-medium text-slate-900">{target.name}</span>
@@ -55,7 +56,7 @@ function TargetCard({ target, canManage, onEdit, onRemove }) {
         </div>
       </div>
 
-      <dl className="grid grid-cols-3 gap-3 mt-3 text-[12px]">
+      <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3 text-[12px]">
         <div>
           <dt className="text-slate-500">Jobs</dt>
           <dd className="text-slate-900 tabular-nums">{target.job_count}</dd>
@@ -86,6 +87,7 @@ function TargetCard({ target, canManage, onEdit, onRemove }) {
 }
 
 export default function Cluster() {
+  const confirm = useConfirm()
   const { user } = useAuth()
   // Targets decide where jobs run and what URL they are submitted to, so only an
   // administrator may change them. The API enforces this; hiding the controls
@@ -118,7 +120,7 @@ export default function Cluster() {
   }
 
   const remove = async (target) => {
-    if (!confirm(`Remove target "${target.name}"? Jobs running on it keep running, `
+    if (!await confirm(`Remove target "${target.name}"? Jobs running on it keep running, `
                  + 'but MARS will lose track of them.')) return
     try {
       await api.deleteTarget(target.name)
@@ -172,11 +174,7 @@ export default function Cluster() {
       </div>
 
       <h2 className="eyebrow-accent mb-3">Execution targets</h2>
-      <p className="text-[12px] text-slate-500 mb-3 max-w-2xl">
-        A target is a Flink cluster jobs can be sent to. A cluster schedules tasks into
-        whatever slot is free, so choosing where a job runs means choosing the cluster —
-        there is no supported way to pin a job to one machine inside a cluster.
-      </p>
+      <p className="text-[13px] text-slate-500 mb-4">Each target is a Flink cluster that can run your jobs.</p>
       <div className="grid gap-3 lg:grid-cols-2 mb-8">
         {targets.map((t) => (
           <TargetCard
@@ -189,12 +187,11 @@ export default function Cluster() {
         ))}
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="table-scroll">
         <div className="px-4 py-3 border-b border-slate-200">
           <h2 className="font-medium text-slate-900 text-[14px]">Installed connectors</h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            Each contributes its own form. Drop a connector JAR containing a manifest into
-            the Flink library directory and it appears here.
+            Available source and sink connectors.
           </p>
         </div>
         <table className="tbl">

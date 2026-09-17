@@ -15,6 +15,7 @@ export default function SearchInput({ value, onChange, placeholder = 'Filter…'
         className="input pl-8 pr-14 py-1.5 text-[13px]"
         value={value}
         placeholder={placeholder}
+        aria-label={placeholder.replace(/…$/, '')}
         onChange={(e) => onChange(e.target.value)}
       />
       {value ? (

@@ -37,8 +37,7 @@ export default function Account() {
         {error && <Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert>}
         {user?.must_change_password && !done && (
           <Alert level="warning">
-            This account still uses the password generated at install. Change it before
-            anyone else gets hold of the server log.
+            Replace your generated password with one of your own.
           </Alert>
         )}
         <form onSubmit={submit} className="card p-6 space-y-4">

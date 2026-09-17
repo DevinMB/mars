@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import useUnsavedChanges from '../lib/useUnsavedChanges'
+import { useNotify } from '../components/InteractionProvider'
 import HealthCheck from '../components/HealthCheck'
 import SourcePeek from '../components/SourcePeek'
 import SchemaFill from '../components/SchemaFill'
@@ -14,6 +16,9 @@ export default function CatalogEditor() {
   const { name: editing } = useParams()
   const [params] = useSearchParams()
   const navigate = useNavigate()
+  const notify = useNotify()
+  const [loaded, setLoaded] = useState(false)
+  const [initial, setInitial] = useState(null)
 
   const [kind, setKind] = useState(params.get('kind') || 'source')
   const [connectors, setConnectors] = useState(null)
@@ -61,6 +66,7 @@ export default function CatalogEditor() {
         const declared = all.find((c) => c.connector === e.connector)?.columns || []
         setColumns(own.length ? own : declared.map((c) => ({ name: c.name, sqlType: c.sqlType })))
       }
+      setLoaded(true)
     })().catch((err) => setError(err.message))
   }, [editing, cloneOf])
 
@@ -69,17 +75,20 @@ export default function CatalogEditor() {
     [connectors, connectorId],
   )
 
-  // Choosing a connector seeds the columns it declares, so the common case needs
-  // no typing at all.
-  useEffect(() => {
-    if (!connector || editing) return
-    setColumns(connector.columns.map((c) => ({ name: c.name, sqlType: c.sqlType })))
-    const defaults = {}
-    for (const o of connector.options) if (o.default) defaults[o.key] = o.default
-    setValues(defaults)
-  }, [connector, editing])
+  const chooseConnector = (id) => {
+    setConnectorId(id)
+    const selected = connectors.find((c) => c.connector === id)
+    setColumns((selected?.columns || []).map((c) => ({ name: c.name, sqlType: c.sqlType })))
+    setValues(Object.fromEntries((selected?.options || []).filter((o) => o.default != null)
+      .map((o) => [o.key, o.default])))
+  }
 
   const available = (connectors || []).filter((c) => c.kinds.includes(kind))
+
+  const serialized = JSON.stringify({ name, description, kind, connectorId, values, columns, note })
+  useEffect(() => { if (loaded && initial === null) setInitial(serialized) }, [loaded, initial, serialized])
+  const unsaved = initial !== null && initial !== serialized
+  const allowNavigation = useUnsavedChanges(unsaved)
 
   const save = async () => {
     setSaving(true)
@@ -89,6 +98,8 @@ export default function CatalogEditor() {
     try {
       if (editing) await api.updateCatalog(editing, body)
       else await api.createCatalog(body)
+      allowNavigation()
+      notify(editing ? 'Changes saved.' : 'Catalog entry created.')
       navigate('/catalog')
     } catch (err) {
       setError(err.message)
@@ -97,13 +108,15 @@ export default function CatalogEditor() {
     }
   }
 
-  if (!connectors) return <Spinner />
+  if (!loaded && error) return <Alert level="danger">{error}</Alert>
+  if (!loaded || !connectors) return <Spinner />
 
   return (
     <>
       <PageHeader
         title={editing ? `Edit ${editing}` : cloneOf ? `Copy of ${cloneOf}` : `New ${kind}`}
         back={{ to: '/catalog', label: 'Catalog' }}
+        subtitle={unsaved ? 'Unsaved changes' : null}
         actions={
           <button className="btn-primary" disabled={saving || !name || !connectorId} onClick={save}>
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Create'}
@@ -113,9 +126,9 @@ export default function CatalogEditor() {
 
       {error && <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="card p-6 space-y-4">
+      <div className="editor-grid">
+        <div className="space-y-6 min-w-0">
+          <div className="form-section grid gap-4 sm:grid-cols-2">
             {!editing && (
               <Field label="Kind">
                 <div className="flex gap-2">
@@ -124,7 +137,7 @@ export default function CatalogEditor() {
                       key={k}
                       type="button"
                       onClick={() => { setKind(k); setConnectorId(''); }}
-                      className={kind === k ? 'btn-primary' : 'btn-secondary'}
+                      aria-pressed={kind === k} className={`choice ${kind === k ? 'choice-selected' : ''}`}
                     >
                       {k === 'source' ? 'Source' : 'Sink'}
                     </button>
@@ -143,19 +156,19 @@ export default function CatalogEditor() {
                      placeholder="What this reads from, in plain words" />
             </Field>
 
-            <Field label="Connector" required>
+            <div className="sm:col-span-2"><Field label="Connector" required>
               <ConnectorPicker
                 connectors={available}
                 value={connectorId}
-                onChange={setConnectorId}
+                onChange={chooseConnector}
                 disabled={!!editing}
               />
-            </Field>
+            </Field></div>
           </div>
 
           {connector && (
             <>
-              <div className="card p-6">
+              <div className="form-section">
                 <h2 className="font-medium text-slate-900 mb-4">Connection</h2>
                 <ConnectorForm
                   connector={connector}
@@ -172,7 +185,7 @@ export default function CatalogEditor() {
                 )}
               </div>
 
-              <div className="card p-6">
+              <div className="form-section">
                 <h2 className="font-medium text-slate-900 mb-1">Columns</h2>
                 <p className="text-xs text-slate-500 mb-4">
                   The shape of each record. The connector pre-fills what it expects.
@@ -191,9 +204,9 @@ export default function CatalogEditor() {
 
         <aside className="space-y-4">
           {editing && (
-            <div className="card p-4">
-              <Field label="What changed?"
-                     hint="Saved with this version, so the history reads like a story.">
+            <div className="border-b border-slate-200 pb-4">
+              <Field label="Change note"
+                     hint="Included in version history.">
                 <input className="input" value={note}
                        onChange={(e) => setNote(e.target.value)}
                        placeholder="Pointed at the new topic" />
@@ -202,7 +215,7 @@ export default function CatalogEditor() {
           )}
 
           {connector?.description && (
-            <div className="card p-4">
+            <div className="border-b border-slate-200 pb-4">
               <h3 className="text-sm font-medium text-slate-900 mb-1">{connector.displayName}</h3>
               <p className="text-xs text-slate-600">{connector.description}</p>
               {connector.docsUrl && (
@@ -213,10 +226,10 @@ export default function CatalogEditor() {
               )}
             </div>
           )}
-          <div className="card p-4">
+          <div className="border-b border-slate-200 pb-4">
             <h3 className="text-sm font-medium text-slate-900 mb-2">Generated SQL</h3>
             <p className="text-xs text-slate-500 mb-3">
-              MARS writes this for you. It is saved as text, so you can edit it by hand later.
+              A summary of the table definition.
             </p>
             <CodeBlock className="text-xs">
               {connectorId && name

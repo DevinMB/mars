@@ -42,8 +42,7 @@ export default function Login() {
             <div className="text-lg font-semibold text-slate-900 tracking-tight leading-tight">
               MARS
             </div>
-            <div className="text-[12px] text-slate-500">Marsden Apache Real-time Streaming</div>
-            <div className="mx-auto mt-2 h-0.5 w-10 rounded-full bg-accent-500/70" />
+            <div className="text-[12px] text-slate-500">Stream pipelines for Apache Flink®</div>
           </div>
         </div>
 
@@ -62,10 +61,10 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-xs text-slate-400 text-center mt-4">
-          On a new install, the first administrator's password is printed once in the
-          server log.
-        </p>
+        <details className="text-xs text-slate-500 text-center mt-5">
+          <summary className="cursor-pointer">First time signing in?</summary>
+          <p className="mt-2 leading-relaxed">Find the initial administrator password in the server log, or ask your administrator for an account.</p>
+        </details>
       </div>
     </div>
   )

@@ -17,17 +17,24 @@
     --s-100: 241 245 249;
     --s-200: 226 232 240;
     --s-300: 203 213 225;
-    --s-400: 148 163 184;
-    --s-500: 100 116 139;
+    --s-400: 94 109 130;
+    --s-500: 94 109 130;
     --s-600: 71 85 105;
     --s-700: 51 65 85;
     --s-800: 30 41 59;
     --s-900: 15 23 42;
     --surface: 255 255 255;
+    --action: 194 65 12;
+    --action-hover: 154 52 18;
+    --brand-ink: 154 52 18;
+    --brand-strong: 124 45 18;
+    --brand-border: 254 215 170;
+
 
     --code-bg: 15 23 42;
     --code-fg: 241 245 249;
 
+    --brand-100: 255 237 213;
     --brand-50: 255 247 237;
     --accent-50: 255 247 237;
     --red-50: 254 242 242;
@@ -55,13 +62,19 @@
     --s-100: 34 34 38;
     --s-200: 48 48 54;
     --s-300: 66 66 74;
-    --s-400: 128 128 138;
+    --s-400: 156 156 166;
     --s-500: 156 156 166;
     --s-600: 182 182 192;
     --s-700: 208 208 216;
     --s-800: 228 228 234;
     --s-900: 244 244 247;
     --surface: 31 31 35;
+    --action: 194 65 12;
+    --action-hover: 154 52 18;
+    --brand-ink: 253 186 116;
+    --brand-strong: 255 237 213;
+    --brand-border: 111 66 35;
+
 
     /* Still the darkest thing on the page, just not black-on-black. */
     --code-bg: 15 15 18;
@@ -69,6 +82,7 @@
 
     /* Tints become dark washes of the same hue. The text that sits on them is
        lightened to match, or the alert reads as a hole in the page. */
+    --brand-100: 64 38 20;
     --brand-50: 43 26 16;
     --accent-50: 43 26 16;
     --red-50: 48 20 20;
@@ -98,44 +112,69 @@
 @layer components {
   /* Surfaces lean on hairline borders rather than shadow, which keeps dense
      screens calm when several panels sit next to each other. */
-  .card { @apply bg-surface border border-slate-200 rounded-lg shadow-card; }
+  .card { @apply bg-surface border border-slate-200 rounded-lg; }
 
-  .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px]
-          font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-          focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40; }
+  .btn { @apply inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px]
+          font-medium justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+          focus-visible:ring-2 focus-visible:ring-brand-500/40; }
   /* The one loud element on a page. Orange because that is the product's
      colour, not because orange means anything in particular. */
-  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800
-                  shadow-sm shadow-brand-600/20; }
+  .btn-primary { @apply btn text-white; background: rgb(var(--action)); }
+  .btn-primary:hover, .btn-primary:active { background: rgb(var(--action-hover)); }
   .btn-secondary { @apply btn bg-surface text-slate-700 border border-slate-300
                     hover:bg-slate-50 hover:border-slate-400; }
   .btn-danger { @apply btn bg-surface text-red-700 border border-red-300 hover:bg-red-50; }
 
   .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 bg-surface text-[13px]
            text-slate-900 placeholder:text-slate-400 transition-shadow
-           focus:outline-none focus:ring-2 focus:ring-brand-500/25 focus:border-brand-400; }
+           focus:ring-2 focus:ring-brand-500/25 focus:border-brand-400; }
 
   /* Inline links: slate that warms on hover. A coloured link in every table cell
      would be noise next to an orange button. */
   .link { @apply text-slate-700 hover:text-brand-700 underline-offset-2 hover:underline
           transition-colors; }
   .label { @apply block text-[13px] font-medium text-slate-700 mb-1; }
-  .hint { @apply text-[11px] text-slate-500 mt-1 leading-snug; }
+  .hint { @apply text-[12px] text-slate-500 mt-1.5 leading-relaxed; }
   .mono { @apply font-mono text-[12.5px]; }
 
-  /* Section labels: small, spaced, quiet. Used above field groups and table
-     sections so the eye can skip between them. */
-  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-wider text-slate-500; }
-  /* Section headings inside panels carry a short accent tick on the left. */
-  .eyebrow-accent { @apply eyebrow relative pl-2.5
-                     before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2
-                     before:h-2.5 before:w-0.5 before:rounded-full before:bg-accent-500/70; }
+  /* Quiet section labels; headings and spacing carry the hierarchy. */
+  .eyebrow { @apply text-[12px] font-medium text-slate-500; }
+  .eyebrow-accent { @apply text-[13px] font-semibold text-slate-700; }
 
   /* Dense list tables. */
   .tbl { @apply w-full text-[13px]; }
-  .tbl thead tr { @apply text-left text-[11px] uppercase tracking-wider text-slate-500
+  .tbl thead tr { @apply text-left text-[12px] text-slate-500
                    bg-slate-50 border-b border-slate-200; }
   .tbl th { @apply px-4 py-2 font-semibold; }
-  .tbl td { @apply px-4 py-2.5 align-top; }
+  .tbl td { @apply px-4 py-3 align-top; }
   .tbl tbody tr { @apply border-b border-slate-100 last:border-0 hover:bg-slate-50/60; }
+}
+
+@layer base {
+  :root { color-scheme: light; }
+  .dark { color-scheme: dark; }
+  button, a, input, textarea, select, summary { touch-action: manipulation; }
+  :focus-visible { outline: 2px solid rgb(var(--brand-ink)); outline-offset: 3px; }
+  input[type="checkbox"], input[type="radio"] { accent-color: rgb(var(--action)); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  }
+}
+@layer components {
+  .nav-link { @apply flex items-center px-1.5 sm:px-3 border-b-2 border-transparent text-[12px] sm:text-[13px] font-medium text-slate-500 hover:text-slate-900; }
+  .nav-link-active { @apply border-brand-500 text-slate-900; }
+  .skip-link { @apply fixed -top-20 left-4 z-50 bg-surface px-4 py-2 rounded-md focus:top-3; }
+  .action-menu { @apply fixed z-40 w-60 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-surface p-1.5 shadow-lg text-[13px]; }
+  .action-menu > button:disabled { @apply opacity-50 cursor-not-allowed; }
+  .action-menu > a, .action-menu > button { @apply flex w-full text-left items-center px-3 py-2.5 rounded-md hover:bg-slate-100; }
+  .confirmation { @apply bg-surface text-slate-900 border border-slate-200 rounded-xl p-6 shadow-xl w-[28rem] max-w-[calc(100%-2rem)]; }
+  .confirmation::backdrop { background: rgb(0 0 0 / 0.5); }
+  .table-scroll { @apply relative overflow-x-auto rounded-lg border border-slate-200 bg-surface; }
+  .table-scroll table { min-width: 640px; }
+  .form-section { @apply border-b border-slate-200 pb-6; }
+  .choice { @apply btn bg-surface border border-slate-300 text-slate-600; }
+  .choice-selected { @apply bg-slate-100 text-slate-900 border-slate-500; }
+  .editor-grid { @apply grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]; }
+  .editor-grid > * { min-width: 0; }
+  .settings-nav { @apply border-b border-slate-200 pb-5 lg:border-b-0 lg:border-r lg:pr-5; }
 }

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useId } from 'react'
 import { CompletionList, useCompletion } from './Completion'
 
 // A deliberately small SQL editor: a monospace textarea with a line gutter and
@@ -9,6 +9,10 @@ function SqlEditorInner(
   ref,
 ) {
   const taRef = useRef(null)
+  const [focused, setFocused] = useState(false)
+  const escapeTab = useRef(false)
+  const [tabHint, setTabHint] = useState(false)
+  const hintId = useId()
   // The parent needs the caret position to insert a column name where the
   // cursor actually is, rather than appending to the end.
   useImperativeHandle(ref, () => taRef.current, [])
@@ -30,8 +34,15 @@ function SqlEditorInner(
   })
 
   const onKeyDown = (e) => {
-    // The completion list claims Tab and Enter only while it is open, so both
-    // keys keep their normal behaviour the rest of the time.
+    if (e.key === 'Escape') {
+      completion.onKeyDown(e)
+      escapeTab.current = true; setTabHint(true)
+      return
+    }
+    if (e.key === 'Tab' && (e.shiftKey || escapeTab.current)) {
+      escapeTab.current = false; setTabHint(false)
+      return
+    }
     if (completion.onKeyDown(e)) return
     if (e.key !== 'Tab' || readOnly) return
     // Tab indents rather than leaving the field: this is an editor, not a form.
@@ -70,18 +81,23 @@ function SqlEditorInner(
       </div>
       <textarea
         ref={taRef}
+        aria-label="SQL statement"
+        aria-describedby={readOnly ? undefined : hintId}
+        onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); escapeTab.current = false; setTabHint(false) }}
         value={value}
         readOnly={readOnly}
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         rows={rows}
-        className="flex-1 mono p-3 leading-relaxed resize-y focus:outline-none
+        className="min-w-0 flex-1 mono p-3 leading-relaxed resize-y focus:outline-none
                    text-slate-800 bg-transparent"
         placeholder="INSERT INTO my_sink SELECT … FROM my_source"
       />
     </div>
-    {completion.open && (
+    {!readOnly && <p id={hintId} className="hint">{tabHint ? 'Press Tab to leave the editor.' : 'Tab indents. Escape, then Tab leaves the editor; Shift+Tab goes back.'}</p>}
+    {focused && completion.open && (
       <CompletionList
         matches={completion.matches}
         active={completion.active}

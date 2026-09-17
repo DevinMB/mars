@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useConfirm } from '../components/InteractionProvider'
+import { Fragment, useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import BackupPanel from '../components/BackupPanel'
-import RegistryPanel from '../components/RegistryPanel'
 import { useAuth } from '../lib/auth'
 import { relativeTime } from '../lib/format'
+import ActionMenu from '../components/ActionMenu'
 import SecretOnce from '../components/SecretOnce'
 import { Alert, Badge, Field, PageHeader, Spinner } from '../components/ui'
 
@@ -108,6 +108,7 @@ function NewUserForm({ onCreated, onCancel }) {
 }
 
 function TokenPanel({ username, onIssued }) {
+  const confirm = useConfirm()
   const [tokens, setTokens] = useState(null)
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
@@ -128,7 +129,7 @@ function TokenPanel({ username, onIssued }) {
   }
 
   const revoke = async (n) => {
-    if (!confirm(`Revoke token "${n}"? Anything using it stops working immediately.`)) return
+    if (!await confirm(`Revoke token "${n}"? Anything using it stops working immediately.`)) return
     try { await api.revokeUserToken(username, n); await load() } catch (err) { setError(err.message) }
   }
 
@@ -164,7 +165,7 @@ function TokenPanel({ username, onIssued }) {
       )}
 
       <div className="flex gap-2">
-        <input className="input max-w-xs" value={name} placeholder="What is it for? e.g. ci"
+        <input className="input max-w-xs" aria-label="Token name" value={name} placeholder="What is it for? e.g. ci"
                onChange={(e) => setName(e.target.value)} />
         <button className="btn-secondary" disabled={!name} onClick={issue}>Issue token</button>
       </div>
@@ -173,26 +174,24 @@ function TokenPanel({ username, onIssued }) {
 }
 
 export default function Admin() {
+  const confirm = useConfirm()
   const { user: me } = useAuth()
   const [users, setUsers] = useState(null)
   const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
   const [secret, setSecret] = useState(null)   // { label, value }
   const [expanded, setExpanded] = useState(null)
-  const [secretNames, setSecretNames] = useState([])
 
   const load = async () => {
     try { setUsers(await api.users()); setError(null) } catch (err) { setError(err.message) }
   }
   useEffect(() => { load() }, [])
-  // Only names: the picker offers a credential without one reaching the browser.
-  useEffect(() => {
-    api.secrets().then((ss) => setSecretNames(ss.map((x) => x.name))).catch(() => {})
-  }, [])
 
   const act = async (fn) => {
-    setError(null)
+    setBusy(true); setError(null)
     try { await fn(); await load() } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
   }
 
   if (error && !users) return <Alert level="danger" title="Could not load accounts">{error}</Alert>
@@ -203,7 +202,7 @@ export default function Admin() {
   return (
     <>
       <PageHeader
-        title="Administration"
+        title="Accounts"
         subtitle={`${users.length} account${users.length === 1 ? '' : 's'}, ${admins} administrator${admins === 1 ? '' : 's'}`}
         actions={!adding && <button className="btn-primary" onClick={() => setAdding(true)}>New account</button>}
       />
@@ -214,9 +213,6 @@ export default function Admin() {
         <SecretOnce label={secret.label} value={secret.value} onDone={() => setSecret(null)} />
       )}
 
-      <RegistryPanel secretNames={secretNames} />
-
-      <BackupPanel />
 
       {adding && (
         <NewUserForm
@@ -242,15 +238,15 @@ export default function Admin() {
         </div>
       )}
 
-      <div className="card overflow-hidden">
+      <div className="table-scroll">
         <table className="tbl">
           <thead>
             <tr><th>Account</th><th>Role</th><th>State</th><th>Last sign-in</th><th>Tokens</th><th></th></tr>
           </thead>
           <tbody>
             {users.map((u) => (
-              <>
-                <tr key={u.username}>
+              <Fragment key={u.username}>
+                <tr>
                   <td>
                     <span className="mono text-slate-900">{u.username}</span>
                     {u.is_self && <span className="ml-2 text-[11px] text-slate-400">you</span>}
@@ -258,6 +254,8 @@ export default function Admin() {
                   <td>
                     <select
                       className="input py-1 text-[12px] max-w-[9.5rem]"
+                      aria-label={`Role for ${u.username}`}
+                      disabled={busy}
                       value={u.role}
                       onChange={(e) => act(() => api.updateUser(u.username, { role: e.target.value }))}
                     >
@@ -274,6 +272,7 @@ export default function Admin() {
                   </td>
                   <td className="text-slate-500 tabular-nums">{u.token_count}</td>
                   <td className="text-right whitespace-nowrap">
+                    <ActionMenu label={<><span className="sr-only">Actions for {u.username}</span><span aria-hidden="true">More</span></>}>
                     <button
                       className="link text-[12px] mr-3"
                       onClick={() => setExpanded(expanded === u.username ? null : u.username)}
@@ -283,7 +282,7 @@ export default function Admin() {
                     <button
                       className="link text-[12px] mr-3"
                       onClick={() => act(async () => {
-                        if (!confirm(`Reset the password for ${u.username}? Their current sessions end.`)) return
+                        if (!await confirm(`Reset the password for ${u.username}? Their current sessions end.`)) return
                         const out = await api.resetUserPassword(u.username)
                         setSecret({ label: `New password for ${out.username}`, value: out.password })
                       })}
@@ -292,19 +291,22 @@ export default function Admin() {
                     </button>
                     <button
                       className="text-slate-500 hover:text-slate-800 text-[12px] mr-3"
+                      disabled={busy || u.is_self || (!u.disabled && u.role === 'admin' && admins === 1)}
                       onClick={() => act(() => api.updateUser(u.username, { disabled: !u.disabled }))}
                     >
                       {u.disabled ? 'Enable' : 'Disable'}
                     </button>
                     <button
                       className="text-slate-400 hover:text-red-600 text-[12px]"
+                      disabled={busy || u.is_self || (u.role === 'admin' && !u.disabled && admins === 1)}
                       onClick={() => act(async () => {
-                        if (!confirm(`Delete ${u.username}? Their API tokens stop working.`)) return
+                        if (!await confirm(`Delete ${u.username}? Their API tokens stop working.`)) return
                         await api.deleteUser(u.username)
                       })}
                     >
                       Delete
                     </button>
+                    </ActionMenu>
                   </td>
                 </tr>
                 {expanded === u.username && (
@@ -317,7 +319,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

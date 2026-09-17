@@ -73,7 +73,7 @@ looks like your SQL is wrong rather than your cluster being short a jar.
 docker compose build jobmanager && docker compose up -d
 ```
 
-Then, optionally, point MARS at a **schema registry** under Administration. With one
+Then, optionally, point MARS at a **schema registry** under Settings → Schema registry. With one
 configured, a Kafka source using Avro can have its columns read straight from the
 registered schema rather than typed by hand — which matters more for Avro than for JSON,
 because the columns *are* the contract and a mismatch fails at runtime.
@@ -143,7 +143,7 @@ time, so the two cannot drift.
 ## Secrets
 
 Connection passwords never belong in a job's SQL: that text is listed, diffed, shown in
-an editor and kept in version history. Store a secret under **Secrets**, then reference it:
+an editor and kept in version history. Store a secret under **Settings → Secrets**, then reference it:
 
 ```sql
 'password' = '${secret:couchdb_password}'
@@ -208,7 +208,7 @@ These are advisory — each has a legitimate exception — but none should be hi
 
 ## Administration
 
-Accounts are managed under **Admin** in the console: create them, change roles,
+Accounts are managed under **Settings → Accounts** in the console: create them, change roles,
 disable, reset passwords, and issue or revoke API tokens. Generated passwords and
 new tokens are shown once, because MARS stores only a hash.
 
@@ -217,6 +217,11 @@ Two rules are enforced by the API, not merely hidden in the page:
 - The last enabled administrator cannot be demoted, disabled or deleted. Otherwise
   one careless edit locks everyone out and the only way back is a shell on the host.
 - You cannot disable or delete your own account.
+
+Settings groups account access, secrets, AI provider, schema registry, and backup/restore
+into separate sections. The account menu at the top right contains your password settings,
+appearance preference (Light, Auto, Dark), and sign-out. Existing `/admin`, `/ai`, and
+`/secrets` links redirect to their new locations.
 
 ### From the command line
 
@@ -279,6 +284,20 @@ cd frontend && npm install && npm run dev
 # tests
 cd backend && python -m pytest tests --ignore=tests/integration
 ```
+
+Frontend browser checks use synthetic API responses: they never run, stop, or change
+production jobs. With the frontend dev server running, use a separate terminal:
+
+```bash
+pip install playwright==1.49.0
+playwright install chromium
+cd frontend
+python tests/browser_smoke.py
+# Optional: also check both themes at desktop, tablet and phone widths.
+UI_SCREENSHOTS=/tmp/mars-ui-screenshots python tests/browser_smoke.py
+```
+
+Set `UI_BASE_URL` if the frontend is not at `http://127.0.0.1:5173`.
 
 Integration tests need a running stack and a reachable CouchDB; see
 `tests/integration/`.

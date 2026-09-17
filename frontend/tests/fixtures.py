@@ -1,0 +1,59 @@
+"""Synthetic browser fixtures. No credentials or connection to a live backend."""
+from copy import deepcopy
+
+STAMP = '2026-09-16T12:00:00Z'
+SOURCE = {
+    'id': 1, 'name': 'readings', 'kind': 'source', 'connector': 'datagen',
+    'description': 'Generated sensor readings.', 'sql_text': '', 'options': {'rows-per-second': '7'},
+    'updated_at': STAMP, 'used_by': ['readings_to_output'], 'version': 1,
+    'columns': [{'name': 'sensor_id', 'type': 'STRING'}, {'name': 'temperature', 'type': 'DOUBLE'}],
+}
+SINK = dict(SOURCE, id=2, name='output', kind='sink', connector='print', description='Console output.', options={})
+RUN = {
+    'id': 1, 'run_id': 1, 'job': 'readings_to_output', 'state': 'running',
+    'started_at': STAMP, 'ended_at': None, 'restarts': 0, 'error_summary': None,
+    'submitted_by': 'operator', 'triggered_by_schedule': False, 'restored_from': None,
+    'flink_job_id': 'fixture-job', 'superseded': False, 'acknowledged': False,
+    'acknowledged_by': None, 'savepoint_path': None,
+}
+JOB = {
+    'id': 1, 'name': 'readings_to_output', 'description': 'Send sensor readings to the output.',
+    'job_type': 'streaming', 'sql_text': 'INSERT INTO output SELECT * FROM readings;',
+    'catalog_refs': ['readings', 'output'], 'enabled': True, 'version': 1,
+    'target_name': None, 'latest_savepoint': None, 'updated_at': STAMP, 'latest_run': RUN,
+    'schedule': {'mode': 'supervisor', 'enabled': True}, 'live_state': 'running', 'checkpoint_age_ms': 1000,
+}
+TARGET = {
+    'name': 'default', 'description': 'Local cluster', 'flink_rest_url': 'http://cluster:8081',
+    'gateway_url': 'http://gateway:8083', 'ui_url': '', 'labels': {}, 'enabled': True,
+    'is_default': True, 'job_count': 1, 'reachable': True, 'flink_version': '2.2.1',
+    'slots_total': 12, 'slots_available': 11,
+}
+CONNECTORS = [{
+    'connector': name, 'displayName': name.title(), 'kinds': [kind], 'description': description,
+    'docsUrl': None, 'supportsHealthCheck': False, 'source': 'built-in',
+    'options': [], 'columns': [{'name': 'default_column', 'sqlType': 'STRING'}],
+} for name, kind, description in [('datagen', 'source', 'Generate test records.'), ('print', 'sink', 'Write to the console.')]]
+
+
+def fixtures():
+    return deepcopy({
+        '/api/auth/me': {'username': 'operator', 'role': 'admin', 'must_change_password': False},
+        '/api/jobs': [JOB], '/api/jobs/readings_to_output': JOB,
+        '/api/jobs/readings_to_output/runs': [RUN],
+        '/api/jobs/readings_to_output/versions': [{'version': 1, 'note': 'Created', 'created_at': STAMP, 'created_by': 'operator'}],
+        '/api/jobs/readings_to_output/script': {'statements': [JOB['sql_text']]},
+        '/api/jobs/activity': [RUN], '/api/catalog': [SOURCE, SINK],
+        '/api/catalog/readings': SOURCE, '/api/catalog/output': SINK,
+        '/api/catalog/readings/versions': [], '/api/catalog/output/versions': [],
+        '/api/targets': [TARGET], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
+        '/api/connectors': CONNECTORS, '/api/secrets': [],
+        '/api/users': [{'username': 'operator', 'role': 'admin', 'disabled': False, 'must_change_password': False,
+                        'last_login_at': STAMP, 'created_at': STAMP, 'token_count': 0, 'is_self': True}],
+        '/api/ai': {'kind': 'ollama', 'base_url': 'http://model:11434', 'model': 'test-model',
+                    'secret_name': None, 'enabled': True, 'configured': True, 'timeout_seconds': 120,
+                    'auth_method': 'none', 'auth_header': '', 'auth_username': '', 'extra_headers': {},
+                    'temperature': '0', 'max_tokens': 1500},
+        '/api/schema-registry': {'url': '', 'auth_method': 'none', 'username': '', 'secret_name': None,
+                                'enabled': False, 'configured': False, 'timeout_seconds': 10},
+    })

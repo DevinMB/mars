@@ -19,6 +19,7 @@ function defaultOf() {
 function OptionInput({ option, value, onChange, secretNames }) {
   const common = {
     id: `opt-${option.key}`,
+    'aria-label': option.label,
     className: 'input',
     value: value ?? '',
     placeholder: option.placeholder || option.default || '',
@@ -31,6 +32,7 @@ function OptionInput({ option, value, onChange, secretNames }) {
       <label className="inline-flex items-center gap-2 text-sm text-slate-700">
         <input
           type="checkbox"
+          aria-label={option.label}
           checked={checked}
           onChange={(e) => onChange(option.key, e.target.checked ? 'true' : 'false')}
           className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
@@ -66,6 +68,7 @@ function OptionInput({ option, value, onChange, secretNames }) {
     return (
       <div className="space-y-1.5">
         <select
+          aria-label={option.label}
           className="input"
           value={value ?? ''}
           onChange={(e) => onChange(option.key, e.target.value)}

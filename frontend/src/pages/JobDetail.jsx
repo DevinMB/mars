@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
+import ActionMenu from '../components/ActionMenu'
+import { useConfirm, useNotify } from '../components/InteractionProvider'
 import { api } from '../lib/api'
 import { duration, relativeTime } from '../lib/format'
 import SqlEditor from '../components/SqlEditor'
@@ -23,29 +26,33 @@ function Warnings({ warnings }) {
 }
 
 function ScheduleCard({ job, onChange }) {
+  const notify = useNotify()
+  const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState(job.schedule?.mode || (job.job_type === 'batch' ? 'cron' : 'supervisor'))
   const [cron, setCron] = useState(job.schedule?.cron_expr || '0 * * * *')
   const [error, setError] = useState(null)
 
   const save = async () => {
+    setBusy(true)
     setError(null)
     try {
       await api.setSchedule(job.name, { mode, cron_expr: mode === 'cron' ? cron : null, enabled: true })
-      onChange()
-    } catch (err) { setError(err.message) }
+      onChange(); notify('Schedule saved.')
+    } catch (err) { setError(err.message) } finally { setBusy(false) }
   }
   const clear = async () => {
-    try { await api.clearSchedule(job.name); onChange() }
-    catch (err) { setError(err.message) }
+    setBusy(true)
+    try { await api.clearSchedule(job.name); onChange(); notify('Schedule removed.') }
+    catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
   return (
-    <div className="card p-4">
+    <div className="border-b border-slate-200 pb-5">
       <h3 className="text-sm font-medium text-slate-900 mb-3">Schedule</h3>
       {error && <div className="mb-3"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
       <div className="space-y-3">
-        <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
+        <select aria-label="Schedule mode" className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
           <option value="supervisor">Keep it running</option>
           <option value="cron" disabled={job.job_type === 'streaming'}>
             Run on a schedule{job.job_type === 'streaming' ? ' (batch jobs only)' : ''}
@@ -64,8 +71,8 @@ function ScheduleCard({ job, onChange }) {
         )}
 
         <div className="flex gap-2">
-          <button className="btn-primary text-sm" onClick={save}>Save</button>
-          {job.schedule && <button className="btn-secondary text-sm" onClick={clear}>Remove</button>}
+          <button className="btn-secondary text-sm" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save schedule'}</button>
+          {job.schedule && <button className="btn-secondary text-sm" disabled={busy} onClick={clear}>Remove</button>}
         </div>
 
         {job.schedule?.next_fire_at && (
@@ -77,6 +84,10 @@ function ScheduleCard({ job, onChange }) {
 }
 
 export default function JobDetail() {
+  const confirm = useConfirm()
+  const notify = useNotify()
+  const { user } = useAuth()
+  const canWrite = ['admin', 'editor'].includes(user?.role)
   const { name } = useParams()
   const navigate = useNavigate()
 
@@ -149,69 +160,44 @@ export default function JobDetail() {
     <>
       <PageHeader
         title={job.name}
-        subtitle={job.description}
+        subtitle={<span className="flex flex-wrap items-center gap-3 mt-2">
+          <StatePill state={run?.state} />
+          <span>{job.target_name || 'Default cluster'}</span>
+          <span>{job.job_type}</span>
+        </span>}
         back={{ to: '/jobs', label: 'Jobs' }}
-        actions={
-          <>
-            <button className="btn-secondary" onClick={validate} disabled={busy === 'validate'}>
-              {busy === 'validate' ? 'Checking…' : 'Validate'}
-            </button>
-            <Link to={`/jobs/${encodeURIComponent(job.name)}/edit`} className="btn-secondary">Edit</Link>
-            <Link to={`/jobs/new?from=${encodeURIComponent(job.name)}`} className="btn-secondary"
-                  title="Start a new job from this one. Nothing is saved until you name it.">
-              Duplicate
-            </Link>
-            {isActive ? (
-              <>
-                {/* The safe stop is the default. Discarding state is still one
-                    click away, but it has to be chosen. */}
-                <button className="btn-primary" disabled={busy === 'stop'}
-                        title="Writes the job's state to a savepoint first, so it can resume where it left off."
-                        onClick={() => act('stop', () => api.stopJob(name))}>
-                  {busy === 'stop' ? 'Saving state…' : 'Stop and save state'}
-                </button>
-                <button className="btn-danger" disabled={busy === 'cancel'}
-                        title="Stops immediately and throws away any in-flight state."
-                        onClick={() => {
-                          if (!confirm(
-                            `Stop "${job.name}" without saving its state?\n\n` +
-                            'Anything in progress — a half-finished window, a running ' +
-                            'count — is lost. Use "Stop and save state" to resume later.'
-                          )) return
-                          act('cancel', () => api.cancelJob(name))
-                        }}>
-                  {busy === 'cancel' ? 'Stopping…' : 'Stop without saving'}
-                </button>
-              </>
-            ) : (
-              <>
-                <button className="btn-primary" disabled={busy === 'run'}
-                        title={job.latest_savepoint
-                          ? 'Resumes from the last saved state.'
-                          : 'No saved state, so this starts fresh.'}
-                        onClick={() => act('run', () => api.runJob(name, 'latest'))}>
-                  {busy === 'run'
-                    ? 'Starting…'
-                    : job.latest_savepoint ? 'Resume' : 'Run'}
-                </button>
-                {job.latest_savepoint && (
-                  <button className="btn-secondary" disabled={busy === 'run-fresh'}
-                          title="Ignores the saved state and starts with an empty one."
-                          onClick={() => {
-                            if (!confirm(
-                              'Start with empty state?\n\nThe saved state is ignored, ' +
-                              'and the job begins as though it had never run.'
-                            )) return
-                            act('run-fresh', () => api.runJob(name, 'none'))
-                          }}>
-                    {busy === 'run-fresh' ? 'Starting…' : 'Start fresh'}
-                  </button>
-                )}
-              </>
-            )}
-          </>
-        }
+        actions={canWrite && <>
+          <Link to={`/jobs/${encodeURIComponent(job.name)}/edit`} className="btn-secondary">Edit</Link>
+          {isActive ? <button className="btn-primary" disabled={Boolean(busy)}
+            title="Save a checkpoint of the job's state before stopping."
+            onClick={() => act('stop', () => api.stopJob(name))}>
+            {busy === 'stop' ? 'Saving state…' : 'Stop and save state'}
+          </button> : <button className="btn-primary" disabled={Boolean(busy)}
+            onClick={() => act('run', () => api.runJob(name, 'latest'))}>
+            {busy === 'run' ? 'Starting…' : job.latest_savepoint ? 'Resume' : 'Run'}
+          </button>}
+          <ActionMenu>
+            <button onClick={validate} disabled={Boolean(busy)}>{busy === 'validate' ? 'Checking…' : 'Validate SQL'}</button>
+            <Link to={`/jobs/new?from=${encodeURIComponent(job.name)}`}>Duplicate</Link>
+            {isActive && <button className="text-red-700" disabled={Boolean(busy)} onClick={async () => {
+              if (!await confirm({ title: 'Stop without saving?', message: `Stop “${job.name}” immediately? In-flight state, including unfinished windows and running counts, will be lost. Use “Stop and save state” to resume later.`, confirmLabel: 'Stop without saving' })) return
+              act('cancel', () => api.cancelJob(name))
+            }}>Stop without saving</button>}
+            {!isActive && job.latest_savepoint && <button disabled={Boolean(busy)} onClick={async () => {
+              if (!await confirm({ title: 'Start with empty state?', message: 'The saved state will be ignored. The job will start from scratch.', confirmLabel: 'Start fresh' })) return
+              act('run-fresh', () => api.runJob(name, 'none'))
+            }}>Start fresh</button>}
+            <button className="text-red-700" disabled={isActive || Boolean(busy)} title={isActive ? 'Stop the job before deleting it' : undefined}
+              onClick={async () => {
+                if (!await confirm({ title: `Delete ${job.name}?`, message: 'This job will be permanently deleted. This cannot be undone.', confirmLabel: 'Delete job' })) return
+                setBusy('delete')
+                try { await api.deleteJob(job.name); notify('Job deleted.'); navigate('/jobs') }
+                catch (err) { setError(err.message); setBusy(null) }
+              }}>Delete job</button>
+          </ActionMenu>
+        </>}
       />
+      {job.description && <p className="text-sm text-slate-600 -mt-2 mb-6 max-w-3xl">{job.description}</p>}
 
       {error && <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
@@ -250,12 +236,12 @@ export default function JobDetail() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="editor-grid">
+        <div className="space-y-6 min-w-0">
           <div className="card overflow-hidden">
-            <div className="flex border-b border-slate-200">
+            <div className="flex flex-wrap border-b border-slate-200">
               {[['sql', 'Statement'], ['diagnostics', 'Diagnostics'],
-                ['script', 'What actually runs'], ['history', 'Versions']].map(([id, label]) => (
+                ['script', 'Execution SQL'], ['history', 'Versions']].map(([id, label]) => (
                 <button
                   key={id}
                   onClick={() => (id === 'script' && !script ? showScript() : setTab(id))}
@@ -314,7 +300,8 @@ export default function JobDetail() {
             {runs.length === 0 ? (
               <p className="px-4 py-8 text-sm text-slate-500 text-center">This job has never run.</p>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto"><table className="tbl min-w-[580px]">
+                <thead><tr><th>State</th><th>Started</th><th>Duration</th><th>Triggered by</th><th>Details</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {runs.map((r) => (
                     <tr key={r.id}>
@@ -331,13 +318,13 @@ export default function JobDetail() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </div>
 
         <aside className="space-y-4">
-          <div className="card p-4">
+          <div className="border-b border-slate-200 pb-5">
             <h3 className="text-sm font-medium text-slate-900 mb-3">Details</h3>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-3">
@@ -387,7 +374,7 @@ export default function JobDetail() {
             )}
           </div>
 
-          <div className="card p-4">
+          <div className="border-b border-slate-200 pb-5">
             <h3 className="text-sm font-medium text-slate-900 mb-2">Tables used</h3>
             {job.catalog_refs.length === 0 ? (
               <p className="text-xs text-slate-500">None.</p>
@@ -395,30 +382,18 @@ export default function JobDetail() {
               <ul className="space-y-1">
                 {job.catalog_refs.map((r) => (
                   <li key={r}>
-                    <Link to={`/catalog/${encodeURIComponent(r)}/edit`}
-                          className="mono text-sm link">{r}</Link>
+                    {canWrite ? <Link to={`/catalog/${encodeURIComponent(r)}/edit`} className="mono text-sm link break-all">{r}</Link> : <span className="mono break-all">{r}</span>}
                   </li>
                 ))}
               </ul>
             )}
           </div>
 
-          <ScheduleCard job={job} onChange={load} />
+          {canWrite ? <ScheduleCard job={job} onChange={load} /> : <div className="text-sm">
+            <h3 className="font-medium mb-2">Schedule</h3>
+            <p className="text-slate-600">{job.schedule ? job.schedule.mode === 'cron' ? job.schedule.cron_expr : 'Keep running' : 'No schedule'}</p>
+          </div>}
 
-          <div className="card p-4">
-            <button
-              className="btn-danger w-full justify-center text-sm"
-              disabled={isActive}
-              title={isActive ? 'Stop the job before deleting it' : undefined}
-              onClick={async () => {
-                if (!confirm(`Delete job "${job.name}"? This cannot be undone.`)) return
-                try { await api.deleteJob(job.name); navigate('/jobs') }
-                catch (err) { setError(err.message) }
-              }}
-            >
-              Delete job
-            </button>
-          </div>
         </aside>
       </div>
     </>

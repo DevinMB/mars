@@ -1,23 +1,22 @@
+import { Children, cloneElement, isValidElement, useId } from 'react'
 import { Link } from 'react-router-dom'
 
 export function PageHeader({ title, subtitle, actions, back }) {
-  // The title carries a short accent rule: enough to tie pages to the brand
-  // without competing with the primary action button beside it.
+  // A shared heading and wrapping toolbar for both lists and editors.
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-      <div className="min-w-0">
+    <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-4 mb-6">
+      <div className="min-w-0 w-full sm:w-auto flex-1">
         {back && (
           <Link to={back.to} className="text-sm text-brand-600 hover:text-brand-700 mb-1 inline-block">
             ← {back.label}
           </Link>
         )}
-        <h1 className="text-[22px] font-semibold text-slate-900 tracking-tight truncate">
+        <h1 className="text-[24px] font-semibold text-slate-900 tracking-tight break-words">
           {title}
         </h1>
-        <div className="mt-1.5 h-0.5 w-8 rounded-full bg-accent-500/60" />
         {subtitle && <p className="text-[13px] text-slate-500 mt-1.5">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 max-w-full">{actions}</div>}
     </div>
   )
 }
@@ -49,8 +48,8 @@ export function StatePill({ state }) {
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs
                       font-medium ring-1 ring-inset ${STATE_STYLES[key] || STATE_STYLES.never}`}>
-      {key === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
-      {key === 'restarting' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+      {key === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+      {key === 'restarting' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
       {STATE_LABELS[key] || key}
     </span>
   )
@@ -74,7 +73,7 @@ export function Alert({ level = 'info', title, children, onDismiss }) {
     success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
   }
   return (
-    <div className={`border rounded-md px-4 py-3 text-sm ${styles[level] || styles.info}`}>
+    <div role={level === 'danger' ? 'alert' : 'status'} className={`border rounded-md px-4 py-3 text-sm ${styles[level] || styles.info}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {title && <div className="font-semibold mb-0.5">{title}</div>}
@@ -110,15 +109,24 @@ export function Spinner({ label = 'Loading' }) {
 }
 
 export function Field({ label, hint, error, required, children }) {
+  const generated = useId()
+  const child = Children.count(children) === 1 && isValidElement(children) ? children : null
+  const direct = child && ['input', 'select', 'textarea'].includes(child.type)
+  const id = child?.props.id || generated
+  const description = hint || error ? `${generated}-description` : undefined
+  const content = direct ? cloneElement(child, { id, 'aria-describedby': description,
+    'aria-invalid': error ? true : undefined, 'aria-required': required || undefined }) : children
+  const Tag = direct ? 'div' : 'fieldset'
+  const Label = direct ? 'label' : 'legend'
   return (
-    <div>
-      <label className="label">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children}
-      {error ? <p className="text-xs text-red-600 mt-1">{error}</p> : hint ? <p className="hint">{hint}</p> : null}
-    </div>
+    <Tag className="min-w-0">
+      <Label className="label" htmlFor={direct ? id : undefined}>
+        {label}{required && <span className="text-red-600 ml-0.5" aria-hidden="true">*</span>}
+      </Label>
+      {content}
+      {error ? <p id={description} className="text-xs text-red-600 mt-1">{error}</p>
+        : hint ? <p id={description} className="hint">{hint}</p> : null}
+    </Tag>
   )
 }
 
