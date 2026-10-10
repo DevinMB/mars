@@ -78,7 +78,8 @@ def load_or_create_key() -> bytes:
         os.write(fd, key)
     finally:
         os.close(fd)
-    log.warning(
+    # Logs where the key was written, never the key itself.
+    log.warning(  # nosemgrep: python-logger-credential-disclosure
         "Generated a new secret encryption key at %s. Back it up: without it, "
         "stored secrets cannot be recovered.",
         path,

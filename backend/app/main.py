@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
     registry = get_registry()
     log.info(
         "Loaded %d connector(s): %s",
-        len(registry.all()),
+        len(registry.all()),  # nosemgrep: len-all-count -- a list, not a query
         ", ".join(c.connector for c in registry.all()) or "none",
     )
 

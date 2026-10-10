@@ -1,0 +1,49 @@
+# Weekly update PRs, grouped so each ecosystem produces one PR rather than one per
+# package. Security updates arrive as soon as an advisory is published, separately
+# from this schedule, once Dependabot security updates are enabled in Settings.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      # Build tooling never reaches the browser, so it is batched on its own and
+      # a failing tooling update does not hold back a runtime fix.
+      build-tooling:
+        dependency-type: development
+        patterns: ["*"]
+      runtime:
+        dependency-type: production
+        patterns: ["*"]
+
+  # Base images: python and node for the console, Flink for the cluster image.
+  # The Kafka JARs downloaded in flink/Dockerfile are build arguments, which
+  # Dependabot cannot see; the Flink image scan in security.yml covers them.
+  - package-ecosystem: docker
+    directories: [/backend, /flink]
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      base-images:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
