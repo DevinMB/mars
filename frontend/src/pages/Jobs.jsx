@@ -23,7 +23,7 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
       onClick={() => onChange(id)}
       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
         value === id
-          ? 'bg-surface text-slate-900 shadow-sm ring-1 ring-slate-200'
+          ? 'bg-surface text-slate-900 shadow-xs ring-1 ring-slate-200'
           : 'text-slate-600 hover:text-slate-900'
       }`}
     >
@@ -112,7 +112,7 @@ function JobRow({ job, showCluster }) {
     <tr className="hover:bg-slate-50/60">
       <td>
         <Link to={`/jobs/${encodeURIComponent(job.name)}`}
-              className="block max-w-48 sm:max-w-md break-words font-medium text-slate-900 hover:text-brand-700">
+              className="block max-w-48 sm:max-w-md wrap-break-word font-medium text-slate-900 hover:text-brand-700">
           {job.name}
         </Link>
         {job.description && (

@@ -62,7 +62,7 @@ export default function Activity() {
         actions={
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={onlyProblems}
-                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
+                   className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30"
                    onChange={(e) => setOnlyProblems(e.target.checked)} />
             Outstanding issues
             {problems > 0 && <span className="text-xs text-slate-400">({problems})</span>}

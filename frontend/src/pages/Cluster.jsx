@@ -76,7 +76,7 @@ function TargetCard({ target, canManage, onEdit, onRemove }) {
       {labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-3">
           {labels.map(([k, v]) => (
-            <span key={k} className="text-[11px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.5">
+            <span key={k} className="text-[11px] bg-slate-100 text-slate-600 rounded-sm px-1.5 py-0.5">
               {k}={v}
             </span>
           ))}

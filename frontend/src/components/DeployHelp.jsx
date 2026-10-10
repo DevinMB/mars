@@ -25,7 +25,7 @@ function Copyable({ children }) {
             setCopied(false)
           }
         }}
-        className="absolute top-2 right-2 text-[11px] px-1.5 py-0.5 rounded
+        className="absolute top-2 right-2 text-[11px] px-1.5 py-0.5 rounded-sm
                    bg-slate-700/70 text-slate-200 hover:bg-slate-600 transition-colors"
       >
         {copied ? 'copied' : 'copy'}

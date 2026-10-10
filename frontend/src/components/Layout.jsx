@@ -88,7 +88,7 @@ export default function Layout({ children }) {
             <MarsMark size={24} />
             <span className="text-base font-semibold tracking-tight">MARS</span>
           </NavLink>
-          <nav aria-label="Main navigation" className="order-3 w-full sm:order-none sm:w-auto flex items-stretch gap-1 h-11 sm:h-14">
+          <nav aria-label="Main navigation" className="order-3 w-full sm:order-0 sm:w-auto flex items-stretch gap-1 h-11 sm:h-14">
             {NAV.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
               <NavLink key={item.to} to={item.to} className={({ isActive }) =>
                 `nav-link ${isActive ? 'nav-link-active' : ''}`}>

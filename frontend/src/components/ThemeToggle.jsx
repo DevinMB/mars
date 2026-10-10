@@ -21,9 +21,9 @@ export default function ThemeToggle() {
           aria-pressed={theme === o.id}
           title={o.id === 'system' ? 'Follow this machine' : `Always ${o.label.toLowerCase()}`}
           onClick={() => { setTheme(o.id); writeTheme(o.id) }}
-          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+          className={`px-2 py-0.5 rounded-sm text-[11px] font-medium transition-colors ${
             theme === o.id
-              ? 'bg-surface text-slate-900 shadow-sm'
+              ? 'bg-surface text-slate-900 shadow-xs'
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >

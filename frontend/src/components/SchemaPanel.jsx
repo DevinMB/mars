@@ -57,7 +57,7 @@ export default function SchemaPanel({ entry, onInsert, onSampled }) {
             <li key={c.name}>
               <button
                 onClick={() => onInsert?.(c.name)}
-                className="group w-full text-left flex items-baseline gap-2 hover:bg-slate-50 rounded px-1 -mx-1"
+                className="group w-full text-left flex items-baseline gap-2 hover:bg-slate-50 rounded-sm px-1 -mx-1"
                 title="Insert into the statement"
               >
                 <code className="mono text-xs text-slate-800 group-hover:text-brand-700">
@@ -101,7 +101,7 @@ export default function SchemaPanel({ entry, onInsert, onSampled }) {
                               // document without declaring a typed schema for it.
                               onInsert?.(`JSON_VALUE(${column}, '$.${f.name}')`)
                             }
-                            className="group w-full text-left flex items-baseline gap-2 hover:bg-slate-50 rounded px-1 -mx-1"
+                            className="group w-full text-left flex items-baseline gap-2 hover:bg-slate-50 rounded-sm px-1 -mx-1"
                             title={`Insert JSON_VALUE(${column}, '$.${f.name}')`}
                           >
                             <code className="mono text-xs text-slate-700 group-hover:text-brand-700">

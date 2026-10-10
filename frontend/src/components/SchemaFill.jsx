@@ -65,7 +65,7 @@ export default function SchemaFill({ topic, onColumns }) {
   return (
     <div className="mt-4 border-t border-slate-200 pt-4">
       <div className="flex items-end gap-2 flex-wrap">
-        <label className="flex-1 min-w-[14rem]">
+        <label className="flex-1 min-w-56">
           <span className="label">Subject</span>
           <input className="input mono" value={subject} list="registry-subjects"
                  placeholder="my-topic-value"

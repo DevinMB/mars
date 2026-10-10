@@ -25,7 +25,7 @@ export default function SecretOnce({ label, value, onDone }) {
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <code className="mono flex-1 bg-surface border border-accent-200 rounded px-2.5 py-2
+        <code className="mono flex-1 bg-surface border border-accent-200 rounded-sm px-2.5 py-2
                          text-[12.5px] text-slate-800 break-all select-all">
           {value}
         </code>

@@ -79,7 +79,7 @@ export default function TypePicker({ value, onChange, id }) {
       )}
 
       {open && (
-        <div className="absolute z-20 mt-1 w-[19rem] max-w-[calc(100vw-2rem)] left-0 sm:left-auto sm:right-0 border border-slate-200
+        <div className="absolute z-20 mt-1 w-76 max-w-[calc(100vw-2rem)] left-0 sm:left-auto sm:right-0 border border-slate-200
                         rounded-md bg-surface shadow-card overflow-hidden">
           <ul className="max-h-72 overflow-y-auto">
             {TYPES.map((t) => (
