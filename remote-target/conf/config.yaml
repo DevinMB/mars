@@ -30,6 +30,13 @@ rest:
   address: 0.0.0.0
   bind-address: 0.0.0.0
 
+# Network access must still be restricted; these flags are not authentication.
+web:
+  submit:
+    enable: false
+  cancel:
+    enable: false
+
 # Checkpointing is on by default: a MARS job that cannot recover is not much use.
 execution:
   checkpointing:
