@@ -61,8 +61,8 @@ _SINK_SCHEMA = re.compile(r"Sink schema:\s*\[(?P<cols>[^\]]*)\]")
 
 
 def _near(name: str, options: list[str], n: int = 3) -> list[str]:
-    """Close spellings only. At a lower cutoff "whispers_ra" also matched
-    "whispers_sink", and a suggestion list that includes the wrong answer costs
+    """Close spellings only. At a lower cutoff "events_ra" also matched
+    "events_sink", and a suggestion list that includes the wrong answer costs
     more attention than it saves."""
     if not name or not options:
         return []

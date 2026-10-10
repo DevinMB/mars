@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
 # Installs MARS the way a new user does, and checks that it works.
 #
-# Every assertion below is a regression test for something that was genuinely
-# broken the first time this was run, and that was invisible on a machine where
-# MARS already worked. The first administrator's password never reached the log;
-# a clean checkout had no connectors; two installs on one host merged into one
-# cluster because the network and image names were shared.
-#
-# It runs against a *nested* Docker daemon, not the host's. That is not
-# fastidiousness: the first attempt ran on the host's daemon, the two stacks
-# collided over shared names, and it cost ten minutes of production downtime. A
-# separate daemon cannot share an image, a network, a volume or a container name,
-# which is exactly the class of failure being avoided.
+# Uses a disposable nested Docker daemon to avoid changing the host
+# installation, images, networks, or volumes. Requires privileged Docker access.
 #
 #   ./scripts/clean-room-test.sh [git-ref]
 #

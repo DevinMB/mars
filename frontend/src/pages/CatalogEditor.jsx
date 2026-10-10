@@ -148,7 +148,7 @@ export default function CatalogEditor() {
 
             <Field label="Name" required hint="Used as the table name in SQL, so letters, digits and underscores only.">
               <input className="input mono" value={name} disabled={!!editing}
-                     onChange={(e) => setName(e.target.value)} placeholder="whispers_raw" />
+                     onChange={(e) => setName(e.target.value)} placeholder="events_raw" />
             </Field>
 
             <Field label="Description">

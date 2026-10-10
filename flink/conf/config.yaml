@@ -30,19 +30,8 @@ rest:
   address: 0.0.0.0
   bind-address: 0.0.0.0
 
-# The Flink REST API has no authentication and never has -- upstream's position
-# is that you put it behind something that does. :8081 is published to a LAN
-# this host does not own, so until 2026-09-22 anyone on that network could POST
-# a JAR to /jars/upload and then run it. That is arbitrary code execution on the
-# box that also holds Kafka, CouchDB and the MARS database.
-#
-# These two flags remove that path at the source, independent of any firewall
-# rule or proxy in front. Nothing here uses it: MARS submits through the SQL
-# Gateway, and stops and cancels jobs through its own API, not the web UI.
-# Verified before setting this -- all nine jobs were submitted via the gateway.
-#
-# The UI itself still works. It becomes read-only for job lifecycle, which is
-# what it should always have been given the console owns that.
+# Disable web job submission and cancellation. This does not authenticate the
+# REST API; restrict network access to Flink and the SQL Gateway.
 web:
   submit:
     enable: false

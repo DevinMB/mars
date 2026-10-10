@@ -1,312 +1,58 @@
 # MARS
 
-**Stream pipelines for Apache Flink®.**
+**A web console for Apache Flink SQL.**
 
-MARS is a self-hosted console for building and running Flink SQL jobs. Define where
-records come from, where they go, and the statement that connects them — then run it,
-schedule it, and see what it's doing. No Java, no JAR builds, no cluster expertise.
+Build streaming pipelines, manage reusable sources and sinks, and operate jobs from
+one workspace. MARS brings SQL editing, scheduling, savepoints, and run history
+alongside your Flink cluster.
+
+![MARS jobs workspace, shown with sample pipelines](docs/images/jobs.png)
+
+## What you can do
+
+- **Build pipelines** with a SQL editor, connector forms, validation, and data previews.
+- **Run and recover jobs** with schedules, restart supervision, and savepoints.
+- **Reuse definitions** through a shared catalog, version history, and YAML import/export.
+- **Manage access** with administrator, editor, and viewer roles, API tokens, and encrypted secrets.
+- **Choose where jobs run** across registered Flink clusters. Optional AI assistance helps draft SQL.
+
+## Quick start
+
+Requires Git, Docker with Compose v2, and roughly 6 GB of available RAM for the default stack.
 
 ```bash
 git clone https://github.com/DevinMB/mars.git
 cd mars
 cp .env.example .env
-docker compose up -d
+docker compose up -d --build
 ```
 
-Then open **http://localhost:8080**. The first administrator's password is printed once
-to the log:
+Open **[localhost:8080](http://localhost:8080)**. Retrieve the generated administrator
+password locally, sign in as `admin`, and change it:
 
 ```bash
-docker logs mars-console 2>&1 | grep -A3 administrator
+docker compose logs console | grep -A4 'administrator'
 ```
 
-**If you missed it — or the container has since been rebuilt, which starts a fresh
-log — reset it.** This needs no compose file and works from any directory:
+The log contains a credential; keep it private. A fresh installation includes an
+example pipeline using generated data, so you can try a job without an external service.
 
-```bash
-docker exec mars-console python -m app.admin reset-password admin
-```
+The stack includes Flink 2.2.1, its SQL Gateway, and the MARS console with SQLite.
+Kafka, datagen, and print connectors are available out of the box; additional
+connectors and Avro formats are [optional](docs/connectors.md).
+
+Ports bind to localhost by default. For remote access, use an SSH tunnel or follow
+the [deployment guide](docs/deployment.md). Flink and its SQL Gateway must stay on a
+protected network; MARS is intended for trusted operators.
+
+## Documentation
+
+[Deployment & backups](docs/deployment.md) · [Connectors](docs/connectors.md) ·
+[Development](docs/development.md) · [Security](SECURITY.md) · [Roadmap](ROADMAP.md)
+
+MARS is open source under the [MIT License](LICENSE) and is under active development.
 
 ---
 
-## What you get
-
-Four containers and nothing else to install:
-
-| | |
-|---|---|
-| `jobmanager` | Flink 2.2.1, pinned. Web UI on `:8081` |
-| `taskmanager` | 12 slots, sized for many small jobs rather than a few large ones |
-| `sql-gateway` | How MARS turns SQL into running jobs |
-| `console` | The API and the UI, on `:8080` |
-
-### Connectors
-
-Out of the box MARS can read and write **Kafka**, read and write **files**, and generate
-test data — everything Flink itself ships with. That is enough to build real pipelines
-between Kafka topics.
-
-The connectors that make it interesting elsewhere — **CouchDB**, a generic **HTTP**
-sink, **Home Assistant**, and an **Ollama** enrichment function — live in
-[mars-connectors](https://github.com/DevinMB/mars-connectors) and are built separately:
-
-```bash
-./scripts/build-connectors.sh
-docker compose build jobmanager && docker compose up -d
-```
-
-They are build output, so they are not committed here, and they are baked into the image
-rather than downloaded at container start — a cluster that fetches its own dependencies
-on boot comes up without them the first time someone else's network is slow.
-
-New connectors need no changes to the console: drop in a jar with a manifest and the
-forms build themselves from it.
-
-### Avro
-
-Flink ships `json` and `csv`; Avro is a separate artifact. Without it a table declaring
-`'format' = 'avro'` is accepted when you save it and fails when a job uses it, which
-looks like your SQL is wrong rather than your cluster being short a jar.
-
-```bash
-./scripts/fetch-formats.sh
-docker compose build jobmanager && docker compose up -d
-```
-
-Then, optionally, point MARS at a **schema registry** under Settings → Schema registry. With one
-configured, a Kafka source using Avro can have its columns read straight from the
-registered schema rather than typed by hand — which matters more for Avro than for JSON,
-because the columns *are* the contract and a mismatch fails at runtime.
-
-## Backing it up
-
-Two different things, and both matter.
-
-**Definitions** — every catalog entry, job, schedule and target — export as YAML:
-
-```bash
-curl -u … http://localhost:8080/api/export > mars-export.yaml
-```
-
-Readable, diffable, and safe to commit: secret **values** are never included. The file
-lists the secret *names* it needs under `secrets_required`, and importing it into a
-fresh install tells you which are missing. Import defaults to a dry run and reports what
-it would create, update or skip before anything is written.
-
-**Everything else** lives in the console's data volume, and YAML cannot carry it: the
-encryption key, run history, and user accounts.
-
-```bash
-docker run --rm -v mars_console-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/mars-data.tgz -C /data .
-```
-
-Worth being blunt about one thing: `secret.key` sits in that volume beside the database
-it decrypts. The volume is therefore both the only copy of your data and the means to
-read it — losing it loses both, and a copy of it is a copy of every credential. Keep the
-backup somewhere you would keep a password.
-
-## How it fits together
-
-A **catalog entry** is one `CREATE TABLE` — a source or a sink. A **job** is the statement
-that connects them. MARS replays the table definitions a job declares immediately before
-running it, so the definitions survive the SQL Gateway's ephemeral sessions without
-anyone running a metastore.
-
-```
-Catalog                          Job
-┌──────────────┐                 ┌─────────────────────────────────┐
-│ whispers_raw │  ──────────────▶│ INSERT INTO whispers_sink       │
-│   (kafka)    │                 │ SELECT doc, kafka_key           │
-└──────────────┘                 │ FROM whispers_raw               │
-┌──────────────┐                 └─────────────────────────────────┘
-│whispers_sink │◀────────────────────────────┘
-│  (couchdb)   │
-└──────────────┘
-```
-
-## Connectors
-
-A connector appears in the console by shipping a **manifest** — a description of its
-options — inside its JAR. The console reads the manifest and builds the form: field
-groups, help text, which options are required, which are conditional, which are secrets.
-
-**Adding a connector requires no change to MARS.** Drop a JAR containing a
-`mars-manifest.json` into `flink/jars/`, rebuild, and it has a form.
-
-Included out of the box: **Kafka**, **CouchDB**, **filesystem**, **datagen**, **print**.
-
-To build your own, see [`mars-connectors`](https://github.com/DevinMB/mars-connectors) —
-the `connector-sdk` module declares a manifest in Java and generates the JSON at build
-time, so the two cannot drift.
-
-## Secrets
-
-Connection passwords never belong in a job's SQL: that text is listed, diffed, shown in
-an editor and kept in version history. Store a secret under **Settings → Secrets**, then reference it:
-
-```sql
-'password' = '${secret:couchdb_password}'
-```
-
-The value is substituted only as the statement is handed to Flink. It is encrypted at rest
-with a key generated into `/data` on first start, it is never returned by the API — not
-even to an administrator — and it is scrubbed back out of Flink error traces, which
-readily echo a connection string at you.
-
-> **Back up `/data/secret.key`.** Lose it and stored secrets cannot be decrypted; they
-> must be re-entered. That is deliberate — a recoverable key is one an attacker with your
-> database can also recover.
-
-## Running jobs on specific machines
-
-A **target** is a Flink cluster MARS can send jobs to. Jobs name one, or name none
-and use the default.
-
-This is the only way placement works in Flink. A cluster's scheduler puts tasks in
-whatever slot is free, and there is no supported way to pin a job to a machine
-inside one cluster — slot sharing groups control placement *within* a job, and
-fine-grained resource management controls slot *sizing*. So choosing where a job
-runs means choosing which cluster receives it.
-
-- **More capacity, don't care where:** add workers to the cluster you have —
-  `docker compose up -d --scale taskmanager=3`.
-- **Choose where:** run a cluster on the other machine and register it as a target.
-  See [`remote-target/`](remote-target/).
-
-To try it on one host first:
-
-```bash
-docker compose --profile second-target up -d
-```
-
-then add a target pointing at `http://jobmanager-b:8081` and
-`http://sql-gateway-b:8083`.
-
-## Scheduling
-
-- **Keep it running** (supervisor) — if a streaming job stops or fails, MARS starts it
-  again. Flink restarts a job's *tasks*; nothing in Flink restarts a job that has given
-  up. It will not start a job that has never been run by hand.
-- **On a schedule** (cron) — for batch jobs that read a finite input and finish.
-
-Neither will start a second copy of a job that is already running.
-
-## Pre-flight checks
-
-Before a job runs, MARS flags the ways a stream job damages something other than itself.
-These are advisory — each has a legitimate exception — but none should be hit by accident:
-
-- A Kafka source whose consumer group doesn't start with `mars-`. If something outside
-  MARS already uses that group, Kafka gives the partition to one consumer and the other
-  **silently stops receiving records**. That is an outage, not a duplicate.
-- A CouchDB sink using automatic document ids, which makes replays duplicate rather than
-  upsert.
-- Two jobs writing the same Kafka topic. Kafka appends rather than upserts, so everything
-  downstream sees each record twice.
-- A job reading and writing the same topic, which grows without bound.
-
-## Administration
-
-Accounts are managed under **Settings → Accounts** in the console: create them, change roles,
-disable, reset passwords, and issue or revoke API tokens. Generated passwords and
-new tokens are shown once, because MARS stores only a hash.
-
-Two rules are enforced by the API, not merely hidden in the page:
-
-- The last enabled administrator cannot be demoted, disabled or deleted. Otherwise
-  one careless edit locks everyone out and the only way back is a shell on the host.
-- You cannot disable or delete your own account.
-
-Settings groups account access, secrets, AI provider, schema registry, and backup/restore
-into separate sections. The account menu at the top right contains your password settings,
-appearance preference (Light, Auto, Dark), and sign-out. Existing `/admin`, `/ai`, and
-`/secrets` links redirect to their new locations.
-
-### From the command line
-
-The CLI works directly against the database, so it works even when nobody can sign
-in — which is what makes it the recovery path rather than a duplicate of the page.
-
-```bash
-docker exec mars-console python -m app.admin list-users
-docker exec mars-console python -m app.admin reset-password admin
-docker exec mars-console python -m app.admin create-user devin --role admin
-docker exec mars-console python -m app.admin issue-token ci --name deploy
-docker exec mars-console python -m app.admin revoke-token --name deploy
-```
-
-`docker exec` is used rather than `docker compose exec` deliberately: it needs no
-compose file and so works from any directory. `docker compose exec` only works from
-the directory holding `docker-compose.yml`.
-
-> The bootstrap password appears **once**, in the log of the container that created
-> it. Rebuilding the console replaces that container and its log, so treat the
-> reset command above as the normal way to recover access rather than a last
-> resort.
-
-Roles are `admin` (everything, including secrets), `editor` (jobs and catalog), and
-`viewer` (read-only).
-
-For automation, send an API token as `Authorization: Bearer <token>`.
-
-## Configuration
-
-Everything has a working default; `.env` is optional.
-
-| Variable | Default | |
-|---|---|---|
-| `MARS_CONSOLE_PORT` | `8080` | Host port for the console |
-| `MARS_FLINK_UI_PORT` | `8081` | Host port for Flink's own UI |
-| `MARS_DATABASE_URL` | SQLite in `/data` | Set to a Postgres DSN for multi-operator installs |
-| `MARS_SESSION_TTL_HOURS` | `12` | How long a sign-in lasts |
-| `TZ` | `UTC` | Affects cron schedules |
-
-Flink itself is configured in `flink/conf/config.yaml` — slots, memory, checkpoint
-interval, and state backend.
-
-## Monitoring
-
-The console exposes Prometheus metrics at `/metrics` (`mars_jobs_running`,
-`mars_jobs_failed`), and Flink exposes its own on `:9249`. `/readyz` returns 503 when
-Flink is unreachable, so an orchestrator can act on it.
-
-## Development
-
-```bash
-# backend
-cd backend && pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8080
-
-# frontend, proxying the API to :8080
-cd frontend && npm install && npm run dev
-
-# tests
-cd backend && python -m pytest tests --ignore=tests/integration
-```
-
-Frontend browser checks use synthetic API responses: they never run, stop, or change
-production jobs. With the frontend dev server running, use a separate terminal:
-
-```bash
-pip install playwright==1.49.0
-playwright install chromium
-cd frontend
-python tests/browser_smoke.py
-# Optional: also check both themes at desktop, tablet and phone widths.
-UI_SCREENSHOTS=/tmp/mars-ui-screenshots python tests/browser_smoke.py
-```
-
-Set `UI_BASE_URL` if the frontend is not at `http://127.0.0.1:5173`.
-
-Integration tests need a running stack and a reachable CouchDB; see
-`tests/integration/`.
-
-## Licence
-
-To be decided before the first public release.
-
----
-
-MARS is not affiliated with or endorsed by the Apache Software Foundation. Apache Flink®
-is a registered trademark of the ASF.
+MARS is an independent project, not affiliated with the Apache Software Foundation.
+Apache Flink® is a registered trademark of the ASF.

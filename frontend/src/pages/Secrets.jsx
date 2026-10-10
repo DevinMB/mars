@@ -70,7 +70,7 @@ export default function Secrets() {
           </Field>
           <Field label="Description">
             <input className="input" value={description}
-                   onChange={(e) => setDescription(e.target.value)} placeholder="CouchDB admin on 192.168.1.250" />
+                   onChange={(e) => setDescription(e.target.value)} placeholder="Credentials for the analytics database" />
           </Field>
           <div className="flex gap-2">
             <button className="btn-primary" disabled={busy || !name || !value}>{busy ? 'Saving…' : 'Save secret'}</button>

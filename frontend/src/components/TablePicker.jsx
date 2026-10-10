@@ -6,7 +6,7 @@ import SearchInput from './SearchInput'
 // Filtered because this list only grows: every source and sink a deployment has
 // ever defined shows up here, and by the twentieth one an unfiltered column of
 // checkboxes is unusable. Matching runs over the name and the connector, so
-// "kafka" narrows to Kafka tables and "whisper" to the whisper pipeline.
+// "kafka" narrows to Kafka tables and "events" to the events pipeline.
 export default function TablePicker({ entries, selected, onToggle }) {
   const [query, setQuery] = useState('')
 

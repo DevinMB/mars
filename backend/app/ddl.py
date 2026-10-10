@@ -159,8 +159,7 @@ def split_statements(script: str) -> list[str]:
     It also keeps ``EXECUTE STATEMENT SET BEGIN ... END;`` whole. That construct is
     how several INSERTs share one source read -- Flink compiles them into a single
     job with one scan -- and splitting it would submit each INSERT separately,
-    reading the source once per statement. On a 335k-record topic being fanned out
-    three ways, that is the difference between one pass and three.
+    reading the source once per statement. For a topic feeding three sinks, that avoids three separate source reads.
     """
     statements: list[str] = []
     buf: list[str] = []

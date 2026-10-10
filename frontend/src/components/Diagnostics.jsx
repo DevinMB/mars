@@ -3,7 +3,7 @@ import { bytes, count, millis, percent, rate } from '../lib/format'
 import { Alert, Badge, CodeBlock, Spinner } from './ui'
 
 // Flink names operators after the plan that produced them, so a vertex arrives
-// as "Source: whispers_raw[12] -> Calc[13] -> Sink: whispers_sink[14]". The
+// as "Source: events_raw[12] -> Calc[13] -> Sink: events_sink[14]". The
 // bracketed ids are noise to everyone except someone reading a Flink plan.
 function operatorName(name) {
   return name.replace(/\[\d+\]/g, '').trim()

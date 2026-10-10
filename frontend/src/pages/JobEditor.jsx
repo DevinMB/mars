@@ -187,7 +187,7 @@ export default function JobEditor() {
           <div className="form-section grid gap-4 sm:grid-cols-2">
             <Field label="Name" required>
               <input className="input mono" value={name} disabled={!!editing}
-                     onChange={(e) => setName(e.target.value)} placeholder="whispers_to_couch" />
+                     onChange={(e) => setName(e.target.value)} placeholder="events_to_archive" />
             </Field>
             <Field label="Description">
               <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />

@@ -49,7 +49,11 @@ with sync_playwright() as pw:
     page.route('**/api/**',route)
     def visit(path):
         page.goto(BASE+path,wait_until='domcontentloaded')
-        page.locator('h1').wait_for()
+        try:
+            page.locator('h1').wait_for()
+        except Exception:
+            print('Page failed:', path, 'errors:', errors, 'body:', page.locator('body').inner_text()[:1000], flush=True)
+            raise
         page.wait_for_timeout(350)
     for theme in (['light','dark'] if SCREENSHOTS else []):
         page.add_init_script(f"localStorage.setItem('mars.theme','{theme}')")

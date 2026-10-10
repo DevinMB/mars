@@ -6,7 +6,7 @@ here operates directly on the database, so it works even when nobody can sign in
 
     docker compose exec console python -m app.admin list-users
     docker compose exec console python -m app.admin reset-password admin
-    docker compose exec console python -m app.admin create-user devin --role admin
+    docker compose exec console python -m app.admin create-user operator --role admin
 """
 from __future__ import annotations
 

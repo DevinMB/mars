@@ -78,7 +78,7 @@ export default function PromptPanel({
           spellCheck={false}
           placeholder={currentSql
             ? 'also write @doc.username'
-            : 'Take each whisper and write @doc.message and @doc.username into the whispers sink'}
+            : 'Write each event’s ID and timestamp to the output sink'}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => { completion.onKeyDown(e) }}
         />

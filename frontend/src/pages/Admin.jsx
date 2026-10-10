@@ -65,7 +65,7 @@ function NewUserForm({ onCreated, onCancel }) {
             className="input mono"
             value={username}
             autoFocus
-            placeholder="devin"
+            placeholder="operator"
             onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_.-]/g, ''))}
           />
         </Field>

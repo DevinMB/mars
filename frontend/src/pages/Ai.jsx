@@ -5,7 +5,7 @@ import { Alert, Badge, Field, PageHeader, Spinner } from '../components/ui'
 const KINDS = [
   {
     id: 'ollama', label: 'Ollama',
-    urlPlaceholder: 'http://192.168.1.10:11434',
+    urlPlaceholder: 'http://ollama.example.test:11434',
     modelPlaceholder: 'qwen3:8b',
     note: 'A model you run yourself. Nothing leaves your network.',
     auth: 'none', header: '',
@@ -287,7 +287,7 @@ export default function Ai() {
             <div className="mt-4">
               <Field
                 label="Extra headers"
-                hint="Anything else the endpoint insists on — an API version, a project or organisation id, a gateway's routing header."
+                hint="Non-sensitive values only, such as an API version or project ID. These are stored as plain text. Use Authentication for credentials."
               >
                 <HeaderRows value={form.extra_headers}
                             onChange={(v) => set({ extra_headers: v })} />
