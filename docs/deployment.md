@@ -77,6 +77,26 @@ jobs continue. Capture Flink savepoints separately before cluster maintenance an
 verify a restore in an isolated environment. Never use `docker compose down -v`
 as an upgrade step: it deletes persistent volumes.
 
+## Released images
+
+Every merge to `main` builds the console and Flink images once, scans them with
+Trivy, and pushes them to GHCR as `ghcr.io/devinmb/mars-console` and
+`ghcr.io/devinmb/mars-flink`, tagged `sha-<commit>`. A release with fixable high or
+critical vulnerabilities is not pushed. The Flink image contains the connector
+JARs from the image pinned in `flink/connectors.image`.
+
+To run a released image instead of a local build, pin it by digest in `.env`:
+
+```bash
+MARS_CONSOLE_IMAGE=ghcr.io/devinmb/mars-console@sha256:...
+MARS_FLINK_IMAGE=ghcr.io/devinmb/mars-flink@sha256:...
+```
+
+A digest names exact image contents, so what runs is what was scanned, and a
+rollback is the previous digest. Unset, both fall back to the locally built
+`mars/console:0.1.0` and `mars/flink:0.1.0`. The console reads connector manifests
+from `flink/jars/`, so keep that directory in step with the Flink image you pin.
+
 ## Recovery and failover
 
 Flink saves a job's state in two ways:

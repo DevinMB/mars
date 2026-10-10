@@ -1,0 +1,95 @@
+name: Release images
+
+# Every merge to main builds the console and Flink images once, scans them, and
+# pushes them to GHCR tagged with the commit. Deployments pin these by digest, so
+# what runs is byte for byte what was scanned here, and a rollback is the
+# previous digest.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  console:
+    name: Console image
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/devinmb/mars-console
+      SHA: ${{ github.sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Build
+        run: >
+          docker build --pull -f backend/Dockerfile
+          --label org.opencontainers.image.source="https://github.com/$REPO"
+          --label org.opencontainers.image.revision="$SHA"
+          -t "$IMAGE:sha-$SHA" -t "$IMAGE:main" .
+      # A release with fixable high or critical vulnerabilities is never pushed.
+      - name: Scan
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.75.0 image --scanners vuln --severity HIGH,CRITICAL
+          --ignore-unfixed --exit-code 1 "$IMAGE:sha-$SHA"
+      - name: Push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "$IMAGE:sha-$SHA"
+          docker push "$IMAGE:main"
+          echo "### Console" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$SHA")\`" >> "$GITHUB_STEP_SUMMARY"
+
+  flink:
+    name: Flink image
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/devinmb/mars-flink
+      SHA: ${{ github.sha }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+      # The connectors come from the image pinned in flink/connectors.image, so
+      # which connectors a Flink image contains is recorded in this repository.
+      - name: Connector JARs
+        run: |
+          ref=$(tr -d '[:space:]' < flink/connectors.image)
+          docker pull -q "$ref"
+          id=$(docker create "$ref" none)
+          docker cp "$id:/jars/." flink/jars/
+          docker rm "$id"
+          ./scripts/fetch-formats.sh
+          ls -l flink/jars
+      - name: Build
+        run: >
+          docker build --pull
+          --label org.opencontainers.image.source="https://github.com/$REPO"
+          --label org.opencontainers.image.revision="$SHA"
+          --label io.mars.connectors="$(tr -d '[:space:]' < flink/connectors.image)"
+          -t "$IMAGE:sha-$SHA" -t "$IMAGE:main" flink
+      - name: Scan
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+          aquasec/trivy:0.75.0 image --scanners vuln --severity HIGH,CRITICAL
+          --ignore-unfixed --exit-code 1 "$IMAGE:sha-$SHA"
+      - name: Push
+        run: |
+          docker push "$IMAGE:sha-$SHA"
+          docker push "$IMAGE:main"
+          echo "### Flink" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$SHA")\`" >> "$GITHUB_STEP_SUMMARY"

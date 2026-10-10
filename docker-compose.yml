@@ -12,7 +12,7 @@ services:
     build:
       context: ./flink
       dockerfile: Dockerfile
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-jobmanager
     command: jobmanager
     restart: unless-stopped
@@ -34,7 +34,7 @@ services:
     networks: [mars]
 
   taskmanager:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-taskmanager
     command: taskmanager
     restart: unless-stopped
@@ -51,7 +51,7 @@ services:
     networks: [mars]
 
   sql-gateway:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-sql-gateway
     restart: unless-stopped
     depends_on:
@@ -81,7 +81,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    image: ${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0
+    image: ${MARS_CONSOLE_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0}
     container_name: mars-console
     restart: unless-stopped
     depends_on:
@@ -126,7 +126,7 @@ services:
   # Enable with:  docker compose --profile second-target up -d
   # ---------------------------------------------------------------------------
   jobmanager-b:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-jobmanager-b
     profiles: [second-target]
     command: jobmanager
@@ -146,7 +146,7 @@ services:
     networks: [mars]
 
   taskmanager-b:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-taskmanager-b
     profiles: [second-target]
     command: taskmanager
@@ -162,7 +162,7 @@ services:
     networks: [mars]
 
   sql-gateway-b:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-sql-gateway-b
     profiles: [second-target]
     restart: unless-stopped
