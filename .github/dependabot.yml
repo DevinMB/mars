@@ -2,6 +2,8 @@
 # package. Security updates arrive as soon as an advisory is published, separately
 # from this schedule, once Dependabot security updates are enabled in Settings.
 version: 2
+# Groups take minor and patch updates only. Each major upgrade arrives as its own
+# PR, so one breaking change cannot hold back the safe updates grouped with it.
 updates:
   - package-ecosystem: pip
     directory: /backend
@@ -15,6 +17,7 @@ updates:
     groups:
       python:
         patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -31,9 +34,11 @@ updates:
       build-tooling:
         dependency-type: development
         patterns: ["*"]
+        update-types: [minor, patch]
       runtime:
         dependency-type: production
         patterns: ["*"]
+        update-types: [minor, patch]
 
   # Base images: python and node for the console, Flink for the cluster image.
   # The Kafka JARs downloaded in flink/Dockerfile are build arguments, which
@@ -50,6 +55,7 @@ updates:
     groups:
       base-images:
         patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: github-actions
     directory: /
@@ -63,3 +69,4 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: [minor, patch]
