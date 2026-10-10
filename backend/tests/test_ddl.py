@@ -33,22 +33,22 @@ def kafka(registry):
 
 def test_generates_expected_shape(kafka):
     sql = build_create_table(
-        "whispers_raw",
+        "events_raw",
         kafka,
         {
-            "topic": "whispererer-log",
-            "properties.bootstrap.servers": "192.168.1.250:9092",
-            "properties.group.id": "mars-whispers",
+            "topic": "events-input",
+            "properties.bootstrap.servers": "kafka.example.test:9092",
+            "properties.group.id": "mars-events",
             "format": "json",
         },
         [Column("doc", "STRING"), Column("kafka_key", "STRING")],
     )
 
-    assert sql.startswith("CREATE TABLE IF NOT EXISTS `whispers_raw` (")
+    assert sql.startswith("CREATE TABLE IF NOT EXISTS `events_raw` (")
     assert "`doc` STRING" in sql
     assert "'connector' = 'kafka'" in sql
-    assert "'topic' = 'whispererer-log'" in sql
-    assert "'properties.group.id' = 'mars-whispers'" in sql
+    assert "'topic' = 'events-input'" in sql
+    assert "'properties.group.id' = 'mars-events'" in sql
 
 
 def test_defaults_are_omitted_to_keep_sql_readable(kafka):
@@ -79,15 +79,16 @@ def test_missing_required_option_names_it(kafka):
                            [Column("doc", "STRING")])
 
 
-def test_unknown_option_is_rejected(kafka):
-    # Catching a typo at creation beats a Flink error minutes later.
-    with pytest.raises(DdlError, match="Unknown option"):
-        build_create_table(
-            "t", kafka,
-            {"topic": "x", "properties.bootstrap.servers": "b", "format": "json",
-             "tpoic": "typo"},
-            [Column("doc", "STRING")],
-        )
+def test_additional_connector_options_survive_form_round_trip(kafka):
+    # Manifests describe form fields, not every option a connector accepts.
+    sql = build_create_table(
+        "t", kafka,
+        {"topic": "x", "properties.bootstrap.servers": "b", "format": "json",
+         "key.format": "raw", "properties.client.id": "analytics-reader"},
+        [Column("doc", "STRING")],
+    )
+    assert "'key.format' = 'raw'" in sql
+    assert "'properties.client.id' = 'analytics-reader'" in sql
 
 
 def test_quote_in_option_value_cannot_break_out(kafka):
@@ -203,7 +204,7 @@ def test_split_tolerates_missing_trailing_semicolon():
 def test_statement_set_is_kept_whole():
     """EXECUTE STATEMENT SET compiles several INSERTs into one job with one source
     read. Splitting it would submit each separately, rescanning the source each
-    time -- three passes over a 335k-record topic instead of one."""
+    time -- three passes over the same topic instead of one."""
     script = """
 EXECUTE STATEMENT SET
 BEGIN

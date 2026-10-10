@@ -577,11 +577,11 @@ async def draft_job(
         return True, None, None
 
     result = await draft_statement(
-        AiClient(config), body.prompt, tables, body.job_type, _validate,
-        current_sql=body.current_sql,
+        AiClient(config), store.redact(db, body.prompt), tables, body.job_type, _validate,
+        current_sql=store.redact(db, body.current_sql),
     )
     return DraftResponse(
-        sql=result.sql,
+        sql=store.redact(db, result.sql),
         ok=result.ok,
         amended=result.amended,
         error=store.redact(db, result.error) if result.error else None,

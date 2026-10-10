@@ -56,18 +56,18 @@ def test_table_name():
 
 
 def test_unprefixed_consumer_group_is_a_danger():
-    ws = check_catalog_entry(kafka_source("whispererer-log", "whisper-sink"), "source", "kafka")
+    ws = check_catalog_entry(kafka_source("events-input", "events-sink"), "source", "kafka")
     codes = {w.code for w in ws}
     assert "kafka_group_collision" in codes
     danger = next(w for w in ws if w.code == "kafka_group_collision")
     assert danger.level == "danger"
     # The message must explain the actual consequence, not just say "bad".
     assert "silently stop receiving" in danger.message
-    assert "mars-whisper-sink" in danger.message
+    assert "mars-events-sink" in danger.message
 
 
 def test_prefixed_consumer_group_is_clean():
-    ws = check_catalog_entry(kafka_source("whispererer-log", "mars-whisper-sink"), "source", "kafka")
+    ws = check_catalog_entry(kafka_source("events-input", "mars-events-sink"), "source", "kafka")
     assert ws == []
 
 
@@ -78,14 +78,14 @@ def test_missing_consumer_group_warns_about_restarts():
 
 
 def test_couchdb_auto_id_warns_about_replays():
-    ws = check_catalog_entry(couch_sink("whispers", "auto"), "sink", "couchdb")
+    ws = check_catalog_entry(couch_sink("events", "auto"), "sink", "couchdb")
     assert [w.code for w in ws] == ["couchdb_auto_id"]
     assert "duplicate documents" in ws[0].message
 
 
 def test_couchdb_deterministic_id_is_clean():
     for mode in ("kafka_key", "timestamp", "field", "custom"):
-        assert check_catalog_entry(couch_sink("whispers", mode), "sink", "couchdb") == []
+        assert check_catalog_entry(couch_sink("events", mode), "sink", "couchdb") == []
 
 
 def test_sink_group_id_is_not_checked():

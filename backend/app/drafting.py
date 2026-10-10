@@ -22,6 +22,8 @@ import re
 from dataclasses import dataclass, field
 
 from .ai import AiClient, AiError
+from .ddl import split_statements
+from .guards import strip_noise
 
 log = logging.getLogger(__name__)
 
@@ -163,6 +165,17 @@ async def draft_statement(
     """
     result = DraftResult()
 
+    async def validate_draft(sql):
+        # Model output is unreviewed. Never replay its DDL or a leading command
+        # through the general multi-statement validation path.
+        statements = split_statements(sql)
+        if len(statements) != 1 or not re.match(
+            r"^(?:INSERT|SELECT|WITH|VALUES)\b|^EXECUTE\s+STATEMENT\s+SET\b",
+            strip_noise(statements[0]).strip() if statements else "", re.I,
+        ):
+            return False, "A draft must contain one query or INSERT statement, without setup commands.", None
+        return await validate(sql)
+
     amending = bool(current_sql.strip())
     system = AMEND_SYSTEM if amending else SYSTEM
     prompt = (
@@ -184,7 +197,7 @@ async def draft_statement(
         result.error = "The model returned nothing usable."
         return result
 
-    ok, error, hint = await validate(result.sql)
+    ok, error, hint = await validate_draft(result.sql)
     if ok:
         result.ok = True
         return result
@@ -213,7 +226,7 @@ async def draft_statement(
     result.attempts = 2
     if repaired:
         result.sql = repaired
-        ok, error, hint = await validate(result.sql)
+        ok, error, hint = await validate_draft(result.sql)
 
     result.ok = ok
     result.error = None if ok else error

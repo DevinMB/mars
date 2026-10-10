@@ -25,8 +25,10 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
+from croniter import croniter
 from sqlalchemy.orm import Session
 
 from .guards import parse_options
@@ -37,6 +39,82 @@ log = logging.getLogger(__name__)
 
 # Bumped when the shape changes in a way an older MARS could not read.
 FORMAT_VERSION = 1
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+
+
+class _ImportLoader(yaml.SafeLoader):
+    """Exports need neither aliases nor deeply nested objects."""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            raise ValueError("YAML aliases are not supported in imports.")
+        depth = getattr(self, "_depth", 0)
+        if depth >= 40:
+            raise ValueError("Import nesting is too deep.")
+        self._depth = depth + 1
+        try:
+            return super().compose_node(parent, index)
+        finally:
+            self._depth = depth
+
+
+def _validate_payload(payload: dict[str, Any]) -> None:
+    version = payload.get("format", FORMAT_VERSION)
+    if type(version) is not int or version != FORMAT_VERSION:
+        raise ValueError(f"Unsupported export format; expected {FORMAT_VERSION}.")
+    for section in ("catalog", "jobs", "targets", "secrets_required"):
+        items = payload.get(section, [])
+        if not isinstance(items, list):
+            raise ValueError(f"'{section}' must be a list.")
+        if section == "secrets_required":
+            if any(not isinstance(item, str) for item in items):
+                raise ValueError("Secret references must be names.")
+            continue
+        seen = set()
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError(f"Each '{section}' item must be a mapping.")
+            name = item.get("name")
+            if not isinstance(name, str) or not name.strip() or len(name) > 128:
+                raise ValueError(f"Each '{section}' item needs a name of 1–128 characters.")
+            if name in seen:
+                raise ValueError(f"Duplicate name in '{section}'.")
+            seen.add(name)
+            if section == "targets":
+                continue  # Descriptive metadata; targets are registered separately.
+            if not isinstance(item.get("sql"), str) or not item["sql"].strip():
+                raise ValueError(f"Each '{section}' item needs nonempty SQL text.")
+            for key in ("description", "connector", "target"):
+                if item.get(key) is not None and not isinstance(item[key], str):
+                    raise ValueError(f"'{section}.{key}' must be text.")
+            if "enabled" in item and type(item["enabled"]) is not bool:
+                raise ValueError("'enabled' must be a boolean.")
+            if section == "catalog" and item.get("kind", "source") not in ("source", "sink"):
+                raise ValueError("Catalog kind must be source or sink.")
+            if section == "jobs":
+                if item.get("type", "streaming") not in ("streaming", "batch"):
+                    raise ValueError("Job type must be streaming or batch.")
+                uses = item.get("uses", [])
+                if not isinstance(uses, list) or any(not isinstance(v, str) for v in uses):
+                    raise ValueError("Job 'uses' must be a list of catalog names.")
+                schedule = item.get("schedule")
+                if schedule is not None:
+                    if not isinstance(schedule, dict) or schedule.get("mode", "supervisor") not in ("cron", "supervisor"):
+                        raise ValueError("Invalid schedule mode.")
+                    if "enabled" in schedule and type(schedule["enabled"]) is not bool:
+                        raise ValueError("Schedule 'enabled' must be a boolean.")
+                    zone = schedule.get("timezone", "UTC")
+                    try:
+                        if not isinstance(zone, str):
+                            raise ValueError()
+                        ZoneInfo(zone)
+                    except (ValueError, ZoneInfoNotFoundError):
+                        raise ValueError("Invalid schedule timezone.") from None
+                    cron = schedule.get("cron")
+                    if cron is not None and not isinstance(cron, str):
+                        raise ValueError("Schedule cron must be text.")
+                    if schedule.get("mode") == "cron" and (not cron or not croniter.is_valid(cron)):
+                        raise ValueError("Invalid cron expression.")
 
 
 @dataclass
@@ -166,18 +244,15 @@ def to_yaml(payload: dict[str, Any]) -> str:
 
 
 def parse(text: str) -> dict[str, Any]:
+    if len(text.encode("utf-8")) > MAX_IMPORT_BYTES:
+        raise ValueError("Imports must be at most 5 MiB.")
     try:
-        payload = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise ValueError(f"This is not valid YAML: {exc}") from exc
+        payload = yaml.load(text, Loader=_ImportLoader)
+    except (yaml.YAMLError, RecursionError) as exc:
+        raise ValueError("This is not valid import YAML.") from exc
     if not isinstance(payload, dict):
         raise ValueError("An export is a mapping with 'catalog' and 'jobs' keys.")
-    version = payload.get("format")
-    if version is not None and int(version) > FORMAT_VERSION:
-        raise ValueError(
-            f"This export is format {version}; this MARS understands {FORMAT_VERSION}. "
-            f"Upgrade before importing it."
-        )
+    _validate_payload(payload)
     return payload
 
 
@@ -196,6 +271,7 @@ def import_all(
     it they are left alone and reported as skipped, so importing into a populated
     installation is additive by default.
     """
+    _validate_payload(payload)
     outcome = ImportOutcome(dry_run=dry_run)
 
     have_secrets = set(store.names(db))
@@ -252,6 +328,10 @@ def import_all(
             continue
 
         uses = [str(u) for u in (item.get("uses") or [])]
+        target = item.get("target")
+        if target and not db.query(Target).filter(Target.name == target).count():
+            outcome.errors.append(f"job/{name}: register execution target '{target}' before importing.")
+            continue
         unknown = [u for u in uses if u not in known]
         if unknown:
             # Importing a job that names tables nothing provides produces a job
@@ -293,8 +373,11 @@ def import_all(
                 existing.version += 1
                 _apply_schedule(db, existing, item.get("schedule"))
 
-    if dry_run:
+    if dry_run or outcome.errors:
         db.rollback()
+        if not dry_run:
+            outcome.created.clear()
+            outcome.updated.clear()
     else:
         db.commit()
     return outcome

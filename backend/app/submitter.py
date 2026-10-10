@@ -16,16 +16,38 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from sqlalchemy.orm import Session
 
 from .cluster import FlinkClusterClient
 from .ddl import split_statements
 from .gateway import GatewayError, SqlGatewayClient
+from .guards import strip_noise
 from .models import CatalogEntry, Job, JobRun, RunState, utcnow
 from .secrets import SecretStore
 
 log = logging.getLogger(__name__)
+
+
+def _validation_action(statement: str) -> str:
+    """Only explicit definitions/session settings may execute during validation.
+
+    Queries and writes go through EXPLAIN. Preflight the whole script before
+    opening a session so an unsupported later statement causes no earlier work.
+    This is a guard against accidental execution, not an untrusted SQL sandbox.
+    """
+    text = strip_noise(statement).strip()
+    if re.match(r"^(INSERT|SELECT|WITH|VALUES)\b|^EXECUTE\s+STATEMENT\s+SET\b", text, re.I):
+        return "explain"
+    if re.match(r"^CREATE\s+(?:TEMPORARY\s+)?TABLE\b", text, re.I):
+        # CTAS submits a job even though its first word is CREATE.
+        if re.search(r"\bAS\s*\(*\s*(?:SELECT|WITH|VALUES|TABLE)\b", text, re.I):
+            raise SubmissionError("CREATE TABLE AS queries cannot be executed during validation.")
+        return "setup"
+    if re.match(r"^CREATE\s+(?:TEMPORARY\s+)?(?:VIEW|(?:SYSTEM\s+)?FUNCTION)\b|^(SET|USE)\b", text, re.I):
+        return "setup"
+    raise SubmissionError("This script contains a statement that cannot safely run during validation.")
 
 
 class SubmissionError(RuntimeError):
@@ -83,15 +105,16 @@ class JobSubmitter:
     async def validate(self, db: Session, job: Job) -> None:
         """Compiles the job without submitting it."""
         statements = self.build_script(db, job)
+        actions = [_validation_action(statement) for statement in statements]
         resolved = [self._store.resolve(db, s) for s in statements]
 
         session = await self._gateway.open_session()
         try:
-            # Everything but the final statement is DDL that must actually run for
-            # the last statement to resolve its tables.
-            for stmt in resolved[:-1]:
-                await self._gateway.execute(session, stmt)
-            await self._gateway.validate(session, resolved[-1])
+            for stmt, action in zip(resolved, actions):
+                if action == "setup":
+                    await self._gateway.execute(session, stmt)
+                else:
+                    await self._gateway.validate(session, stmt)
         except GatewayError as exc:
             raise SubmissionError(
                 self._store.redact(db, exc.summary),
