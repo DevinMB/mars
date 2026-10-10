@@ -1,5 +1,5 @@
 # MARS console: React frontend built and served by the FastAPI backend.
-FROM node:22-alpine AS frontend
+FROM node:25-alpine AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
