@@ -5,12 +5,7 @@
 # Brings up a Flink session cluster, a SQL Gateway, and the MARS console.
 name: mars
 
-# Image names carry the project so two installs on one host cannot overwrite each
-# other's images. A fixed tag is shared by every stack on the daemon: building a
-# second deployment from a fresh checkout -- where flink/jars is empty, because
-# the connectors are build output -- replaced the first deployment's image with
-# one containing no connectors, and every CouchDB job failed with "Could not find
-# any factory for identifier 'couchdb'" the next time its container was recreated.
+# Image and network names are scoped to the Compose project.
 
 services:
   jobmanager:
@@ -22,14 +17,12 @@ services:
     command: jobmanager
     restart: unless-stopped
     ports:
-      - "${MARS_FLINK_UI_PORT:-8081}:8081"
+      - "${MARS_FLINK_BIND_ADDRESS:-127.0.0.1}:${MARS_FLINK_UI_PORT:-8081}:8081"
     volumes:
       - ./flink/conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
       - flink-state:/flink-state
     environment:
       - TZ=${TZ:-UTC}
-    # mem_limit, not deploy.resources.limits: the latter is Swarm-only and is
-    # silently ignored by docker compose.
     mem_limit: 1280m
     cpus: 0.75
     healthcheck:
@@ -95,7 +88,7 @@ services:
       sql-gateway:
         condition: service_healthy
     ports:
-      - "${MARS_CONSOLE_PORT:-8080}:8080"
+      - "${MARS_CONSOLE_BIND_ADDRESS:-127.0.0.1}:${MARS_CONSOLE_PORT:-8080}:8080"
     volumes:
       - console-data:/data
       # Read-only view of the connector JARs, so the console can read the
@@ -108,6 +101,10 @@ services:
       # Optional; see .env.example. Unset is correct for a stock deployment.
       - MARS_FLINK_UI_URL=${MARS_FLINK_UI_URL:-}
       - MARS_CONNECTOR_LIB_DIR=/jars
+      - MARS_SESSION_COOKIE_SECURE=${MARS_SESSION_COOKIE_SECURE:-false}
+      - MARS_SESSION_COOKIE=${MARS_SESSION_COOKIE:-mars_session}
+      - MARS_SESSION_TTL_HOURS=${MARS_SESSION_TTL_HOURS:-12}
+      - MARS_SEED_EXAMPLES=${MARS_SEED_EXAMPLES:-true}
     mem_limit: 512m
     cpus: 0.5
     healthcheck:
@@ -190,14 +187,4 @@ volumes:
   console-data:
 
 networks:
-  # Deliberately not given a fixed name. A pinned name is shared by every stack on
-  # the host, and Compose gives each service the same DNS alias regardless of
-  # project -- so a second MARS deployment joined the first one's network and its
-  # TaskManager registered with the *first* JobManager. Two installs on one host
-  # silently merged into one cluster. Left unnamed, Compose scopes the network to
-  # the project and they cannot see each other.
-  #
-  # Anything outside this stack that needs to reach these containers -- a
-  # Prometheus using docker_sd, for instance -- joins <project>_mars rather than
-  # the other way round.
   mars:

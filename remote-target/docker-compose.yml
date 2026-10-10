@@ -9,18 +9,6 @@
 #     Flink REST url : http://<this-host>:8081
 #     Gateway url    : http://<this-host>:8083
 #
-# WHY A WHOLE CLUSTER AND NOT JUST A WORKER
-#
-# Adding a TaskManager to the existing cluster would give more slots, but Flink's
-# scheduler places tasks in whatever slot is free -- there is no supported way to
-# say "this job belongs on that machine". Capacity would grow; control would not.
-# Running a cluster here makes this machine addressable, so a job can be sent to it
-# deliberately.
-#
-# The trade-off is honest: each cluster carries its own JobManager, so a second
-# target costs roughly a gigabyte of overhead before it runs anything. That is the
-# price of placement.
-
 name: mars-target
 
 services:
@@ -32,7 +20,7 @@ services:
     ports:
       # MARS talks to these two. They must be reachable from wherever the console
       # runs -- which is the only firewall rule this needs.
-      - "${TARGET_REST_PORT:-8081}:8081"
+      - "${TARGET_BIND_ADDRESS:-127.0.0.1}:${TARGET_REST_PORT:-8081}:8081"
     volumes:
       - ./conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
       - flink-state:/flink-state
@@ -59,8 +47,6 @@ services:
     environment:
       - TZ=${TZ:-UTC}
     mem_limit: ${TASKMANAGER_MEM:-2560m}
-    # Scale workers within this machine with:
-    #   docker compose up -d --scale taskmanager=3
     networks: [mars-target]
 
   sql-gateway:
@@ -70,7 +56,7 @@ services:
     depends_on:
       jobmanager: { condition: service_healthy }
     ports:
-      - "${TARGET_GATEWAY_PORT:-8083}:8083"
+      - "${TARGET_BIND_ADDRESS:-127.0.0.1}:${TARGET_GATEWAY_PORT:-8083}:8083"
     command: >
       /opt/flink/bin/sql-gateway.sh start-foreground
       -Dsql-gateway.endpoint.rest.address=0.0.0.0
@@ -89,4 +75,3 @@ volumes:
 
 networks:
   mars-target:
-    name: mars-target

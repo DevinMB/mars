@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Both are generated into the data dir on first start if absent.
     secret_key_file: str = "secret.key"
     session_cookie: str = "mars_session"
+    session_cookie_secure: bool = False
     session_ttl_hours: int = 12
 
     # --- connector registry ---
