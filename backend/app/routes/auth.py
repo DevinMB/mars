@@ -1,7 +1,7 @@
 """Sign-in, sign-out, and account self-service."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from ..auth import (
@@ -16,6 +16,10 @@ from ..deps import current_principal
 from ..models import User, utcnow
 from ..schemas import ChangePasswordRequest, LoginRequest, MeResponse
 from ..settings import settings
+from ..security import login_limiter
+
+# Unknown and disabled accounts still pay the normal password-verification cost.
+_DUMMY_HASH = hash_password("unused-login-timing-placeholder")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -24,13 +28,18 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def login(
     body: LoginRequest,
     response: Response,
+    request: Request,
     db: Session = Depends(get_session),
 ) -> MeResponse:
+    retry = login_limiter.retry_after(request.client.host if request.client else "unknown")
+    if retry:
+        raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again shortly.",
+                            headers={"Retry-After": str(retry)})
     user = db.query(User).filter(User.username == body.username).one_or_none()
 
-    # Same response whether the user is unknown, disabled, or the password is
-    # wrong, so this endpoint cannot be used to enumerate accounts.
-    if user is None or user.disabled or not verify_password(user.password_hash, body.password):
+    valid = verify_password(user.password_hash if user and not user.disabled else _DUMMY_HASH,
+                            body.password)
+    if user is None or user.disabled or not valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password.",
@@ -47,6 +56,7 @@ def login(
         key=s.session_cookie,
         value=create_session_token(user),
         httponly=True,
+        secure=s.session_cookie_secure,
         samesite="lax",
         max_age=s.session_ttl_hours * 3600,
         path="/",
@@ -63,7 +73,9 @@ def login(
     response_model=None,
 )
 def logout(response: Response) -> None:
-    response.delete_cookie(settings().session_cookie, path="/")
+    s = settings()
+    response.delete_cookie(s.session_cookie, path="/", secure=s.session_cookie_secure,
+                           httponly=True, samesite="lax")
 
 
 @router.get("/me", response_model=MeResponse)
@@ -108,6 +120,7 @@ def change_password(
         key=s.session_cookie,
         value=create_session_token(user),
         httponly=True,
+        secure=s.session_cookie_secure,
         samesite="lax",
         max_age=s.session_ttl_hours * 3600,
         path="/",

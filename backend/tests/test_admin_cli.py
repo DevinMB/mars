@@ -47,9 +47,9 @@ def _users(Session):
 
 
 def test_create_user_generates_a_password(capsys, _isolated):
-    assert admin.main(["create-user", "devin", "--role", "admin"]) == 0
+    assert admin.main(["create-user", "operator", "--role", "admin"]) == 0
     out = capsys.readouterr().out
-    assert "username: devin" in out
+    assert "username: operator" in out
 
     password = next(l.split("password:")[1].strip() for l in out.splitlines() if "password:" in l)
     users = _users(_isolated)
@@ -61,15 +61,15 @@ def test_create_user_generates_a_password(capsys, _isolated):
 
 
 def test_create_user_with_explicit_password_does_not_nag(_isolated):
-    admin.main(["create-user", "devin", "--password", "a-chosen-password"])
+    admin.main(["create-user", "operator", "--password", "a-chosen-password"])
     user = _users(_isolated)[0]
     assert auth.verify_password(user.password_hash, "a-chosen-password")
     assert not user.must_change_password
 
 
 def test_duplicate_user_is_refused(_isolated, capsys):
-    admin.main(["create-user", "devin"])
-    assert admin.main(["create-user", "devin"]) == 1
+    admin.main(["create-user", "operator"])
+    assert admin.main(["create-user", "operator"]) == 1
 
 
 def test_reset_password_recovers_a_locked_out_install(capsys, _isolated):

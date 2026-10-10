@@ -83,9 +83,9 @@ def test_you_cannot_delete_yourself(db, admin):
 
 
 def test_create_generates_a_password_and_returns_it_once(db, admin):
-    out = mod.create_user(UserIn(username="devin", role="editor"), _principal(admin), db)
+    out = mod.create_user(UserIn(username="operator", role="editor"), _principal(admin), db)
     assert out.password and len(out.password) >= 20
-    user = db.scalar(select(User).where(User.username == "devin"))
+    user = db.scalar(select(User).where(User.username == "operator"))
     assert auth.verify_password(user.password_hash, out.password)
     # A generated password should be replaced by its owner.
     assert user.must_change_password
@@ -93,16 +93,16 @@ def test_create_generates_a_password_and_returns_it_once(db, admin):
 
 def test_create_with_a_chosen_password_returns_nothing_and_does_not_nag(db, admin):
     out = mod.create_user(
-        UserIn(username="devin", role="viewer", password="a-chosen-password"),
+        UserIn(username="operator", role="viewer", password="a-chosen-password"),
         _principal(admin), db)
     assert out.password is None
-    assert not db.scalar(select(User).where(User.username == "devin")).must_change_password
+    assert not db.scalar(select(User).where(User.username == "operator")).must_change_password
 
 
 def test_duplicate_username_is_refused(db, admin):
-    mod.create_user(UserIn(username="devin"), _principal(admin), db)
+    mod.create_user(UserIn(username="operator"), _principal(admin), db)
     with pytest.raises(HTTPException) as exc:
-        mod.create_user(UserIn(username="devin"), _principal(admin), db)
+        mod.create_user(UserIn(username="operator"), _principal(admin), db)
     assert exc.value.status_code == 409
 
 

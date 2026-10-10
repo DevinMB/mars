@@ -27,13 +27,13 @@ UtcDatetime = Annotated[datetime, PlainSerializer(_as_utc_iso, return_type=str)]
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str = Field(min_length=12)
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
 
 
 class MeResponse(BaseModel):
@@ -252,7 +252,7 @@ class UserIn(BaseModel):
     username: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
     role: str = "editor"
     # Omit to have one generated and returned once.
-    password: str | None = Field(default=None, min_length=12)
+    password: str | None = Field(default=None, min_length=12, max_length=1024)
 
     @field_validator("role")
     @classmethod
@@ -499,6 +499,17 @@ class AiProviderIn(BaseModel):
     extra_headers: dict[str, str] = Field(default_factory=dict)
     temperature: str = "0"
     max_tokens: int = 1500
+
+    @field_validator("extra_headers")
+    @classmethod
+    def _non_sensitive_headers(cls, headers: dict[str, str]) -> dict[str, str]:
+        credential_headers = {
+            "authorization", "proxy-authorization", "cookie", "set-cookie",
+            "x-api-key", "api-key", "api_key", "x-auth-token",
+        }
+        if any(name.strip().lower() in credential_headers for name in headers):
+            raise ValueError("Use Authentication and a stored secret for credential headers.")
+        return headers
 
     @field_validator("kind")
     @classmethod

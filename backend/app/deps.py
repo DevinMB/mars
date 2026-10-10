@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from .auth import Principal, verify_api_token, verify_session_token
@@ -66,18 +66,21 @@ def get_submitter() -> JobSubmitter:
 
 
 def current_principal(
+    request: Request,
     db: Session = Depends(get_session),
-    mars_session: str | None = Cookie(default=None, alias="mars_session"),
     authorization: str | None = Header(default=None),
 ) -> Principal:
     """Resolves the caller from a session cookie or a bearer token."""
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization[7:].strip()
+    if authorization is not None:
+        token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
         user = verify_api_token(db, token)
         if user is not None:
             db.commit()  # persist last_used_at
             return Principal(user=user, via="token")
+        raise HTTPException(status_code=401, detail="Invalid API token",
+                            headers={"WWW-Authenticate": "Bearer"})
 
+    mars_session = request.cookies.get(settings().session_cookie)
     if mars_session:
         user = verify_session_token(mars_session, db)
         if user is not None:

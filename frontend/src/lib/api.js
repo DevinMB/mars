@@ -14,7 +14,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
     method,
     signal,
     credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { 'X-MARS-Request': '1', ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   })
 

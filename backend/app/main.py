@@ -6,12 +6,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 from starlette.responses import Response
 
 from .auth import ensure_admin_user
+from .frontend import mount_frontend
+from .security import install_browser_security
 from .seeding import seed_examples
 from .db import Base, engine, session_scope
 from .migrations import upgrade_to_head
@@ -106,6 +107,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+install_browser_security(app)
 app.include_router(auth_routes.router)
 app.include_router(system_routes.router)
 app.include_router(secret_routes.router)
@@ -170,13 +172,4 @@ async def metrics() -> Response:
 # The built frontend, when present. Mounted last so it cannot shadow the API.
 _FRONTEND = Path(__file__).resolve().parent.parent / "static"
 if _FRONTEND.is_dir():
-    app.mount("/assets", StaticFiles(directory=_FRONTEND / "assets"), name="assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa(full_path: str) -> Response:
-        # Anything not matched by the API falls through to the single-page app,
-        # so a deep link like /jobs/my-job survives a refresh.
-        candidate = _FRONTEND / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(_FRONTEND / "index.html")
+    mount_frontend(app, _FRONTEND)

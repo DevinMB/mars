@@ -12,7 +12,7 @@ from app.models import Role, User
 
 @pytest.fixture
 def user(db) -> User:
-    u = User(username="devin", password_hash=auth.hash_password("correct horse"),
+    u = User(username="operator", password_hash=auth.hash_password("correct horse"),
              role=Role.ADMIN.value)
     db.add(u)
     db.commit()

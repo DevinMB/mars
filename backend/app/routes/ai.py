@@ -79,13 +79,15 @@ def _out(db: Session, store: SecretStore, row: AiProvider) -> AiProviderOut:
 
 @router.get("", response_model=AiProviderOut)
 def get_provider(
-    # Readable by any signed-in user: features need to know whether AI is
-    # available. No credential is exposed -- only the name of a secret.
-    _: Principal = Depends(current_principal),
+    # Features need availability; only administrators need custom header values.
+    principal: Principal = Depends(current_principal),
     db: Session = Depends(get_session),
     store: SecretStore = Depends(get_secret_store),
 ) -> AiProviderOut:
-    return _out(db, store, _row(db))
+    result = _out(db, store, _row(db))
+    if not principal.is_admin():
+        result.extra_headers = {}
+    return result
 
 
 @router.put("", response_model=AiProviderOut)
