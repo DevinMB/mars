@@ -2,12 +2,13 @@
 FROM node:22-alpine AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci 2>/dev/null || npm install
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.12-slim
 WORKDIR /app
+COPY LICENSE ./LICENSE
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
