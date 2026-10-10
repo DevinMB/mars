@@ -147,12 +147,12 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
         <div className="flex flex-col justify-end gap-2 pb-1">
           <label className="inline-flex items-center gap-2 text-[13px] text-slate-700">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)}
-                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30" />
+                   className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30" />
             Accepts jobs
           </label>
           <label className="inline-flex items-center gap-2 text-[13px] text-slate-700">
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)}
-                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30" />
+                   className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30" />
             Make this the default
             <span className="text-[11px] text-slate-400">(jobs naming no target run here)</span>
           </label>

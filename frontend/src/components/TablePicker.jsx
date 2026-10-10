@@ -41,14 +41,14 @@ export default function TablePicker({ entries, selected, onToggle }) {
             return (
               <label
                 key={e.id}
-                className={`flex items-start gap-2.5 px-1.5 py-1.5 rounded cursor-pointer
+                className={`flex items-start gap-2.5 px-1.5 py-1.5 rounded-sm cursor-pointer
                             transition-colors ${on ? 'bg-brand-50/70' : 'hover:bg-slate-50'}`}
               >
                 <input
                   type="checkbox"
                   checked={on}
                   onChange={() => onToggle(e.name)}
-                  className="mt-0.5 rounded border-slate-300 text-brand-600
+                  className="mt-0.5 rounded-sm border-slate-300 text-brand-600
                              focus:ring-brand-500/30 shrink-0"
                 />
                 <span className="min-w-0 flex-1">
@@ -82,7 +82,7 @@ export default function TablePicker({ entries, selected, onToggle }) {
               type="button"
               onClick={() => onToggle(name)}
               className="mono text-[11px] bg-brand-50 text-brand-800 border border-brand-200
-                         rounded px-1.5 py-0.5 hover:bg-brand-100"
+                         rounded-sm px-1.5 py-0.5 hover:bg-brand-100"
               title="Remove"
             >
               {name} ×

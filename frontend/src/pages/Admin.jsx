@@ -81,7 +81,7 @@ function NewUserForm({ onCreated, onCancel }) {
         <div className="sm:col-span-2 space-y-2">
           <label className="inline-flex items-center gap-2 text-[13px] text-slate-700">
             <input type="checkbox" checked={generate} onChange={(e) => setGenerate(e.target.checked)}
-                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30" />
+                   className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30" />
             Generate a password
             <span className="text-[11px] text-slate-400">
               (shown once; they are asked to change it)
@@ -146,7 +146,7 @@ function TokenPanel({ username, onIssued }) {
           {' '}<code className="mono">Authorization: Bearer …</code>
         </p>
       ) : (
-        <table className="tbl mb-2 bg-surface rounded border border-slate-200">
+        <table className="tbl mb-2 bg-surface rounded-sm border border-slate-200">
           <thead><tr><th>Name</th><th>Prefix</th><th>Last used</th><th></th></tr></thead>
           <tbody>
             {tokens.map((t) => (
@@ -253,7 +253,7 @@ export default function Admin() {
                   </td>
                   <td>
                     <select
-                      className="input py-1 text-[12px] max-w-[9.5rem]"
+                      className="input py-1 text-[12px] max-w-38"
                       aria-label={`Role for ${u.username}`}
                       disabled={busy}
                       value={u.role}

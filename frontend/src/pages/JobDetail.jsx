@@ -340,7 +340,7 @@ export default function JobDetail() {
               {run?.flink_job_id && (
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">Flink job</dt>
-                  <dd className="mono text-xs text-slate-600 truncate max-w-[9rem]">{run.flink_job_id}</dd>
+                  <dd className="mono text-xs text-slate-600 truncate max-w-36">{run.flink_job_id}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-3">
@@ -358,7 +358,7 @@ export default function JobDetail() {
               {run?.restored_from && (
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">Resumed from</dt>
-                  <dd className="text-xs text-slate-600 truncate max-w-[9rem]"
+                  <dd className="text-xs text-slate-600 truncate max-w-36"
                       title={run.restored_from}>
                     {run.restored_from.split('/').pop()}
                   </dd>

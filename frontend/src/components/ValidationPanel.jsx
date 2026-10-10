@@ -38,7 +38,7 @@ export default function ValidationPanel({ result, checking, dirty }) {
               <summary className="cursor-pointer text-xs text-red-800/70 hover:text-red-900">
                 What Flink said
               </summary>
-              <div className="mono text-xs mt-1 text-red-900/80 break-words">
+              <div className="mono text-xs mt-1 text-red-900/80 wrap-break-word">
                 {result.original_error}
               </div>
             </details>

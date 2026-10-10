@@ -35,7 +35,7 @@ function OptionInput({ option, value, onChange, secretNames }) {
           aria-label={option.label}
           checked={checked}
           onChange={(e) => onChange(option.key, e.target.checked ? 'true' : 'false')}
-          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
+          className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30"
         />
         {checked ? 'Enabled' : 'Disabled'}
       </label>

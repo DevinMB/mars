@@ -91,7 +91,7 @@ export default function SourcePeek({ connector, options, columns, name }) {
                 {fields.map((f) => (
                   <span key={f.name}
                         title={f.example ? `e.g. ${f.example}` : undefined}
-                        className={`text-xs px-2 py-0.5 rounded mono ${
+                        className={`text-xs px-2 py-0.5 rounded-sm mono ${
                           f.type.includes(' or ')
                             ? 'bg-amber-50 text-amber-800'
                             : 'bg-slate-100 text-slate-700'

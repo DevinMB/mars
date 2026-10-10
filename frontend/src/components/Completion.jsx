@@ -164,7 +164,7 @@ export function CompletionList({ matches, active, onPick }) {
                 i === active ? 'bg-brand-50' : 'hover:bg-slate-50'
               }`}
             >
-              <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${KIND_STYLE[item.kind]}`}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-sm shrink-0 ${KIND_STYLE[item.kind]}`}>
                 {item.kind}
               </span>
               <code className="mono text-xs text-slate-800">{item.label}</code>

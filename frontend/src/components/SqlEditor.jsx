@@ -91,7 +91,7 @@ function SqlEditorInner(
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         rows={rows}
-        className="min-w-0 flex-1 mono p-3 leading-relaxed resize-y focus:outline-none
+        className="min-w-0 flex-1 mono p-3 leading-relaxed resize-y focus:outline-hidden
                    text-slate-800 bg-transparent"
         placeholder="INSERT INTO my_sink SELECT … FROM my_source"
       />

@@ -124,7 +124,7 @@ export default function BackupPanel() {
 
         <label className="flex items-start gap-2 mt-3 text-sm text-slate-700">
           <input type="checkbox" checked={replace}
-                 className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
+                 className="mt-0.5 rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30"
                  onChange={(e) => { setReplace(e.target.checked); setResult(null) }} />
           <span>
             Overwrite definitions that already exist

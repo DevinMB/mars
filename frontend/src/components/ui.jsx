@@ -11,7 +11,7 @@ export function PageHeader({ title, subtitle, actions, back }) {
             ← {back.label}
           </Link>
         )}
-        <h1 className="text-[24px] font-semibold text-slate-900 tracking-tight break-words">
+        <h1 className="text-[24px] font-semibold text-slate-900 tracking-tight wrap-break-word">
           {title}
         </h1>
         {subtitle && <p className="text-[13px] text-slate-500 mt-1.5">{subtitle}</p>}
@@ -62,7 +62,7 @@ export function Badge({ children, tone = 'slate' }) {
     accent: 'bg-accent-50 text-accent-800 ring-1 ring-inset ring-accent-200',
     amber: 'bg-amber-50 text-amber-800',
   }
-  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${tones[tone]}`}>{children}</span>
+  return <span className={`px-2 py-0.5 rounded-sm text-xs font-medium ${tones[tone]}`}>{children}</span>
 }
 
 export function Alert({ level = 'info', title, children, onDismiss }) {
@@ -77,7 +77,7 @@ export function Alert({ level = 'info', title, children, onDismiss }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {title && <div className="font-semibold mb-0.5">{title}</div>}
-          <div className="break-words">{children}</div>
+          <div className="wrap-break-word">{children}</div>
         </div>
         {onDismiss && (
           <button onClick={onDismiss} className="text-current/60 hover:text-current shrink-0" aria-label="Dismiss">
