@@ -45,6 +45,34 @@ Ports bind to localhost by default. For remote access, use an SSH tunnel or foll
 the [deployment guide](docs/deployment.md). Flink and its SQL Gateway must stay on a
 protected network; MARS is intended for trusted operators.
 
+## How it works
+
+MARS is the control plane; Flink does the streaming. The console never touches
+your data. It turns stored SQL into running Flink jobs and keeps track of them.
+
+```
+browser ──► MARS console ──SQL──► Flink SQL Gateway ──► JobManager / TaskManagers
+           (FastAPI, React,                                  │
+            SQLite)  ◄──── status, checkpoints, savepoints ──┘
+```
+
+Pressing **Run** does five things:
+
+1. Collects the catalog entries (sources and sinks) the job uses, in dependency order.
+2. Joins their `CREATE TABLE` statements with the job's own SQL.
+3. Resolves `${secret:name}` references. The resolved script is never stored,
+   logged, or returned.
+4. Opens a SQL Gateway session, replays the definitions, and starts the job.
+5. Records the Flink job id against a run, for history, restarts, and savepoints.
+
+Because definitions are replayed on every submission, no external metastore is
+needed. A short job can replace a whole service: one `EXECUTE STATEMENT SET` that
+reads a topic once and writes filtered slices of it to three sinks is one job.
+
+Stopped and failed jobs resume from the newest saved state, a savepoint or the
+last checkpoint. See [recovery](docs/deployment.md#recovery-and-failover) for
+what that covers and what it does not.
+
 ## Documentation
 
 [Deployment & backups](docs/deployment.md) · [Connectors](docs/connectors.md) ·

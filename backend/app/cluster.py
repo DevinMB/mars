@@ -212,6 +212,35 @@ class FlinkClusterClient:
             )
         return out
 
+    async def latest_checkpoints(self, job_ids: list[str]) -> dict[str, tuple[str, int]]:
+        """Where each job's newest completed checkpoint was written, and when.
+
+        Returns (external path, completion time in epoch ms). Only checkpoints
+        with an external path count: one held in JobManager memory alone cannot
+        be restored from once that JobManager is gone. Jobs that fail to answer
+        are absent, which leaves the previously recorded checkpoint in place.
+        """
+        if not job_ids:
+            return {}
+
+        out: dict[str, tuple[str, int]] = {}
+
+        async def one(c: httpx.AsyncClient, job_id: str) -> None:
+            r = await c.get(f"/jobs/{job_id}/checkpoints")
+            if r.status_code != 200:
+                return
+            latest = (r.json().get("latest") or {}).get("completed") or {}
+            path = latest.get("external_path")
+            stamp = _int(latest.get("latest_ack_timestamp"))
+            if path and path != "<checkpoint-not-externally-addressable>" and stamp:
+                out[job_id] = (path, stamp)
+
+        async with self._client() as c:
+            await asyncio.gather(
+                *(one(c, job_id) for job_id in job_ids), return_exceptions=True
+            )
+        return out
+
     async def cancel(self, job_id: str) -> None:
         async with self._client() as c:
             r = await c.patch(f"/jobs/{job_id}?mode=cancel")

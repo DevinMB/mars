@@ -227,6 +227,12 @@ class ScheduleOut(BaseModel):
     next_fire_at: UtcDatetime | None
 
 
+class RestorePointOut(BaseModel):
+    path: str
+    kind: str  # "savepoint" or "checkpoint"
+    taken_at: UtcDatetime
+
+
 class JobOut(BaseModel):
     id: int
     name: str
@@ -240,6 +246,9 @@ class JobOut(BaseModel):
     # The most recent state saved for this job. Its presence is what makes a
     # restart resume where it left off rather than start over with empty state.
     latest_savepoint: str | None = None
+    # What "Resume" and the supervisor will actually use: the newer of the latest
+    # savepoint and the latest recorded checkpoint.
+    restore_point: RestorePointOut | None = None
     updated_at: UtcDatetime
     latest_run: RunOut | None = None
     schedule: ScheduleOut | None = None

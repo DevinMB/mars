@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -312,8 +313,24 @@ class JobSubmitter:
             log.warning("Could not reach Flink to refresh job states: %s", exc)
             return 0
 
+        # Record where each job last checkpointed while the cluster still knows.
+        # A JobManager restart without HA erases that, and the supervisor needs
+        # it to resume a lost job from seconds ago rather than its last savepoint.
+        known = [r.flink_job_id for r in active if r.flink_job_id in overviews]
+        try:
+            checkpoints = await self._cluster.latest_checkpoints(known)
+        except Exception as exc:
+            log.warning("Could not read checkpoint locations from Flink: %s", exc)
+            checkpoints = {}
+
         changed = 0
         for run in active:
+            seen = checkpoints.get(run.flink_job_id or "")
+            if seen and seen[0] != run.checkpoint_path:
+                run.checkpoint_path = seen[0]
+                run.checkpoint_at = datetime.fromtimestamp(seen[1] / 1000, tz=timezone.utc)
+                changed += 1
+
             o = overviews.get(run.flink_job_id or "")
             if o is None:
                 # The cluster has forgotten it -- a restart with no HA storage, or

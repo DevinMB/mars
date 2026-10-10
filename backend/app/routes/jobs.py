@@ -37,6 +37,7 @@ from ..models import (
 )
 from ..schemas import (
     CheckpointOut,
+    RestorePointOut,
     DraftJobIn,
     DraftRequest,
     DraftResponse,
@@ -119,10 +120,18 @@ def _out(job: Job) -> JobOut:
         version=job.version,
         target_name=job.target_name,
         latest_savepoint=job.latest_savepoint,
+        restore_point=_restore_point_out(job),
         updated_at=job.updated_at,
         latest_run=_run_out(latest),
         schedule=_schedule_out(job.schedule),
     )
+
+
+def _restore_point_out(job: Job) -> RestorePointOut | None:
+    point = job.restore_point
+    if point is None:
+        return None
+    return RestorePointOut(path=point.path, kind=point.kind, taken_at=point.taken_at)
 
 
 def _get(db: Session, name: str) -> Job:
@@ -637,8 +646,8 @@ async def preview_statement_route(
 @router.post("/{name}/run", response_model=RunOut, status_code=status.HTTP_202_ACCEPTED)
 async def run_job(
     name: str,
-    # "latest" resumes from the most recent savepoint; "none" starts with empty
-    # state; anything else is treated as an explicit savepoint path.
+    # "latest" resumes from the newest restore point, savepoint or checkpoint;
+    # "none" starts with empty state; anything else is an explicit path.
     from_savepoint: str = "latest",
     principal: Principal = Depends(require_writer),
     db: Session = Depends(get_session),
@@ -664,7 +673,8 @@ async def run_job(
     if from_savepoint == "none":
         savepoint = None
     elif from_savepoint in ("latest", ""):
-        savepoint = job.latest_savepoint
+        point = job.restore_point
+        savepoint = point.path if point else None
     else:
         savepoint = from_savepoint
 
@@ -746,7 +756,12 @@ def list_savepoints(
         for r in job.runs
         if r.savepoint_path
     ]
-    return {"latest": job.latest_savepoint, "savepoints": saved}
+    point = _restore_point_out(job)
+    return {
+        "latest": job.latest_savepoint,
+        "restore_point": point.model_dump(mode="json") if point else None,
+        "savepoints": saved,
+    }
 
 
 @router.get("/{name}/runs", response_model=list[RunOut])

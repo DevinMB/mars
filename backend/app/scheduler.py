@@ -166,20 +166,23 @@ class Scheduler:
                 # Supervising a stateful job means putting it back as it was, not
                 # merely running it again: restarting from empty state loses a
                 # half-finished window or a running count without saying so.
+                # The newest restore point, not the newest savepoint: after a
+                # crash the last savepoint can be days old, and resuming from it
+                # replays everything since into the sinks.
                 # Cron jobs are bounded and deliberately start clean each time.
-                savepoint = (
-                    job.latest_savepoint
+                point = (
+                    job.restore_point
                     if mode == ScheduleMode.SUPERVISOR.value
                     else None
                 )
                 await submitter.submit(
                     db, job, submitted_by="scheduler", by_schedule=True,
-                    savepoint_path=savepoint,
+                    savepoint_path=point.path if point else None,
                 )
                 log.info(
                     "Scheduler started job '%s' (%s)%s",
                     job.name, mode,
-                    f" from savepoint {savepoint}" if savepoint else "",
+                    f" from {point.kind} {point.path}" if point else "",
                 )
             except SubmissionError as exc:
                 # The failure is already recorded against a JobRun; the schedule

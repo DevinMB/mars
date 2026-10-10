@@ -174,7 +174,7 @@ export default function JobDetail() {
             {busy === 'stop' ? 'Saving state…' : 'Stop and save state'}
           </button> : <button className="btn-primary" disabled={Boolean(busy)}
             onClick={() => act('run', () => api.runJob(name, 'latest'))}>
-            {busy === 'run' ? 'Starting…' : job.latest_savepoint ? 'Resume' : 'Run'}
+            {busy === 'run' ? 'Starting…' : job.restore_point ? 'Resume' : 'Run'}
           </button>}
           <ActionMenu>
             <button onClick={validate} disabled={Boolean(busy)}>{busy === 'validate' ? 'Checking…' : 'Validate SQL'}</button>
@@ -183,7 +183,7 @@ export default function JobDetail() {
               if (!await confirm({ title: 'Stop without saving?', message: `Stop “${job.name}” immediately? In-flight state, including unfinished windows and running counts, will be lost. Use “Stop and save state” to resume later.`, confirmLabel: 'Stop without saving' })) return
               act('cancel', () => api.cancelJob(name))
             }}>Stop without saving</button>}
-            {!isActive && job.latest_savepoint && <button disabled={Boolean(busy)} onClick={async () => {
+            {!isActive && job.restore_point && <button disabled={Boolean(busy)} onClick={async () => {
               if (!await confirm({ title: 'Start with empty state?', message: 'The saved state will be ignored. The job will start from scratch.', confirmLabel: 'Start fresh' })) return
               act('run-fresh', () => api.runJob(name, 'none'))
             }}>Start fresh</button>}
@@ -346,9 +346,9 @@ export default function JobDetail() {
               <div className="flex justify-between gap-3">
                 <dt className="text-slate-500">Saved state</dt>
                 <dd className="text-slate-800 text-right">
-                  {job.latest_savepoint ? (
-                    <span className="text-emerald-700" title={job.latest_savepoint}>
-                      available
+                  {job.restore_point ? (
+                    <span className="text-emerald-700" title={job.restore_point.path}>
+                      {job.restore_point.kind}, {relativeTime(job.restore_point.taken_at)}
                     </span>
                   ) : (
                     <span className="text-slate-400">none</span>
@@ -366,7 +366,7 @@ export default function JobDetail() {
               )}
             </dl>
 
-            {job.job_type === 'streaming' && !job.latest_savepoint && (
+            {job.job_type === 'streaming' && !job.restore_point && (
               <p className="text-xs text-slate-500 mt-3">
                 No state has been saved. Stopping with "Stop and save state" writes
                 one, so the job can resume instead of starting over.

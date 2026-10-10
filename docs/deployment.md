@@ -77,9 +77,65 @@ jobs continue. Capture Flink savepoints separately before cluster maintenance an
 verify a restore in an isolated environment. Never use `docker compose down -v`
 as an upgrade step: it deletes persistent volumes.
 
+## Recovery and failover
+
+Flink saves a job's state in two ways:
+
+| | Checkpoint | Savepoint |
+|---|---|---|
+| Taken | Automatically, every 30s in the bundled configuration | When you choose **Stop and save state** |
+| Purpose | Recovering from failures | Planned stops: upgrades, config changes |
+| Kept | Superseded ones are deleted | Until you remove it |
+
+**Resume** and the scheduler's supervisor mode restore from the newest of the two.
+MARS records each running job's latest checkpoint location as it reconciles, so the
+location survives even if Flink forgets the job. If a restore from a checkpoint
+fails before the new run completes a checkpoint of its own, that checkpoint is
+skipped and the next attempt uses the savepoint instead. **Start fresh** ignores
+both.
+
+What happens when something fails:
+
+- **A TaskManager fails.** Flink restarts the job's tasks from the last checkpoint
+  by itself. MARS shows the run as *restarting* while this happens.
+- **A job exhausts its restart strategy.** It stays failed. With a supervisor
+  schedule, MARS resubmits it from the newest restore point.
+- **The JobManager restarts.** The default stack does not configure Flink high
+  availability, so every running job is lost. MARS marks those runs failed;
+  supervised jobs are resubmitted from their recorded checkpoints, others wait
+  for you to resume them. For automatic JobManager failover, configure
+  `high-availability.type` (ZooKeeper or Kubernetes) and
+  `high-availability.storageDir`.
+
+Resuming from a checkpoint replays up to one checkpoint interval of input. Sinks
+with deterministic keys absorb that; append-only sinks such as Kafka without
+exactly-once delivery write those records twice.
+
+Flink keeps only the newest checkpoint by default. Setting
+`state.checkpoints.num-retained: 2` in `flink/conf/config.yaml` ensures the
+checkpoint MARS last recorded still exists, because MARS checks every 20s.
+
+Changing Flink configuration restarts the JobManager, so plan it as maintenance:
+
+1. **Stop and save state** for each running job, and wait until each shows a new
+   savepoint.
+2. Edit the configuration file in place. It is bind-mounted as a single file, and
+   editors that write a new file and rename it leave containers reading the old one.
+3. Run `docker compose restart jobmanager taskmanager sql-gateway`. `up -d` does
+   not pick up changed file contents.
+4. **Resume** each job and confirm it restored from the savepoint taken in step 1.
+
 ## Monitoring
 
 `/healthz` checks the console process; `/readyz` checks default Flink reachability.
 `/metrics` exposes Prometheus metrics including running and failed job counts.
 These endpoints are unauthenticated, so keep them inside the same access boundary.
 Flink's Prometheus reporter listens on port 9249 inside the container network.
+
+Judge a job's health by checkpoint progress: the time since its last completed
+checkpoint (`flink_jobmanager_job_lastCheckpointCompletedTimestamp`) should stay
+under a few checkpoint intervals. Kafka consumer-group metrics do not work for Flink
+jobs. Flink assigns partitions itself instead of joining a consumer group, so the
+broker reports zero members and lag that may never move, however healthy the job
+is. A source that produces in bursts also shows long stretches of zero input,
+which is not a failure.

@@ -13,6 +13,7 @@ Shape worth knowing:
 from __future__ import annotations
 
 import enum
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -31,6 +32,18 @@ from .db import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _aware(value: datetime) -> datetime:
+    # SQLite hands timezone-aware columns back naive. They were written as UTC.
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+@dataclass(frozen=True)
+class RestorePoint:
+    path: str
+    kind: str  # "savepoint" or "checkpoint"
+    taken_at: datetime
 
 
 class Role(str, enum.Enum):
@@ -318,6 +331,45 @@ class Job(Base, TimestampMixin):
             if run.savepoint_path:
                 return run.savepoint_path
         return None
+
+    @property
+    def restore_point(self) -> "RestorePoint | None":
+        """The newest state this job can resume from: a savepoint or a checkpoint.
+
+        Savepoints exist only when someone stops a job on purpose, so after a crash
+        the newest one can be days old. Resuming from it rewinds the job and
+        replays everything since, which a Kafka sink writes a second time. The
+        checkpoint recorded while the run was alive is at most one interval old.
+
+        A checkpoint that a later run restored from and then failed without
+        completing a checkpoint of its own is skipped. Flink deletes superseded
+        checkpoints, so the recorded path can be gone by the time it is needed;
+        retrying it forever would keep the job down, while falling back to a
+        savepoint only costs a replay.
+        """
+        failed_restores = {
+            run.restored_from
+            for run in self.runs
+            if run.restored_from
+            and run.state == RunState.FAILED.value
+            and not run.checkpoint_path
+            and not run.savepoint_path
+        }
+        points: list[RestorePoint] = []
+        for run in self.runs:
+            if run.savepoint_path:
+                points.append(RestorePoint(
+                    run.savepoint_path, "savepoint", _aware(run.ended_at or run.started_at)
+                ))
+            if run.checkpoint_path and run.checkpoint_path not in failed_restores:
+                points.append(RestorePoint(
+                    run.checkpoint_path, "checkpoint", _aware(run.checkpoint_at or run.started_at)
+                ))
+        if not points:
+            return None
+        # Runs come back newest first, so on a tie the more recent run wins.
+        return max(points, key=lambda p: p.taken_at)
+
     schedule: Mapped["Schedule | None"] = relationship(
         back_populates="job", cascade="all, delete-orphan", uselist=False
     )
@@ -359,7 +411,13 @@ class JobRun(Base):
     # empty state: a half-finished session window, a running count, a join buffer
     # are all simply gone. This is what makes a restart safe.
     savepoint_path: Mapped[str | None] = mapped_column(String(1024))
-    # The savepoint this run started from, if any.
+    # The newest checkpoint Flink completed for this run, recorded on every
+    # reconcile while the cluster still knows the job. Flink forgets a job when
+    # its JobManager restarts without HA, and with it the only record of where
+    # the checkpoint was written, so the path has to be captured beforehand.
+    checkpoint_path: Mapped[str | None] = mapped_column(String(1024))
+    checkpoint_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The savepoint or checkpoint this run started from, if any.
     restored_from: Mapped[str | None] = mapped_column(String(1024))
     # Set when someone decides a failure has been dealt with. Recorded rather than
     # hidden in a browser, so it means the same thing to everyone looking.
