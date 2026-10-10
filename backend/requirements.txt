@@ -1,4 +1,5 @@
-fastapi==0.115.6
+fastapi==0.141.1
+starlette==1.7.0
 uvicorn[standard]==0.34.0
 httpx==0.28.1
 sqlalchemy==2.0.36
@@ -7,8 +8,8 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 apscheduler==3.11.0
 argon2-cffi==23.1.0
-cryptography==44.0.0
-python-multipart==0.0.20
+cryptography==50.0.1
+python-multipart==0.0.32
 prometheus-client==0.21.1
 croniter==6.0.0
 PyYAML==6.0.2
