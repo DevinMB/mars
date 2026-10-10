@@ -51,6 +51,9 @@ state:
     type: hashmap
   checkpoints:
     dir: file:///flink-state/checkpoints
+    # Keep two, so the checkpoint MARS last recorded (it checks every 20s) still
+    # exists after the next one completes (every 30s).
+    num-retained: 2
   savepoints:
     dir: file:///flink-state/savepoints
 
