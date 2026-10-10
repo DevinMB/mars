@@ -2,7 +2,7 @@
 #
 # Everything is baked in at build time. Nothing is downloaded when a container
 # starts, so a cold boot does not depend on Maven Central or GitHub being up.
-FROM flink:2.2.1-java17
+FROM flink:2.3.0-java17
 
 ARG FLINK_KAFKA_VERSION=5.0.0-2.2
 ARG KAFKA_CLIENTS_VERSION=3.9.2
