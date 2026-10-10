@@ -17,10 +17,12 @@ never share one.
 from __future__ import annotations
 
 import logging
+import json
 import os
 import re
 import stat
 from pathlib import Path
+from urllib.parse import quote, quote_plus
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
@@ -170,15 +172,24 @@ class SecretStore:
         """
         if not text:
             return text
-        out = text
+        replacements = {}
         for row in db.query(Secret).all():
             try:
                 value = self._decrypt(row)
             except SecretError:
                 continue
-            if value and len(value) >= 4 and value in out:
-                out = out.replace(value, "${secret:%s}" % row.name)
-        return out
+            # A value this short would match inside unrelated words and mangle them.
+            if value and len(value) >= 4:
+                # Errors can quote SQL literals or URL/JSON-encode credentials.
+                for form in (value, value.replace("'", "''"), quote(value, safe=""),
+                             quote_plus(value, safe=""), json.dumps(value)[1:-1]):
+                    replacements.setdefault(form, "${secret:%s}" % row.name)
+        if not replacements:
+            return text
+        # Match longest first, in one pass: a short value must not leave the tail
+        # of a longer credential visible or rewrite a placeholder we just made.
+        pattern = "|".join(re.escape(value) for value in sorted(replacements, key=len, reverse=True))
+        return re.sub(pattern, lambda match: replacements[match.group()], text)
 
     def _decrypt(self, row: Secret) -> str:
         try:

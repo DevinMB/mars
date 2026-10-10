@@ -79,7 +79,7 @@ def test_redact_removes_leaked_values_from_error_text(db, store):
 
     trace = (
         "org.apache.flink.table.api.ValidationException: could not connect using "
-        "http://admin:supersecretvalue@couchdb:5984/whispers"
+        "http://admin:supersecretvalue@couchdb:5984/events"
     )
     cleaned = store.redact(db, trace)
 
