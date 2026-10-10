@@ -8,6 +8,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Wait a week before proposing a new release: malicious or broken versions
+    # are usually pulled within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       python:
         patterns: ["*"]
@@ -17,6 +21,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Wait a week before proposing a new release: malicious or broken versions
+    # are usually pulled within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       # Build tooling never reaches the browser, so it is batched on its own and
       # a failing tooling update does not hold back a runtime fix.
@@ -35,6 +43,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Wait a week before proposing a new release: malicious or broken versions
+    # are usually pulled within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       base-images:
         patterns: ["*"]
@@ -44,6 +56,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Wait a week before proposing a new release: malicious or broken versions
+    # are usually pulled within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]
