@@ -52,6 +52,11 @@ updates:
     # are usually pulled within days. Security updates are not delayed.
     cooldown:
       default-days: 7
+    # A Flink upgrade must match the Kafka connector, the MARS connectors and
+    # saved job state; it is staged on mars-b, not taken as a routine bump.
+    ignore:
+      - dependency-name: flink
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       base-images:
         patterns: ["*"]
