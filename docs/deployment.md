@@ -160,32 +160,50 @@ Changing Flink configuration restarts the JobManager, so plan it as maintenance:
    not pick up changed file contents.
 4. **Resume** each job and confirm it restored from the savepoint taken in step 1.
 
-## Shared savepoint storage
+## Job moves between clusters
 
-A job moves to another cluster by stopping with a savepoint on one and resuming
-from it on the other, so both clusters must keep savepoints in one shared place.
-That is also what upgrading one cluster at a time needs. Checkpoints stay on each
-cluster's own disk: they are written every few seconds, and a network share that
-stalls would fail checkpoints and, by default, the jobs taking them.
+Optional. With two or more clusters, a job can stop on one and resume on another
+where it left off, which is also how a cluster can be upgraded without stopping
+everything. It needs both clusters to keep savepoints in one shared place.
+Checkpoints stay on each cluster's own disk: they are written every few seconds,
+and a network share that stalls would fail checkpoints and, by default, the jobs
+taking them.
 
-**Clusters → Savepoint storage** shows where each cluster saves, and **Check**
-proves whether two clusters share it: a small batch job on each writes a random
-token into the savepoint folder and the other reads it back, in both directions.
-Matching folder names prove nothing (every MARS cluster defaults to
-`file:///flink-state/savepoints`, each on its own disk). The check needs one free
-task slot on each cluster for a few seconds, and leaves a few-byte
+Each cluster other than the default shows **Job moves** on its card:
+
+- **Not set up**: the normal state. Jobs can still be placed on any cluster; one
+  that changes cluster just starts without its state.
+- **Ready**: a check passed, and both clusters still save to that place.
+- **Not working**: it passed once, and since then a check failed or a cluster's
+  savepoint location changed. A move would fail until it is fixed or turned off.
+
+MARS cannot change a cluster's containers itself (the console has no access to
+Docker), so **Set up** and **Turn off** are guided steps it then verifies. The
+state is worked out from the check and what each cluster reports, never stored
+as a switch, so it cannot claim something the clusters do not do.
+
+The check proves sharing rather than trusting the configuration: a small batch
+job on each cluster writes a random token into the savepoint folder and the other
+reads it back, in both directions. Matching folder names prove nothing (every MARS
+cluster defaults to `file:///flink-state/savepoints`, each on its own disk). It
+needs one free task slot on each cluster for a few seconds, and leaves a few-byte
 `mars-storage-check` folder behind.
 
 ### On an NFS share
 
 1. Create a share every cluster's machine can reach, allowing each one's IP.
    Size hardly matters: [retention](#savepoint-retention) keeps a few per job.
-2. On the Clusters page, open **How to share savepoint storage**, enter the server
+2. On the Clusters page, choose **Set up** next to Job moves, enter the server
    and export path (`showmount -e <server>` lists exports), and copy the generated
    file. Save it as `docker-compose.override.yml` next to each machine's
    `docker-compose.yml`. Compose reads it by itself.
 3. Stop that cluster's jobs with their state saved, run the `docker compose up -d`
    line at the top of the file, resume the jobs, and press **Check**.
+
+**Turning it off** for a cluster: move its jobs to the default cluster first
+(their savepoints are on the share, which the cluster will no longer reach), then
+delete its override file, restart it, and choose **Turn off**. MARS refuses while
+a job there would still resume from the share.
 
 The file mounts the share at `/flink-savepoints` on the JobManager and
 TaskManager and sets `state.savepoints.dir` on the JobManager's command line

@@ -227,7 +227,8 @@ export default function Jobs() {
   if (error && !jobs) return <Alert level="danger" title="Could not load jobs">{error}</Alert>
   if (!jobs) return <Spinner label="Loading jobs" />
 
-  const grouped = multi && cluster === 'all'
+  // Nothing matching is one answer, not an empty band under every cluster.
+  const grouped = multi && cluster === 'all' && shown.length > 0
   // Clusters with no jobs are still worth a heading: an empty business unit is a
   // fact about the estate, not a reason to hide the cluster.
   const groups = grouped

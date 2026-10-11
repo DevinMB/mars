@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import AddClusterGuide from '../components/AddClusterGuide'
-import SavepointStorage from '../components/SavepointStorage'
+import { JobMovesGuide, JobMovesLine } from '../components/JobMoves'
 import TargetForm from '../components/TargetForm'
 import { Alert, Badge, PageHeader, Spinner } from '../components/ui'
 
@@ -23,7 +23,7 @@ function Stat({ label, value, tone = 'slate' }) {
 // differently: a session cluster's scheduler puts tasks in whatever slot is free,
 // and there is no supported way to pin a job to a machine within one. Choosing where
 // a job runs means choosing which cluster receives it.
-function TargetCard({ target, defaultVersion, canManage, onEdit, onRemove }) {
+function TargetCard({ target, defaultVersion, canManage, onEdit, onRemove, moves, onJobMoves }) {
   // Clusters on different Flink versions can disagree about connectors and state,
   // which shows up as a job that works on one and fails on another.
   const mismatch = target.reachable && defaultVersion && !target.is_default
@@ -93,6 +93,7 @@ function TargetCard({ target, defaultVersion, canManage, onEdit, onRemove }) {
           ))}
         </div>
       )}
+      <JobMovesLine moves={moves} canManage={canManage} onOpen={onJobMoves} />
     </div>
   )
 }
@@ -113,6 +114,8 @@ export default function Cluster() {
   const [setup, setSetup] = useState(null)       // how to start a new cluster
   const [defaults, setDefaults] = useState(null) // form values from the guide
   const [added, setAdded] = useState(null)       // name of the cluster just added
+  const [storage, setStorage] = useState(null)   // savepoint locations and job moves
+  const [guide, setGuide] = useState(null)       // { mode, cluster } of an open job-moves guide
 
   useEffect(() => {
     let alive = true
@@ -128,6 +131,15 @@ export default function Cluster() {
     const id = setInterval(load, 10000)
     return () => { alive = false; clearInterval(id) }
   }, [])
+
+  // Only matters with a second cluster; reloaded when the set of clusters changes.
+  const clusterKey = targets ? targets.map((t) => `${t.name}:${t.enabled}`).join(',') : ''
+  const loadStorage = async () => {
+    try { setStorage(await api.savepointStorage()) } catch (err) { setError(err.message) }
+  }
+  useEffect(() => {
+    if (targets && targets.length > 1) loadStorage(); else setStorage(null)
+  }, [clusterKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const reload = async () => {
     try { setTargets(await api.targets()) } catch (err) { setError(err.message) }
@@ -179,8 +191,8 @@ export default function Cluster() {
           <Alert level="success" onDismiss={() => setAdded(null)} title={`Cluster ${added} added`}>
             To run a job on it, open the job, choose <b>Edit</b>, and pick{' '}
             <b>{added}</b> under <b>Runs on</b>. For a job to keep its state when it
-            moves, both clusters need shared savepoint storage: see{' '}
-            <b>Savepoint storage</b> below. Without it, a moved job has to start fresh.
+            moves, set up <b>Job moves</b> on its card first. Without it, a moved job has to
+            start fresh.
           </Alert>
         </div>
       )}
@@ -226,12 +238,23 @@ export default function Cluster() {
             canManage={canManage}
             onEdit={(x) => { setAdding(false); setAdded(null); setEditing(x) }}
             onRemove={remove}
+            moves={storage?.moves.find((m) => m.cluster === t.name)}
+            onJobMoves={(mode) => setGuide({ mode, cluster: t.name })}
           />
         ))}
       </div>
 
-      <h2 className="eyebrow-accent mb-3">Savepoint storage</h2>
-      <SavepointStorage canManage={canManage} refreshKey={targets.map((t) => `${t.name}:${t.enabled}`).join(',')} />
+      {guide && storage?.moves.some((m) => m.cluster === guide.cluster) && (
+        <JobMovesGuide
+          key={`${guide.mode}:${guide.cluster}`}
+          mode={guide.mode}
+          moves={storage.moves.find((m) => m.cluster === guide.cluster)}
+          locations={storage.clusters}
+          target={targets.find((t) => t.name === guide.cluster)}
+          onClose={() => setGuide(null)}
+          onChanged={loadStorage}
+        />
+      )}
 
       <div className="table-scroll">
         <div className="px-4 py-3 border-b border-slate-200">

@@ -114,19 +114,23 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Show only what connects to this').click()
     expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
-    # Savepoint storage: where each cluster saves, the check, and the setup steps.
+    # Job moves: optional, one quiet line on the second cluster's card, guides on demand.
     visit('/cluster')
-    expect(page.get_by_text('Both name the same path, but it is a different disk on each.')).to_be_visible()
-    page.get_by_role('button',name='Check again').click()
-    expect(page.get_by_role('button',name='Check again')).to_be_enabled()
-    assert any(m=='POST' and p=='/api/targets/storage/check' for m,p,_ in writes), 'the check was not requested'
-    page.get_by_role('button',name='How to share savepoint storage').click()
+    expect(page.get_by_text('Savepoint storage')).to_have_count(0)
+    expect(page.get_by_text('Not set up')).to_be_visible()
+    page.get_by_role('button',name='Set up').click()
+    expect(page.get_by_role('heading',name='Set up job moves between default and mars-b')).to_be_visible()
     page.get_by_label('NFS server').fill('192.168.1.10')
     page.get_by_label('Export path').fill('/volume1/flink-savepoints')
     page.get_by_role('button',name='Generate').click()
     expect(page.get_by_text('docker compose up -d jobmanager taskmanager').first).to_be_visible()
     page.get_by_label('It also runs the second cluster (the second-target profile)').check()
     expect(page.get_by_text('docker compose up -d jobmanager taskmanager jobmanager-b taskmanager-b').first).to_be_visible()
+    page.get_by_role('button',name='Check',exact=True).click()
+    expect(page.get_by_role('button',name='Check',exact=True)).to_be_enabled()
+    assert any(m=='POST' and p=='/api/targets/storage/check' for m,p,_ in writes), 'the check was not requested'
+    page.get_by_role('button',name='Close').click()
+    expect(page.get_by_role('heading',name='Set up job moves between default and mars-b')).to_have_count(0)
     # Adding a cluster: the guide fills in the form for either place it can run.
     visit('/cluster')
     page.get_by_role('button',name='Add cluster').click()

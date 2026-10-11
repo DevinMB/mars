@@ -648,16 +648,32 @@ class StorageCheckOut(BaseModel):
     summary: str
     checked_at: str
     detail: str | None = None
+    last_shared_at: str | None = None
+    shared_dir: str | None = None
+
+
+class JobMovesOut(BaseModel):
+    cluster: str
+    default: str
+    state: str  # "off", "ready" or "broken"
+    summary: str
+    checked_at: str | None = None
+    shared_dir: str | None = None
 
 
 class StorageOut(BaseModel):
     clusters: list[StorageLocationOut]
-    checks: list[StorageCheckOut]
+    # One per cluster other than the default: moves are to and from the default.
+    moves: list[JobMovesOut]
 
 
 class StorageCheckIn(BaseModel):
     a: str
     b: str
+
+
+class JobMovesOffIn(BaseModel):
+    cluster: str
 
 
 class StorageSetupOut(BaseModel):
