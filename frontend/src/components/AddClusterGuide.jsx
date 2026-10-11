@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { copyText, selectContents } from '../lib/clipboard'
 
 // Where the project lives. Change this in a fork; it is the only place the
 // repository is named.
@@ -6,29 +7,26 @@ const REPO = 'https://github.com/DevinMB/mars'
 const REMOTE_README = `${REPO}/tree/main/remote-target#readme`
 
 function Copyable({ children, tall = false }) {
-  const [copied, setCopied] = useState(false)
+  // '', 'copied', or 'manual' when the browser refused and the text is selected.
+  const [status, setStatus] = useState('')
+  const pre = useRef(null)
   const text = String(children).trim()
   return (
     <div className="relative">
-      <pre className={`mono text-[11.5px] bg-code-bg text-code-fg rounded-md p-3 pr-16
+      <pre ref={pre} className={`mono text-[11.5px] bg-code-bg text-code-fg rounded-md p-3 pr-16
                        overflow-auto leading-relaxed ${tall ? 'max-h-72' : ''}`}>{text}</pre>
       <button
         type="button"
         onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(text)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1500)
-          } catch {
-            // Clipboard is unavailable outside a secure context; the text is
-            // selectable either way, so say nothing rather than throw.
-            setCopied(false)
-          }
+          const ok = await copyText(text)
+          if (!ok) selectContents(pre.current)
+          setStatus(ok ? 'copied' : 'manual')
+          setTimeout(() => setStatus(''), ok ? 1500 : 4000)
         }}
         className="absolute top-2 right-2 text-[11px] px-1.5 py-0.5 rounded-sm
                    bg-slate-700/70 text-slate-200 hover:bg-slate-600 transition-colors"
       >
-        {copied ? 'copied' : 'copy'}
+        {status === 'copied' ? 'copied' : status === 'manual' ? 'press Ctrl+C' : 'copy'}
       </button>
     </div>
   )
@@ -178,7 +176,11 @@ export default function AddClusterGuide({ setup, onUse, onSlots }) {
               </li>
             </ul>
           </Step>
-          <Step n={2} title="Enter the address MARS will reach it on">
+          <Step n={2} title="Enter the new machine's IP address">
+            <p className="text-[12px] text-slate-600">
+              The new machine's own address, not this MARS machine's. Run{' '}
+              <code className="mono">hostname -I</code> on the new machine to see it.
+            </p>
             <input
               className="input mono max-w-xs"
               value={address}

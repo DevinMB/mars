@@ -18,7 +18,8 @@ On that host:
 ```bash
 cd ~/mars-target
 cp .env.example .env
-# Set TARGET_BIND_ADDRESS to a private interface reachable by the MARS host.
+# Set TARGET_BIND_ADDRESS to this machine's own private IP (hostname -I), the
+# address the MARS host will connect to. Not the MARS host's address.
 # Restrict incoming access to that host before starting the target.
 docker compose up -d
 ```
