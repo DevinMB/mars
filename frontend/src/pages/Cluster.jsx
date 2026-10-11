@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import AddClusterGuide from '../components/AddClusterGuide'
+import SavepointStorage from '../components/SavepointStorage'
 import TargetForm from '../components/TargetForm'
 import { Alert, Badge, PageHeader, Spinner } from '../components/ui'
 
@@ -177,8 +178,9 @@ export default function Cluster() {
         <div className="mb-4">
           <Alert level="success" onDismiss={() => setAdded(null)} title={`Cluster ${added} added`}>
             To run a job on it, open the job, choose <b>Edit</b>, and pick{' '}
-            <b>{added}</b> under <b>Runs on</b>. Stop the job with its state saved first,
-            so it resumes where it left off.
+            <b>{added}</b> under <b>Runs on</b>. For a job to keep its state when it
+            moves, both clusters need shared savepoint storage: see{' '}
+            <b>Savepoint storage</b> below. Without it, a moved job has to start fresh.
           </Alert>
         </div>
       )}
@@ -227,6 +229,9 @@ export default function Cluster() {
           />
         ))}
       </div>
+
+      <h2 className="eyebrow-accent mb-3">Savepoint storage</h2>
+      <SavepointStorage canManage={canManage} refreshKey={targets.map((t) => `${t.name}:${t.enabled}`).join(',')} />
 
       <div className="table-scroll">
         <div className="px-4 py-3 border-b border-slate-200">

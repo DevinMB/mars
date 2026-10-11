@@ -6,7 +6,7 @@ import { copyText, selectContents } from '../lib/clipboard'
 const REPO = 'https://github.com/DevinMB/mars'
 const REMOTE_README = `${REPO}/tree/main/remote-target#readme`
 
-function Copyable({ children, tall = false }) {
+export function Copyable({ children, tall = false }) {
   // '', 'copied', or 'manual' when the browser refused and the text is selected.
   const [status, setStatus] = useState('')
   const pre = useRef(null)
@@ -32,7 +32,7 @@ function Copyable({ children, tall = false }) {
   )
 }
 
-function Step({ n, title, children }) {
+export function Step({ n, title, children }) {
   return (
     <li className="grid grid-cols-[1.5rem_1fr] gap-2">
       <span className="mt-0.5 w-5 h-5 rounded-full bg-accent-50 text-accent-700 text-[11px]

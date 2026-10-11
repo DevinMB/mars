@@ -140,6 +140,13 @@ class FlinkClusterClient:
             jobs_failed=d.get("jobs-failed", 0),
         )
 
+    async def config(self) -> dict[str, str]:
+        """The JobManager's effective configuration, as Flink reports it."""
+        async with self._client() as c:
+            r = await c.get("/jobmanager/config")
+            r.raise_for_status()
+            return {e["key"]: e["value"] for e in r.json()}
+
     async def list_jobs(self) -> list[JobOverview]:
         async with self._client() as c:
             r = await c.get("/jobs/overview")

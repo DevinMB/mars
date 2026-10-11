@@ -160,6 +160,49 @@ Changing Flink configuration restarts the JobManager, so plan it as maintenance:
    not pick up changed file contents.
 4. **Resume** each job and confirm it restored from the savepoint taken in step 1.
 
+## Shared savepoint storage
+
+A job moves to another cluster by stopping with a savepoint on one and resuming
+from it on the other, so both clusters must keep savepoints in one shared place.
+That is also what upgrading one cluster at a time needs. Checkpoints stay on each
+cluster's own disk: they are written every few seconds, and a network share that
+stalls would fail checkpoints and, by default, the jobs taking them.
+
+**Clusters → Savepoint storage** shows where each cluster saves, and **Check**
+proves whether two clusters share it: a small batch job on each writes a random
+token into the savepoint folder and the other reads it back, in both directions.
+Matching folder names prove nothing (every MARS cluster defaults to
+`file:///flink-state/savepoints`, each on its own disk). The check needs one free
+task slot on each cluster for a few seconds, and leaves a few-byte
+`mars-storage-check` folder behind.
+
+### On an NFS share
+
+1. Create a share every cluster's machine can reach, allowing each one's IP.
+   Size hardly matters: [retention](#savepoint-retention) keeps a few per job.
+2. On the Clusters page, open **How to share savepoint storage**, enter the server
+   and export path (`showmount -e <server>` lists exports), and copy the generated
+   file. Save it as `docker-compose.override.yml` next to each machine's
+   `docker-compose.yml`. Compose reads it by itself.
+3. Stop that cluster's jobs with their state saved, run the `docker compose up -d`
+   line at the top of the file, resume the jobs, and press **Check**.
+
+The file mounts the share at `/flink-savepoints` on the JobManager and
+TaskManager and sets `state.savepoints.dir` on the JobManager's command line
+(`-D` and the setting as separate words). `FLINK_PROPERTIES` does not work here:
+the image applies it by rewriting the configuration file, which MARS mounts
+read-only. NFSv3 mounts use `nolock`; without it a host not running the lock
+service has the mount refused, and Flink does not lock savepoint files. Older
+savepoints stay where they were and still resume on their own cluster.
+
+### On S3 or MinIO
+
+Flink ships an S3 file system: set `ENABLE_BUILT_IN_PLUGINS=flink-s3-fs-presto-2.2.1.jar`
+on the JobManager and TaskManager, pass `s3.endpoint`, `s3.path.style.access`
+(for MinIO), `s3.access-key` and `s3.secret-key` with `-D`, and set
+`state.savepoints.dir=s3://<bucket>/savepoints`. MARS has not been tested with
+this yet; **Check** will say whether it works.
+
 ## Versions and updates
 
 The console shows which release it runs (footer, and **Settings → Version &

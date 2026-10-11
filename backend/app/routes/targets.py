@@ -18,8 +18,21 @@ from ..cluster_setup import (
     SAME_MACHINE_REST,
 )
 from ..cluster_setup import guide as cluster_setup_guide
+from ..cluster_setup import savepoint_override
+from .. import shared_storage
 from ..models import Job, Target
-from ..schemas import ClusterSetupOut, TargetIn, TargetOut, TargetProbeIn, TargetProbeOut
+from ..schemas import (
+    ClusterSetupOut,
+    StorageCheckIn,
+    StorageCheckOut,
+    StorageLocationOut,
+    StorageOut,
+    StorageSetupOut,
+    TargetIn,
+    TargetOut,
+    TargetProbeIn,
+    TargetProbeOut,
+)
 from ..targets import TargetRegistry, labels_of
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
@@ -95,6 +108,65 @@ def cluster_setup(
         same_machine_registered=registered,
         other_machine_compose=g.other_machine_compose,
     )
+
+
+@router.get("/storage", response_model=StorageOut)
+async def savepoint_storage(
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    registry: TargetRegistry = Depends(get_targets),
+) -> StorageOut:
+    """Where each cluster saves savepoints, and the last check of each pair."""
+    rows = registry.all_enabled(db)
+    found = await asyncio.gather(*(shared_storage.location(registry, t) for t in rows))
+    names = {t.name for t in rows}
+    return StorageOut(
+        clusters=[
+            StorageLocationOut(name=t.name, is_default=t.is_default, savepoint_dir=d, error=e)
+            for t, (d, e) in zip(rows, found)
+        ],
+        # Only pairs that still exist: a removed or renamed cluster's result is moot.
+        checks=[StorageCheckOut(**c.__dict__) for c in shared_storage.recorded()
+                if set(c.clusters) <= names],
+    )
+
+
+@router.post("/storage/check", response_model=StorageCheckOut)
+async def check_savepoint_storage(
+    body: StorageCheckIn,
+    _: Principal = Depends(require_admin),
+    db: Session = Depends(get_session),
+    registry: TargetRegistry = Depends(get_targets),
+) -> StorageCheckOut:
+    """Proves two clusters share savepoint storage, with a small job on each."""
+    if body.a == body.b:
+        raise HTTPException(status_code=400, detail="Choose two different clusters.")
+    targets = []
+    for name in (body.a, body.b):
+        t = db.scalar(select(Target).where(Target.name == name))
+        if t is None or not t.enabled:
+            raise HTTPException(status_code=404, detail=f"No enabled cluster named '{name}'.")
+        targets.append(t)
+    result = await shared_storage.check(registry, *targets)
+    return StorageCheckOut(**result.__dict__)
+
+
+@router.get("/storage/setup", response_model=StorageSetupOut)
+def savepoint_storage_setup(
+    server: str = Query(..., max_length=253),
+    export: str = Query(..., max_length=1024),
+    _: Principal = Depends(require_admin),
+) -> StorageSetupOut:
+    """The override file that puts a machine's savepoints on an NFS share."""
+    try:
+        return StorageSetupOut(
+            this_machine=savepoint_override(server, export),
+            this_machine_with_second=savepoint_override(
+                server, export, [("jobmanager", "taskmanager"), ("jobmanager-b", "taskmanager-b")]),
+            other_machine=savepoint_override(server, export),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/probe", response_model=TargetProbeOut)

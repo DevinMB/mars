@@ -148,6 +148,18 @@ def test_missing_restore_point_fails(install, monkeypatch):
     assert failed(result)["every running job's restore point is on disk"] == "1/2; missing: b"
 
 
+def test_a_savepoint_on_shared_storage_is_not_reported_missing(install, monkeypatch):
+    (install.state / "checkpoints" / "x" / "chk-9").mkdir(parents=True)
+    (install.state / "checkpoints" / "x" / "chk-9" / "_metadata").write_bytes(b"m")
+    monkeypatch.setattr(restore_drill, "_restore_point_paths", lambda: ([
+        ("a", "file:/flink-savepoints/savepoint-1"),
+        ("b", "file:/flink-state/checkpoints/x/chk-9"),
+    ], 0))
+    result = restore_drill.run(now=NOW)
+    check = next(c for c in result.checks if c.name.startswith("every running job"))
+    assert check.ok and check.detail == "1/1; 1 on shared storage not checked"
+
+
 def test_restore_points_are_skipped_when_state_is_not_mounted(install):
     result = restore_drill.run(now=NOW)
     check = next(c for c in result.checks if c.name.startswith("every running job"))

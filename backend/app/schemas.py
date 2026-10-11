@@ -633,3 +633,36 @@ class ClusterOut(BaseModel):
     jobs_running: int = 0
     targets_total: int = 0
     targets_reachable: int = 0
+
+
+class StorageLocationOut(BaseModel):
+    name: str
+    is_default: bool
+    savepoint_dir: str | None = None
+    error: str | None = None
+
+
+class StorageCheckOut(BaseModel):
+    clusters: list[str]
+    shared: bool
+    summary: str
+    checked_at: str
+    detail: str | None = None
+
+
+class StorageOut(BaseModel):
+    clusters: list[StorageLocationOut]
+    checks: list[StorageCheckOut]
+
+
+class StorageCheckIn(BaseModel):
+    a: str
+    b: str
+
+
+class StorageSetupOut(BaseModel):
+    # One override file per machine shape: MARS's own machine with or without the
+    # second cluster, and a machine set up from the guide.
+    this_machine: str
+    this_machine_with_second: str
+    other_machine: str

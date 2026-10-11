@@ -218,13 +218,20 @@ def run(now: datetime | None = None) -> DrillResult:
     state_dir = Path(s.flink_state_dir)
     points, elsewhere = _restore_point_paths()
     on_other = f"; {elsewhere} on other clusters not checked" if elsewhere else ""
+    # Only state under the mounted volume can be looked at. A savepoint on shared
+    # storage (docs/deployment.md#shared-savepoint-storage) lives elsewhere, and
+    # reading it as missing would page someone for nothing.
+    here = [(name, path) for name, path in points if "/flink-state/" in path]
+    outside = len(points) - len(here)
+    if outside:
+        on_other += f"; {outside} on shared storage not checked"
     if state_dir.is_dir():
         missing = [
-            name for name, path in points
+            name for name, path in here
             if not (state_dir / path.split("/flink-state/", 1)[-1] / "_metadata").is_file()
         ]
         check("every running job's restore point is on disk", not missing,
-              f"{len(points) - len(missing)}/{len(points)}"
+              f"{len(here) - len(missing)}/{len(here)}"
               + (f"; missing: {', '.join(missing)}" if missing else "") + on_other)
     else:
         check("every running job's restore point is on disk", True,
