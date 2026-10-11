@@ -59,7 +59,7 @@ with sync_playwright() as pw:
         page.add_init_script(f"localStorage.setItem('mars.theme','{theme}')")
         for width in [1440,768,390,320]:
             page.set_viewport_size({'width':width,'height':1000})
-            for path,label in [('/jobs','jobs'),('/catalog','catalog'),('/jobs/'+job,'detail'),('/jobs/'+job+'/edit','editor'),('/catalog/'+entry+'/edit','catalog-editor'),('/settings/accounts','accounts'),('/settings/ai','ai'),('/settings/registry','registry'),('/settings/backup','backup'),('/settings/secrets','secrets'),('/settings/version','version'),('/cluster','cluster'),('/activity','activity')]:
+            for path,label in [('/jobs','jobs'),('/catalog','catalog'),('/jobs/'+job,'detail'),('/jobs/'+job+'/edit','editor'),('/catalog/'+entry+'/edit','catalog-editor'),('/settings/accounts','accounts'),('/settings/ai','ai'),('/settings/registry','registry'),('/settings/backup','backup'),('/settings/secrets','secrets'),('/settings/version','version'),('/pipeline','pipeline'),('/cluster','cluster'),('/activity','activity')]:
                 visit(path)
                 overflow=page.evaluate('document.documentElement.scrollWidth > innerWidth + 1')
                 print(theme,width,path,'overflow' if overflow else 'ok',flush=True)
@@ -77,6 +77,17 @@ with sync_playwright() as pw:
     expect(page.get_by_text('Jobs keep running. Only the console restarts, for a few seconds.')).to_be_visible()
     visit('/settings/version')
     expect(page.get_by_role('heading',name='Version & updates')).to_be_visible()
+    # The pipeline: jobs joined through a topic, with an outside producer declared.
+    visit('/pipeline')
+    expect(page.get_by_role('button',name='kafka topic example-events')).to_be_visible()
+    expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    page.get_by_role('button',name='kafka topic example-events').click()
+    expect(page.get_by_role('heading',name='example-events')).to_be_visible()
+    expect(page.get_by_text('Outside Flink, writing it')).to_be_visible()
+    page.get_by_label('Name',exact=True).fill('audit-service')
+    page.get_by_label('Direction').select_option('consumes')
+    page.get_by_role('button',name='Add',exact=True).click()
+    expect(page.get_by_text('Not used by any job:')).to_be_visible()
     # Adding a cluster: the guide fills in the form for either place it can run.
     visit('/cluster')
     page.get_by_role('button',name='Add cluster').click()
@@ -95,7 +106,7 @@ with sync_playwright() as pw:
     expect(page.get_by_placeholder('http://newhost:8083')).to_have_value('http://10.0.0.7:8083')
     page.get_by_role('button',name='Cancel',exact=True).click()
     visit('/jobs')
-    expect(page.get_by_role('navigation',name='Main navigation').get_by_role('link')).to_have_count(5)
+    expect(page.get_by_role('navigation',name='Main navigation').get_by_role('link')).to_have_count(6)
     page.get_by_role('textbox',name='Search jobs').fill('does-not-exist')
     expect(page.get_by_text('No jobs match.')).to_be_visible()
     page.get_by_role('button',name='Clear filter').click()

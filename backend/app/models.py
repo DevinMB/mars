@@ -455,3 +455,22 @@ class Schedule(Base, TimestampMixin):
     next_fire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     job: Mapped[Job] = relationship(back_populates="schedule")
+
+
+class ExternalEndpoint(Base, TimestampMixin):
+    """Something outside Flink that writes or reads a topic or table.
+
+    MARS sees Flink jobs in their SQL, but not the collector that feeds a topic or
+    the API that reads one. Declared by hand so the pipeline view shows the whole
+    flow. Keyed by resource (what tables point at, see lineage.resource_of), so it
+    stays attached however many catalog entries describe that topic.
+    """
+
+    __tablename__ = "external_endpoints"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    resource_key: Mapped[str] = mapped_column(String(512), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    direction: Mapped[str] = mapped_column(String(8))  # "produces" or "consumes"
+    note: Mapped[str | None] = mapped_column(String(512))
+    created_by: Mapped[str | None] = mapped_column(String(64))
