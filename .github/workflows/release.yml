@@ -30,6 +30,8 @@ jobs:
       - name: Build
         run: >
           docker build --pull -f backend/Dockerfile
+          --build-arg MARS_REVISION="$SHA"
+          --build-arg MARS_BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           --label org.opencontainers.image.source="https://github.com/$REPO"
           --label org.opencontainers.image.revision="$SHA"
           -t "$IMAGE:sha-$SHA" -t "$IMAGE:main" .

@@ -116,6 +116,13 @@ services:
       - MARS_SEED_EXAMPLES=${MARS_SEED_EXAMPLES:-true}
       # Shown when adding a cluster, so a new one runs this exact image.
       - MARS_FLINK_IMAGE=${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
+      - MARS_CONSOLE_IMAGE=${MARS_CONSOLE_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0}
+      - MARS_FLINK_REVISION=${MARS_FLINK_REVISION:-}
+      # Versions and updates (docs/deployment.md#versions-and-updates). Off by default.
+      - MARS_UPDATE_CHECK=${MARS_UPDATE_CHECK:-false}
+      - MARS_UPDATE_CHANNEL=${MARS_UPDATE_CHANNEL:-releases}
+      - MARS_UPDATE_TOKEN_SECRET=${MARS_UPDATE_TOKEN_SECRET:-}
+      - MARS_UPDATE_INSTRUCTIONS=${MARS_UPDATE_INSTRUCTIONS:-}
       # Scheduled check that backups restore; publishes mars_restore_drill_success.
       - MARS_RESTORE_DRILL=${MARS_RESTORE_DRILL:-false}
       - MARS_RESTORE_DRILL_SCHEDULE=${MARS_RESTORE_DRILL_SCHEDULE:-0 6 1 1,4,7,10 *}

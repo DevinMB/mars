@@ -47,6 +47,15 @@ def fixtures():
         '/api/catalog/readings': SOURCE, '/api/catalog/output': SINK,
         '/api/catalog/readings/versions': [], '/api/catalog/output/versions': [],
         '/api/targets': [TARGET], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
+        '/api/system/version': {
+            'console': {'revision': 'a' * 40, 'built_at': STAMP, 'image': 'ghcr.io/example/mars-console@sha256:' + '1' * 64,
+                        'behind_by': 2, 'update_available': True,
+                        'commits': [{'sha': 'c1' + '0' * 38, 'title': 'Example change one', 'date': STAMP},
+                                    {'sha': 'c2' + '0' * 38, 'title': 'Example change two', 'date': STAMP}],
+                        'how_to_update': {'needs_window': False, 'steps': ['docker pull example'], 'command': 'deploy.sh console bbbbbbb'}},
+            'flink': {'revision': None, 'image': 'ghcr.io/example/mars-flink@sha256:' + '2' * 64},
+            'update_check': {'enabled': True, 'channel': 'main', 'checked_at': STAMP, 'error': None},
+            'latest': {'revision': 'b' * 40, 'label': 'bbbbbbb', 'published_at': STAMP, 'url': 'https://github.com/example/mars'}},
         '/api/targets/setup': {
             'flink_image': 'ghcr.io/example/mars-flink@sha256:' + '0' * 64, 'image_pinned': True,
             'registry': 'ghcr.io', 'same_machine_name': 'mars-b',

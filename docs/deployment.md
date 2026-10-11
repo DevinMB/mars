@@ -145,6 +145,29 @@ Changing Flink configuration restarts the JobManager, so plan it as maintenance:
    not pick up changed file contents.
 4. **Resume** each job and confirm it restored from the savepoint taken in step 1.
 
+## Versions and updates
+
+The console shows which release it runs (footer, and **Settings → Version &
+updates**). Released console images carry their commit and build date. For Flink,
+set `MARS_FLINK_REVISION` to the commit the image was built from; without it, the
+pinned image is shown instead.
+
+Checking for newer releases is off by default, because it asks GitHub once a day:
+
+```bash
+MARS_UPDATE_CHECK=true
+MARS_UPDATE_CHANNEL=releases            # or main, to follow every merge
+MARS_UPDATE_TOKEN_SECRET=github_read    # a MARS secret; only for a private repository
+MARS_UPDATE_INSTRUCTIONS=               # e.g. ./deploy.sh {component} {commit}
+```
+
+When something newer exists, administrators see **Update available** with what
+changed and how to update. The console never updates itself. Without
+`MARS_UPDATE_INSTRUCTIONS`, the steps are generic Docker Compose ones; a Flink
+update always says it needs a maintenance window, because every job on the cluster
+stops while it is replaced. `{component}` is `console` or `flink`, `{commit}` the
+full commit, `{short}` its first seven characters.
+
 ## Restore drill
 
 A backup you have never restored is a guess. MARS can check its own on a schedule.
