@@ -80,6 +80,8 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='On another machine').click()
     expect(page.get_by_placeholder('rack-2',exact=True)).to_have_value('')
     page.get_by_label('Address of the new machine').fill('10.0.0.7')
+    page.get_by_label('Jobs this cluster will run').fill('12')
+    expect(page.get_by_text('12 task slots: one per job.')).to_be_visible()
     expect(page.get_by_text('TARGET_BIND_ADDRESS=10.0.0.7 docker compose up -d')).to_be_visible()
     page.get_by_role('button',name='Use these settings').click()
     expect(page.get_by_placeholder('http://newhost:8083')).to_have_value('http://10.0.0.7:8083')

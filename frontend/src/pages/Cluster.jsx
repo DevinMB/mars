@@ -194,7 +194,13 @@ export default function Cluster() {
           onCancel={() => { setAdding(false); setEditing(null); setDefaults(null) }}
         >
           {adding && (setup
-            ? <AddClusterGuide setup={setup} onUse={setDefaults} />
+            ? <AddClusterGuide
+                setup={setup}
+                onUse={setDefaults}
+                onSlots={async (n) => {
+                  try { setSetup(await api.clusterSetup(n)) } catch (err) { setError(err.message) }
+                }}
+              />
             : <Spinner label="Reading this installation" />)}
         </TargetForm>
       )}

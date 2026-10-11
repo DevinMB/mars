@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from .cluster import FlinkClusterClient
 from .ddl import split_statements
+from .metrics import SUBMISSIONS
 from .gateway import GatewayError, SqlGatewayClient
 from .guards import strip_noise
 from .models import CatalogEntry, Job, JobRun, RunState, utcnow
@@ -132,6 +133,23 @@ class JobSubmitter:
         submitted_by: str | None = None,
         by_schedule: bool = False,
         savepoint_path: str | None = None,
+    ) -> JobRun:
+        """Submits a job, counting the outcome in mars_job_submissions_total."""
+        try:
+            run = await self._submit(db, job, submitted_by, by_schedule, savepoint_path)
+        except Exception:
+            SUBMISSIONS.labels(outcome="failed").inc()
+            raise
+        SUBMISSIONS.labels(outcome="started").inc()
+        return run
+
+    async def _submit(
+        self,
+        db: Session,
+        job: Job,
+        submitted_by: str | None,
+        by_schedule: bool,
+        savepoint_path: str | None,
     ) -> JobRun:
         statements = self.build_script(db, job)
 

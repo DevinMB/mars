@@ -103,3 +103,27 @@ async def test_supervisor_resubmissions_are_counted_per_job(db, monkeypatch):
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
     assert value("mars_supervisor_resubmissions_total", mars_job="flaky") == before + 2
+
+
+@pytest.mark.asyncio
+async def test_submissions_are_counted_by_outcome(db, monkeypatch):
+    from app.submitter import JobSubmitter, SubmissionError
+
+    sub = JobSubmitter(gateway=None, cluster=None, store=None)
+    started = value("mars_job_submissions_total", outcome="started") or 0
+    failed = value("mars_job_submissions_total", outcome="failed") or 0
+
+    async def ok(*a, **k):
+        return "run"
+
+    async def boom(*a, **k):
+        raise SubmissionError("gateway down")
+
+    monkeypatch.setattr(sub, "_submit", ok)
+    assert await sub.submit(db, job=None) == "run"
+    monkeypatch.setattr(sub, "_submit", boom)
+    with pytest.raises(SubmissionError):
+        await sub.submit(db, job=None)
+
+    assert value("mars_job_submissions_total", outcome="started") == started + 1
+    assert value("mars_job_submissions_total", outcome="failed") == failed + 1

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // Where the project lives. Change this in a fork; it is the only place the
 // repository is named.
@@ -81,7 +81,7 @@ const ADDRESS = /^[A-Za-z0-9.-]+$/
  * Both paths run the exact Flink image the default cluster runs, so the clusters
  * agree on connectors.
  */
-export default function AddClusterGuide({ setup, onUse }) {
+export default function AddClusterGuide({ setup, onUse, onSlots }) {
   const [where, setWhereState] = useState(null)
   // Switching places clears the form: values filled in for the other choice
   // would otherwise add the wrong cluster without anyone noticing.
@@ -90,6 +90,15 @@ export default function AddClusterGuide({ setup, onUse }) {
     setWhereState(next)
   }
   const [address, setAddress] = useState('')
+  const [jobs, setJobs] = useState('8')
+  const slots = Number(jobs)
+  const slotsOk = Number.isInteger(slots) && slots >= 1 && slots <= 64
+  // The compose file carries the slot count, so ask for it again once typing pauses.
+  useEffect(() => {
+    if (!slotsOk) return
+    const t = setTimeout(() => onSlots?.(slots), 300)
+    return () => clearTimeout(t)
+  }, [slots, slotsOk]) // eslint-disable-line react-hooks/exhaustive-deps
   const host = address.trim()
   const hostOk = ADDRESS.test(host)
   const shown = hostOk ? host : '<address>'
@@ -181,21 +190,39 @@ export default function AddClusterGuide({ setup, onUse }) {
               <p className="text-[12px] text-red-700">A hostname or IP address, without http:// or a port.</p>
             )}
           </Step>
-          <Step n={3} title="On the new machine, save this as docker-compose.yml in an empty folder">
+          <Step n={3} title="How many jobs will it run?">
+            <input
+              className="input max-w-[8rem] tabular-nums"
+              type="number"
+              min="1"
+              max="64"
+              value={jobs}
+              aria-label="Jobs this cluster will run"
+              onChange={(e) => setJobs(e.target.value)}
+            />
+            <p className="text-[12px] text-slate-500">
+              {slotsOk
+                ? `${slots} task slot${slots === 1 ? '' : 's'}: one per job.`
+                : 'A number from 1 to 64.'}
+              {slotsOk && slots > 16 &&
+                ' Light jobs use about 150 MB each; above 16, raise the TaskManager memory in the file to match.'}
+            </p>
+          </Step>
+          <Step n={4} title="On the new machine, save this as docker-compose.yml in an empty folder">
             <Copyable tall>{setup.other_machine_compose}</Copyable>
           </Step>
           {setup.registry && (
-            <Step n={4} title={`Let it pull the image from ${setup.registry}`}>
+            <Step n={5} title={`Let it pull the image from ${setup.registry}`}>
               <p className="text-[12px] text-slate-600">
                 Needed when the image is private. Log in with a token that can read packages.
               </p>
               <Copyable>{`docker login ${setup.registry}`}</Copyable>
             </Step>
           )}
-          <Step n={setup.registry ? 5 : 4} title="Start it">
+          <Step n={setup.registry ? 6 : 5} title="Start it">
             <Copyable>{`TARGET_BIND_ADDRESS=${shown} docker compose up -d`}</Copyable>
           </Step>
-          <Step n={setup.registry ? 6 : 5} title="Fill in the form and test the connection">
+          <Step n={setup.registry ? 7 : 6} title="Fill in the form and test the connection">
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 type="button"
