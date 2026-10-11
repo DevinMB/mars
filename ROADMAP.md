@@ -10,6 +10,12 @@ This is a direction of travel, not a release schedule.
 - Multiple execution targets, activity history, and definition versioning.
 - Role-based accounts, API tokens, encrypted secrets, and YAML import/export.
 - Optional AI-assisted SQL drafting and schema registry integration.
+- Versions and updates: what the console and Flink run, and, when update checks are
+  on, what changed since and how to update.
+- Guided cluster setup, on this machine or another, from the exact images in use.
+- A catalog of tables: which jobs read and write each one, from Flink's plan, grouped
+  by the topic or database it points at, and a pipeline view of the whole flow.
+- Scheduled restore drills that check backups actually restore (opt-in).
 
 ## Next
 
@@ -17,31 +23,13 @@ This is a direction of travel, not a release schedule.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
 - **Operations:** improve job diagnostics and visibility into resource use.
-- **Versions and updates:** show which release the console and the Flink image are
-  running, and when each was deployed. When a newer release exists, say so, with an
-  expandable **How to update** panel: what changed, the exact steps for the
-  installation's deployment method, and whether the update needs a maintenance
-  window (the console updates without stopping jobs; Flink needs every job saved
-  and resumed). The console only reports; it never updates itself, because that
-  would require control of the host's container runtime.
-- **Guided cluster setup:** one name throughout ("cluster"), and an **Add cluster**
-  flow that starts with where it will run. On the same machine: one command, with
-  the form filled in. On another machine: a ready-to-copy compose file built from
-  the exact images the existing cluster runs. Then a connection test that explains
-  failures, a warning when clusters run different Flink versions, and a pointer to
-  moving a job onto the new cluster.
 - **Rolling cluster upgrades:** upgrade Flink or connectors without pausing every
   job at once. A temporary second cluster starts on the new image, jobs move over
   one at a time (savepoint, resume on the new cluster), and the old cluster stops.
   Needs savepoint storage shared by both clusters and a move-job action. Each job
   pauses for seconds instead of the whole pipeline for a maintenance window.
-- **Data flow:** treat catalog entries as tables rather than fixed sources or sinks.
-  A Kafka topic is usually written by one job and read by others, so its role
-  belongs to each job's use of it, not to the definition. MARS would derive who
-  reads and writes each table from job SQL, show the jobs connected through
-  shared topics as a pipeline, including producers and consumers outside Flink,
-  and apply per-job settings such as consumer groups automatically. Existing
-  entries keep working.
+- **Data flow, continued:** set each job's consumer group automatically, warn when two
+  jobs share one, and optionally merge catalog entries that describe the same topic.
 
 ## Later
 
