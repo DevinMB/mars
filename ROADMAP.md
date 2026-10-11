@@ -48,3 +48,5 @@ This is a direction of travel, not a release schedule.
 - A CLI for reviewing and applying definitions in automated workflows.
 - More connector and format integrations.
 - External identity providers for shared installations.
+- Renaming a cluster. Jobs refer to a cluster by name, so a rename updates the cluster
+  and every job that names it in one change; running jobs are unaffected.
