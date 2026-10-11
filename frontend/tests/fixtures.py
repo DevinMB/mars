@@ -59,9 +59,9 @@ def fixtures():
         '/api/targets': [TARGET], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
         '/api/pipeline': {
             'nodes': [
-                {'id': 'job:enrich_events', 'type': 'job', 'label': 'enrich_events', 'state': 'running', 'cluster': None},
-                {'id': 'job:archive_events', 'type': 'job', 'label': 'archive_events', 'state': 'failed', 'cluster': None},
-                {'id': 'job:readings_to_output', 'type': 'job', 'label': 'readings_to_output', 'state': 'running', 'cluster': None},
+                {'id': 'job:enrich_events', 'type': 'job', 'label': 'enrich_events', 'state': 'running', 'cluster': 'local'},
+                {'id': 'job:archive_events', 'type': 'job', 'label': 'archive_events', 'state': 'failed', 'cluster': 'local'},
+                {'id': 'job:readings_to_output', 'type': 'job', 'label': 'readings_to_output', 'state': 'running', 'cluster': 'mars-b'},
                 {'id': 'ext:1', 'type': 'external', 'label': 'event-collector', 'direction': 'produces', 'note': None,
                  'endpoint_id': 1, 'resource': 'kafka:broker:9092/raw-events'},
                 {'id': 'res:kafka:broker:9092/raw-events', 'type': 'resource', 'kind': 'kafka topic', 'label': 'raw-events',

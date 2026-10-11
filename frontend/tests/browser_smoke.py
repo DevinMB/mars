@@ -64,7 +64,7 @@ with sync_playwright() as pw:
                 overflow=page.evaluate('document.documentElement.scrollWidth > innerWidth + 1')
                 print(theme,width,path,'overflow' if overflow else 'ok',flush=True)
                 if overflow:failures.append(f'Overflow {theme} {width} {path}')
-                if width in [1440,390] and label in ['jobs','editor','accounts','catalog','ai']:
+                if width in [1440,390] and label in ['jobs','editor','accounts','catalog','ai','pipeline']:
                     page.screenshot(path=f'{SCREENSHOTS}/{label}-{theme}-{width}.png',full_page=True)
     page.set_viewport_size({'width':1440,'height':1000})
     for path in ['/settings/accounts','/settings/ai','/settings/registry','/settings/backup','/settings/secrets','/activity','/cluster']:
@@ -88,6 +88,32 @@ with sync_playwright() as pw:
     page.get_by_label('Direction').select_option('consumes')
     page.get_by_role('button',name='Add',exact=True).click()
     expect(page.get_by_text('Not used by any job:')).to_be_visible()
+    # Grab and pull: the view moves, and the drag does not select what it started on.
+    viewport=page.get_by_role('group',name='Pipeline graph. Drag or use the arrow keys to move around; plus and minus zoom; 0 fits.')
+    drawing=viewport.locator('svg > g').first
+    before=drawing.get_attribute('transform')
+    box=viewport.bounding_box()
+    page.mouse.move(box['x']+12,box['y']+box['height']-12); page.mouse.down()
+    page.mouse.move(box['x']+120,box['y']+box['height']-60,steps=5); page.mouse.up()
+    assert drawing.get_attribute('transform')!=before, 'dragging did not move the pipeline'
+    page.get_by_role('button',name='Zoom in').click()
+    page.get_by_role('button',name='Fit').click()
+    # Focus: only the flow through one topic, upstream and downstream.
+    page.get_by_role('combobox',name='Focus on').select_option(label='example-events (kafka topic)')
+    expect(page.get_by_role('button',name='job enrich_events')).to_be_visible()
+    expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
+    expect(page.get_by_text('Showing 2 of 3 jobs')).to_be_visible()
+    assert 'focus=' in page.url, 'the focus is not kept in the address'
+    page.get_by_role('button',name='Show everything').click()
+    expect(page.get_by_role('button',name='job readings_to_output')).to_be_visible()
+    page.get_by_role('combobox',name='Cluster').select_option('mars-b')
+    expect(page.get_by_role('button',name='job readings_to_output')).to_be_visible()
+    expect(page.get_by_role('button',name='job enrich_events')).to_have_count(0)
+    page.get_by_role('button',name='Show everything').click()
+    page.get_by_role('button',name='job archive_events').click()
+    page.get_by_role('button',name='Show only what connects to this').click()
+    expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
+    expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
     # Adding a cluster: the guide fills in the form for either place it can run.
     visit('/cluster')
     page.get_by_role('button',name='Add cluster').click()
