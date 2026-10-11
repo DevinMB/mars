@@ -202,9 +202,16 @@ state it would resume from is on the shared storage.
 
 To move several, tick them on the Jobs page (the box in the header selects every
 job shown, so search or filter first) and choose **Move to cluster…** in the bar
-that appears. They move one at a time with each one's result shown, and the run
-stops at the first job that cannot move, which is left where it was. The same bar
-stops or resumes the selected jobs.
+that appears. The same bar stops or resumes the selected jobs.
+
+The console runs a bulk action itself, one job at a time, so it carries on if the
+page that started it is closed. The Jobs page shows it, with each job's result,
+to anyone who opens it; one runs at a time, and **Stop after this job** halts it
+between jobs. A move stops at the first job that cannot move, which is left where
+it was; stops and resumes carry on past a failure. If the console restarts
+mid-way, as during a deploy, it picks the batch up again: each step checks the
+job's state first, so a job already moved counts as done and one stopped
+mid-move is resumed on the destination.
 
 Changing **Runs on** in the editor is refused while a job is running: MARS would
 then ask the new cluster about it, hear that it does not exist, and mark it

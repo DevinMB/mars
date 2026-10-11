@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import { relativeTime, duration, millis } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
-import BulkJobs from '../components/BulkJobs'
+import { BatchProgress, BulkPlan } from '../components/BulkJobs'
 
 const COLUMNS = 6
 
@@ -174,6 +174,11 @@ export default function Jobs() {
   // Jobs ticked for a bulk action, by name; and which action's panel is open.
   const [selected, setSelected] = useState(() => new Set())
   const [bulk, setBulk] = useState(null)
+  // The bulk action the console is running, or ran last.
+  const [batch, setBatch] = useState(null)
+  const [dismissed, setDismissed] = useState(() => {
+    try { return Number(localStorage.getItem('mars.batch.dismissed')) || 0 } catch { return 0 }
+  })
   const allBox = useRef(null)
 
   useEffect(() => {
@@ -193,10 +198,25 @@ export default function Jobs() {
       } catch { /* not fatal */ }
     }
     load()
+    api.latestBatch().then((b) => alive && setBatch(b)).catch(() => {})
     // Jobs change without the user doing anything, so the list refreshes itself.
     const t = setInterval(load, 10000)
     return () => { alive = false; clearInterval(t) }
   }, [reload])
+
+  // While a bulk action runs, follow it closely, and the jobs it changes with it.
+  const batchOpen = ['running', 'stopping'].includes(batch?.status)
+  useEffect(() => {
+    if (!batchOpen) return
+    const t = setInterval(async () => {
+      try {
+        const b = await api.batch(batch.id)
+        setBatch(b)
+        setJobs(await api.jobs())
+      } catch { /* the next tick tries again */ }
+    }, 2000)
+    return () => clearInterval(t)
+  }, [batchOpen, batch?.id])
 
   const defaultName = useMemo(
     () => targets.find((t) => t.is_default)?.name || 'default',
@@ -306,21 +326,30 @@ export default function Jobs() {
                      onChange={setCluster} total={jobs.length} />
       )}
 
+      {batch && (batchOpen || batch.id !== dismissed) && (
+        <BatchProgress batch={batch} canWrite={canWrite}
+          onStop={async () => { try { await api.stopBatch(batch.id); setBatch(await api.batch(batch.id)) } catch (err) { setError(err.message) } }}
+          onDismiss={() => { setDismissed(batch.id); try { localStorage.setItem('mars.batch.dismissed', String(batch.id)) } catch { /* per-viewer only */ } }} />
+      )}
       {selectable && chosen.length > 0 && !bulk && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent-200 bg-accent-50 px-3 py-2 text-[13px]">
           <span className="text-slate-900 font-medium">{chosen.length} selected</span>
-          <span className="flex flex-wrap gap-2 ml-1">
-            {multi && <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('move')}>Move to cluster…</button>}
-            <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('stop')}>Stop and save state</button>
-            <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('resume')}>Resume</button>
-          </span>
+          {batchOpen ? (
+            <span className="text-slate-600 ml-1">Another bulk action is running; start the next when it finishes.</span>
+          ) : (
+            <span className="flex flex-wrap gap-2 ml-1">
+              {multi && <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('move')}>Move to cluster…</button>}
+              <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('stop')}>Stop and save state</button>
+              <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('resume')}>Resume</button>
+            </span>
+          )}
           <button type="button" className="ml-auto link text-[12px]" onClick={() => setSelected(new Set())}>Clear selection</button>
         </div>
       )}
       {bulk && (
-        <BulkJobs key={bulk} mode={bulk} jobs={chosen} targets={targets} defaultName={defaultName}
-                  onChanged={() => setReload((n) => n + 1)}
-                  onClose={(acted) => { setBulk(null); if (acted) setSelected(new Set()) }} />
+        <BulkPlan key={bulk} mode={bulk} jobs={chosen} targets={targets} defaultName={defaultName}
+                  onClose={() => setBulk(null)}
+                  onStarted={(b) => { setBatch(b); setBulk(null); setSelected(new Set()) }} />
       )}
 
       {jobs.length === 0 ? (

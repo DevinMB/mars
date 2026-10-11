@@ -24,7 +24,7 @@ with sync_playwright() as pw:
     context=browser.new_context(viewport={'width':1440,'height':1000}, reduced_motion='reduce')
     page=context.new_page()
     page.on('pageerror',lambda err:errors.append(str(err)))
-    role=['admin']; offline=[False]; save_fails=[False]
+    role=['admin']; offline=[False]; save_fails=[False]; batch_state={}
     def route(req):
         path=unquote(urlsplit(req.request.url).path)
         if path=='/api/auth/me':
@@ -38,9 +38,19 @@ with sync_playwright() as pw:
                 return req.fulfill(status=422,json={'detail':'Example save failure'})
             if path.endswith('/validate'):body={'ok':True,'warnings':[]}
             elif path.endswith('/move'):body={'moved':True,'summary':'readings_to_output now runs on mars-b.','savepoint':None}
+            elif path=='/api/batches':
+                sent=json.loads(req.request.post_data)
+                batch_state['b']={'id':1,'kind':sent['kind'],'cluster':sent['cluster'],'status':'running','created_by':'admin',
+                    'created_at':'2026-10-11T21:00:00Z','finished_at':None,
+                    'items':[{'job':n,'status':'working' if i==0 else 'waiting','note':''} for i,n in enumerate(sent['jobs'])]}
+                return req.fulfill(status=201,json=batch_state['b'])
             elif req.request.method in ['POST','PUT'] and path.startswith('/api/jobs'):
                 body={'ok':True}
             else:body={}
+        elif path=='/api/batches/1' and batch_state.get('b'):
+            b=dict(batch_state['b']); b['status']='done'; b['finished_at']='2026-10-11T21:00:05Z'
+            b['items']=[dict(i,status='done',note=f"{i['job']} now runs on mars-b.") for i in b['items']]
+            body=b
         elif offline[0] and path=='/api/jobs':
             return req.fulfill(status=503,json={'detail':'API unavailable'})
         elif path in fixtures:body=fixtures[path]
@@ -125,12 +135,14 @@ with sync_playwright() as pw:
     page.get_by_role('checkbox',name='Select '+job).check()
     page.get_by_role('button',name='Move to cluster…').click()
     page.get_by_role('radio',name='mars-b').check()
-    moves_before=sum(1 for m,p,_ in writes if p.endswith('/move'))
     page.get_by_role('button',name=f'Move {total} to mars-b').click()
-    expect(page.get_by_role('button',name='Done')).to_be_visible()
-    assert sum(1 for m,p,_ in writes if p.endswith('/move'))-moves_before==total, 'each selected job is moved once'
-    page.get_by_role('button',name='Done').click()
-    expect(page.get_by_text('selected',exact=False)).to_have_count(0)
+    # Handed to the console: progress comes from the server, then the result.
+    expect(page.get_by_role('heading',name=f'Moving {total} job{"" if total==1 else "s"} to mars-b')).to_be_visible()
+    assert any(m=='POST' and p=='/api/batches' for m,p,_ in writes), 'the batch was not started on the server'
+    expect(page.get_by_role('status').get_by_text('Finished')).to_be_visible(timeout=10000)
+    expect(page.get_by_text(f'{job} now runs on mars-b.')).to_be_visible()
+    page.get_by_role('status').get_by_role('button',name='Dismiss').click()
+    expect(page.get_by_role('heading',name=f'Moving {total} job{"" if total==1 else "s"} to mars-b')).to_have_count(0)
     # Moving a job: from the job's menu, to a cluster MARS says is ready.
     visit('/jobs/'+job)
     page.get_by_role('button',name='More').click()

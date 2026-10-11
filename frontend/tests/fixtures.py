@@ -77,6 +77,7 @@ def fixtures():
             'this_machine_with_second': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager jobmanager-b taskmanager-b\nservices: {}\n',
             'other_machine': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager\nservices: {}\n',
         },
+        '/api/batches/latest': None,
         '/api/pipeline': {
             'nodes': [
                 {'id': 'job:enrich_events', 'type': 'job', 'label': 'enrich_events', 'state': 'running', 'cluster': 'local'},
