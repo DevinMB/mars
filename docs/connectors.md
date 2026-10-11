@@ -34,3 +34,23 @@ Store connection credentials in **Settings → Secrets** and reference them in S
 Values are resolved when statements are submitted. Avoid literal credentials in SQL,
 URLs, descriptions, and extra headers: those fields are ordinary configuration and
 may appear in definitions, history, or exports. See [Security](../SECURITY.md).
+
+## How the catalog groups tables
+
+A catalog entry is a table. Whether a job reads or writes it comes from the job:
+from Flink's plan when the job is validated, otherwise from its SQL (tables after
+`INSERT INTO` are written, the job's other tables are read). There is no source or
+sink to choose.
+
+Entries pointing at the same thing are grouped: every table on one Kafka topic is
+that topic, shown once with the jobs that write and read it. MARS knows what Kafka,
+upsert-kafka, CouchDB, filesystem and JDBC tables point at. A connector can declare
+its own in its manifest:
+
+```json
+"identity": { "server": "base-url", "name": "domain", "label": "home assistant domain" }
+```
+
+`name` is the option naming the target, `server` (optional) the option naming the
+system it lives on, so two clusters with a same-named target stay apart, and
+`label` what to call it. Without `identity`, each table is shown on its own.

@@ -14,6 +14,7 @@ from ..deps import (
     current_principal,
     get_gateway,
     get_cluster,
+    get_registry,
     get_secret_store,
     get_submitter,
     get_targets,
@@ -23,6 +24,7 @@ from ..ai import AiClient
 from ..drafting import draft_statement
 from ..gateway import SqlGatewayClient
 from ..preview import preview_statement
+from .. import lineage
 from ..explain import Context as ExplainContext
 from ..explain import explain
 from ..guards import check_job, column_names, columns_of
@@ -291,6 +293,9 @@ def create_job(
         target_name=body.target_name or None,
         version=1,
     )
+    # Keep the plan from the editor's check of exactly this SQL, if there was one.
+    if (plans := lineage.recall_plans(job)) is not None:
+        lineage.record_plan(job, plans)
     db.add(job)
     db.flush()
     db.add(
@@ -325,6 +330,8 @@ def update_job(
     job.sql_text = body.sql_text
     job.catalog_refs = new_refs
     job.target_name = body.target_name or None
+    if changed and (plans := lineage.recall_plans(job)) is not None:
+        lineage.record_plan(job, plans)
 
     # Only a change to what actually runs earns a new version; renaming the
     # description should not fill the history with noise.
@@ -395,9 +402,12 @@ async def validate_job(
         WarningOut(level=w.level, code=w.code, message=w.message) for w in check_job(db, job)
     ]
     try:
-        await targets.for_job_submitter(db, job).validate(db, job)
+        plans = await targets.for_job_submitter(db, job).validate(db, job)
     except SubmissionError as exc:
         return _validated(db, job.sql_text, _refs(job), warnings, exc)
+    # What Flink's plan says the job reads and writes, for the catalog.
+    lineage.record_plan(job, plans)
+    db.commit()
     return ValidateResponse(ok=True, warnings=warnings)
 
 
@@ -517,9 +527,13 @@ async def validate_draft(
         return ValidateResponse(ok=False, error=str(exc), warnings=warnings)
 
     try:
-        await submitter.validate(db, draft)
+        plans = await submitter.validate(db, draft)
     except SubmissionError as exc:
         return _validated(db, body.sql_text, body.catalog_refs, warnings, exc)
+    lineage.remember_plans(draft, plans)
+    if existing is not None and lineage.fingerprint(existing) == lineage.fingerprint(draft):
+        lineage.record_plan(existing, plans)
+        db.commit()
     return ValidateResponse(ok=True, warnings=warnings)
 
 
@@ -561,7 +575,7 @@ async def draft_job(
     tables = [
         {
             "name": e.name,
-            "kind": e.kind,
+            "kind": lineage.role_hint(e, get_registry()),
             "columns": [{"name": n, "type": t} for n, t in columns_of(e.sql_text)],
             "document_fields": body.document_fields.get(e.name, {}),
         }
@@ -617,13 +631,16 @@ async def preview_statement_route(
     if not body.sql_text.strip():
         raise HTTPException(status_code=400, detail="There is no statement to preview.")
 
+    # Only tables the statement reads, and never one it writes, even if it also
+    # reads it: defining a written table is what would let a preview have an effect.
+    usage = lineage.usage_from_sql(body.sql_text, body.catalog_refs or [])
+    readable = usage.reads - usage.writes
     sources = [
         e
         for e in db.query(CatalogEntry)
-        .filter(CatalogEntry.name.in_(body.catalog_refs))
+        .filter(CatalogEntry.name.in_(readable))
         .all()
-        if e.kind == "source"
-    ] if body.catalog_refs else []
+    ] if readable else []
 
     result = await preview_statement(
         gateway, store, db, sources, body.sql_text,

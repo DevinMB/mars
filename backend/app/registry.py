@@ -82,6 +82,15 @@ class ConnectorColumn:
         )
 
 
+def _identity(raw: Any) -> dict[str, str] | None:
+    if not isinstance(raw, dict) or not isinstance(raw.get("name"), str):
+        return None
+    out = {"name": raw["name"], "label": str(raw.get("label") or raw["name"])}
+    if isinstance(raw.get("server"), str):
+        out["server"] = raw["server"]
+    return out
+
+
 @dataclass
 class Connector:
     connector: str
@@ -93,6 +102,10 @@ class Connector:
     options: list[ConnectorOption] = field(default_factory=list)
     columns: list[ConnectorColumn] = field(default_factory=list)
     source: str = "bundled"
+    # What a table on this connector points at, so tables on the same target group
+    # together: {"server": "<option>" or absent, "name": "<option>", "label": "..."}.
+    # Optional; without it each table is its own target.
+    identity: dict[str, str] | None = None
 
     @classmethod
     def from_json(cls, d: dict[str, Any], source: str) -> "Connector":
@@ -112,6 +125,7 @@ class Connector:
             options=[ConnectorOption.from_json(o) for o in d.get("options", [])],
             columns=[ConnectorColumn.from_json(c) for c in d.get("columns", [])],
             source=source,
+            identity=_identity(d.get("identity")),
         )
 
     def option(self, key: str) -> ConnectorOption | None:

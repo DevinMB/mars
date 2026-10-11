@@ -6,6 +6,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from .. import lineage
 from ..auth import Principal
 from ..db import get_session
 from ..ddl import Column, DdlError, build_create_table, options_from_json, options_to_json
@@ -28,6 +29,7 @@ from ..schemas import (
     HealthResultOut,
     SampleRequest,
     CatalogEntryOut,
+    ResourceOut,
     ColumnOut,
     NestedFieldOut,
     SampleOut,
@@ -55,8 +57,17 @@ def _options_of(entry: CatalogEntry) -> dict[str, str]:
     return parsed
 
 
-def _out(entry: CatalogEntry, used_by: list[str] | None = None) -> CatalogEntryOut:
+def _out(
+    entry: CatalogEntry,
+    used_by: list[str] | None = None,
+    usage: lineage.TableUsage | None = None,
+    registry: ConnectorRegistry | None = None,
+) -> CatalogEntryOut:
+    r = lineage.resource_of(entry, registry)
     return CatalogEntryOut(
+        read_by=usage.read_by if usage else [],
+        written_by=usage.written_by if usage else [],
+        resource=ResourceOut(key=r.key, kind=r.kind, label=r.label),
         id=entry.id,
         name=entry.name,
         kind=entry.kind,
@@ -108,14 +119,27 @@ def _render(body: CatalogEntryIn, registry: ConnectorRegistry) -> str:
 
 @router.get("", response_model=list[CatalogEntryOut])
 def list_entries(
+    # "source" or "sink": entries usable that way, by their connector.
     kind: str | None = None,
     _: Principal = Depends(current_principal),
     db: Session = Depends(get_session),
+    registry: ConnectorRegistry = Depends(get_registry),
 ) -> list[CatalogEntryOut]:
-    q = db.query(CatalogEntry)
-    if kind:
-        q = q.filter(CatalogEntry.kind == kind)
-    return [_out(e, _users_of(db, e.name)) for e in q.order_by(CatalogEntry.name).all()]
+    usage = lineage.catalog_usage(db)
+    out = []
+    for e in db.query(CatalogEntry).order_by(CatalogEntry.name).all():
+        if kind and not _usable_as(e, kind, registry):
+            continue
+        u = usage.get(e.name)
+        out.append(_out(e, sorted(set(u.read_by + u.written_by)) if u else [], u, registry))
+    return out
+
+
+def _usable_as(entry: CatalogEntry, kind: str, registry: ConnectorRegistry) -> bool:
+    if entry.kind in ("source", "sink"):
+        return entry.kind == kind
+    connector = registry.get(entry.connector)
+    return connector is None or kind in connector.kinds
 
 
 @router.get("/{name}", response_model=CatalogEntryOut)
@@ -127,7 +151,7 @@ def get_entry(
     e = db.query(CatalogEntry).filter(CatalogEntry.name == name).one_or_none()
     if e is None:
         raise HTTPException(status_code=404, detail=f"No catalog entry named '{name}'")
-    return _out(e, _users_of(db, name))
+    return _out(e, _users_of(db, name), lineage.catalog_usage(db).get(name))
 
 
 @router.post("", response_model=CatalogEntryOut, status_code=status.HTTP_201_CREATED)
@@ -189,9 +213,12 @@ def update_entry(
     rendered = _render(body, registry)
     # Only a change to the definition earns a version. Editing the description
     # should not fill the history with noise -- the same rule jobs follow.
-    changed = rendered != entry.sql_text or body.kind != entry.kind
+    # "table" is what the console sends now; an older entry keeps its stored role
+    # rather than gaining a version for a change nobody made.
+    new_kind = entry.kind if body.kind == "table" else body.kind
+    changed = rendered != entry.sql_text or new_kind != entry.kind
 
-    entry.kind = body.kind
+    entry.kind = new_kind
     entry.connector = body.connector
     entry.description = body.description
     entry.sql_text = rendered
@@ -244,7 +271,13 @@ def check_entry(
     entry = db.query(CatalogEntry).filter(CatalogEntry.name == name).one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No catalog entry named '{name}'")
-    ws = check_catalog_entry(entry.sql_text, entry.kind, entry.connector)
+    # Checked for how jobs use it. Unused, an older entry's stored role stands in.
+    u = lineage.catalog_usage(db).get(name)
+    roles = {"source"} if u and u.read_by else set()
+    roles |= {"sink"} if u and u.written_by else set()
+    if not roles and entry.kind in ("source", "sink"):
+        roles = {entry.kind}
+    ws = [w for role in sorted(roles) for w in check_catalog_entry(entry.sql_text, role, entry.connector)]
     return [WarningOut(level=w.level, code=w.code, message=w.message) for w in ws]
 
 
@@ -257,6 +290,7 @@ async def sample_entry(
     db: Session = Depends(get_session),
     gateway: SqlGatewayClient = Depends(get_gateway),
     store: SecretStore = Depends(get_secret_store),
+    registry: ConnectorRegistry = Depends(get_registry),
 ) -> SampleOut:
     """Reads a few real records, so a job can be written against what is there.
 
@@ -266,10 +300,10 @@ async def sample_entry(
     entry = db.query(CatalogEntry).filter(CatalogEntry.name == name).one_or_none()
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No catalog entry named '{name}'")
-    if entry.kind != "source":
+    if not _usable_as(entry, "source", registry):
         raise HTTPException(
             status_code=400,
-            detail="Only sources can be sampled; a sink is somewhere records go.",
+            detail="This connector can only be written to, so there is nothing to sample.",
         )
 
     result = await sample_source(gateway, store, db, entry, limit=limit, start=start)
@@ -377,7 +411,7 @@ async def sample_draft(
     """
     draft = CatalogEntryIn(
         name=body.name or "draft_source",
-        kind="source",
+        kind="table",
         connector=body.connector,
         options=body.options,
         columns=body.columns,
@@ -391,7 +425,7 @@ async def sample_draft(
 
     # Transient and never added to the session: sampling must not create anything.
     entry = CatalogEntry(
-        name=draft.name, kind="source", connector=body.connector, sql_text=sql_text
+        name=draft.name, kind="table", connector=body.connector, sql_text=sql_text
     )
     result = await sample_source(
         gateway, store, db, entry, limit=body.limit, start=body.start

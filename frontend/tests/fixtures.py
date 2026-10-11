@@ -8,7 +8,17 @@ SOURCE = {
     'updated_at': STAMP, 'used_by': ['readings_to_output'], 'version': 1,
     'columns': [{'name': 'sensor_id', 'type': 'STRING'}, {'name': 'temperature', 'type': 'DOUBLE'}],
 }
-SINK = dict(SOURCE, id=2, name='output', kind='sink', connector='print', description='Console output.', options={})
+SOURCE.update(read_by=['readings_to_output'], written_by=[],
+              resource={'key': 'table:readings', 'kind': 'datagen', 'label': 'readings'})
+SINK = dict(SOURCE, id=2, name='output', kind='sink', connector='print', description='Console output.', options={},
+            read_by=[], written_by=['readings_to_output'],
+            resource={'key': 'table:output', 'kind': 'print', 'label': 'output'})
+# Two entries on one Kafka topic, one written and one read, as the catalog groups them.
+TOPIC = {'key': 'kafka:broker:9092/example-events', 'kind': 'kafka topic', 'label': 'example-events'}
+EVENTS_OUT = dict(SOURCE, id=3, name='events_out', kind='table', connector='kafka', description='Enriched events.',
+                  options={}, used_by=['enrich_events'], read_by=[], written_by=['enrich_events'], resource=TOPIC)
+EVENTS_IN = dict(SOURCE, id=4, name='events_in', kind='table', connector='kafka', description=None,
+                 options={}, used_by=['archive_events'], read_by=['archive_events'], written_by=[], resource=TOPIC)
 RUN = {
     'id': 1, 'run_id': 1, 'job': 'readings_to_output', 'state': 'running',
     'started_at': STAMP, 'ended_at': None, 'restarts': 0, 'error_summary': None,
@@ -43,7 +53,7 @@ def fixtures():
         '/api/jobs/readings_to_output/runs': [RUN],
         '/api/jobs/readings_to_output/versions': [{'version': 1, 'note': 'Created', 'created_at': STAMP, 'created_by': 'operator'}],
         '/api/jobs/readings_to_output/script': {'statements': [JOB['sql_text']]},
-        '/api/jobs/activity': [RUN], '/api/catalog': [SOURCE, SINK],
+        '/api/jobs/activity': [RUN], '/api/catalog': [SOURCE, SINK, EVENTS_OUT, EVENTS_IN],
         '/api/catalog/readings': SOURCE, '/api/catalog/output': SINK,
         '/api/catalog/readings/versions': [], '/api/catalog/output/versions': [],
         '/api/targets': [TARGET], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),

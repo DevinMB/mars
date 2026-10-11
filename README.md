@@ -2,9 +2,9 @@
 
 **A web console for Apache Flink SQL.**
 
-Build streaming pipelines, manage reusable sources and sinks, and operate jobs from
-one workspace. MARS brings SQL editing, scheduling, savepoints, and run history
-alongside your Flink cluster.
+Build streaming pipelines, manage reusable tables, see which jobs read and write each
+Kafka topic, and operate jobs from one workspace. MARS brings SQL editing, scheduling,
+savepoints, and run history alongside your Flink cluster.
 
 ![MARS jobs workspace, shown with sample pipelines](docs/images/jobs.png)
 
@@ -58,7 +58,7 @@ browser ──► MARS console ──SQL──► Flink SQL Gateway ──► Jo
 
 Pressing **Run** does five things:
 
-1. Collects the catalog entries (sources and sinks) the job uses, in dependency order.
+1. Collects the catalog tables the job uses, in dependency order.
 2. Joins their `CREATE TABLE` statements with the job's own SQL.
 3. Resolves `${secret:name}` references. The resolved script is never stored,
    logged, or returned.

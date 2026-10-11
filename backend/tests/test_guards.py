@@ -101,9 +101,15 @@ def job_with(db):
     def _make(name: str, entries: list[CatalogEntry]) -> Job:
         for e in entries:
             db.add(e)
+        # How a job uses a table now comes from its SQL, so the SQL has to read
+        # the entries meant as sources and write the ones meant as sinks.
+        sinks = [e.name for e in entries if e.kind == "sink"]
+        sources = [e.name for e in entries if e.kind != "sink"]
+        reads = f"SELECT * FROM {sources[0]}" if sources else "SELECT 1"
+        inserts = [f"INSERT INTO {s} {reads}" for s in sinks] or [reads]
         j = Job(
             name=name,
-            sql_text="INSERT INTO s SELECT * FROM t",
+            sql_text="EXECUTE STATEMENT SET BEGIN " + "; ".join(inserts) + "; END",
             catalog_refs=json.dumps([e.name for e in entries]),
         )
         db.add(j)
@@ -187,3 +193,18 @@ def test_job_without_catalog_refs_is_clean(db):
     db.add(j)
     db.commit()
     assert check_job(db, j) == []
+
+
+def test_a_table_entry_is_checked_by_how_the_job_uses_it(db):
+    """No stored role: writing it makes it a sink for the checks, reading it a source."""
+    db.add(CatalogEntry(name="events", kind="table", connector="kafka",
+                        sql_text=kafka_source("raw-events", "not-prefixed")))
+    db.add(CatalogEntry(name="out", kind="table", connector="kafka",
+                        sql_text=kafka_sink("raw-events")))
+    job = Job(name="echo", sql_text="INSERT INTO out SELECT * FROM events",
+              catalog_refs=json.dumps(["events", "out"]))
+    db.add(job)
+    db.commit()
+    codes = {w.code for w in check_job(db, job)}
+    assert "kafka_group_collision" in codes, "read as a source, so its group is checked"
+    assert "topic_loop" in codes, "reads and writes raw-events"

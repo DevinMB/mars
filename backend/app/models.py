@@ -310,6 +310,13 @@ class Job(Base, TimestampMixin):
     # is a nullable column and a dropdown, where retrofitting it later would be a
     # migration plus a decision per job.
     target_name: Mapped[str | None] = mapped_column(String(64), index=True)
+    # The tables this job reads and writes according to Flink's plan, kept when it
+    # is validated, with a fingerprint of the SQL the plan came from. Stale once
+    # the SQL changes; lineage.job_usage then falls back to reading the SQL.
+    tables_read: Mapped[str | None] = mapped_column(Text)
+    tables_written: Mapped[str | None] = mapped_column(Text)
+    tables_from: Mapped[str | None] = mapped_column(String(8))
+    tables_key: Mapped[str | None] = mapped_column(String(64))
 
     versions: Mapped[list["JobVersion"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobVersion.version.desc()"

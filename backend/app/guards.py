@@ -157,11 +157,20 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
         e.name: e for e in db.query(CatalogEntry).filter(CatalogEntry.name.in_(refs)).all()
     }
 
-    sources = {n: e for n, e in entries.items() if e.kind == "source"}
-    sinks = {n: e for n, e in entries.items() if e.kind == "sink"}
+    # Whether the job reads or writes each table comes from the job itself (Flink's
+    # plan, or its SQL), not from a role fixed on the catalog entry: one job
+    # writes the topic another reads.
+    from .lineage import job_usage
 
-    for entry in entries.values():
-        out.extend(check_catalog_entry(entry.sql_text, entry.kind, entry.connector))
+    usage = job_usage(job)
+    sources = {n: e for n, e in entries.items() if n in usage.reads}
+    sinks = {n: e for n, e in entries.items() if n in usage.writes}
+
+    for name, entry in entries.items():
+        if name in sources:
+            out.extend(check_catalog_entry(entry.sql_text, "source", entry.connector))
+        if name in sinks:
+            out.extend(check_catalog_entry(entry.sql_text, "sink", entry.connector))
 
     # A job reading and writing the same Kafka topic feeds itself forever.
     source_topics = {
@@ -192,9 +201,10 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
             other_refs = _refs(other)
             if not other_refs:
                 continue
+            other_writes = job_usage(other).writes
             others = (
                 db.query(CatalogEntry)
-                .filter(CatalogEntry.name.in_(other_refs), CatalogEntry.kind == "sink")
+                .filter(CatalogEntry.name.in_(other_writes))
                 .all()
             )
             for e in others:
@@ -227,7 +237,7 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
                 continue
             for e in (
                 db.query(CatalogEntry)
-                .filter(CatalogEntry.name.in_(other_refs), CatalogEntry.kind == "sink")
+                .filter(CatalogEntry.name.in_(job_usage(other).writes))
                 .all()
             ):
                 if e.connector != "kafka":
@@ -250,7 +260,10 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
     # later aborted -- records that, as far as the producer is concerned, never
     # happened.
     transactional_topics: set[str] = set()
-    for e in db.query(CatalogEntry).filter(CatalogEntry.kind == "sink").all():
+    written = set()
+    for other in db.query(Job).all():
+        written |= job_usage(other).writes
+    for e in db.query(CatalogEntry).filter(CatalogEntry.name.in_(written)).all():
         if e.connector != "kafka":
             continue
         o = parse_options(e.sql_text)

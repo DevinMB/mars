@@ -63,7 +63,9 @@ class ColumnIn(BaseModel):
 
 class CatalogEntryIn(BaseModel):
     name: str
-    kind: str
+    # "table": whether jobs read or write it comes from the jobs themselves.
+    # "source" and "sink" are accepted from older clients and exports.
+    kind: str = "table"
     connector: str
     description: str | None = None
     options: dict[str, str] = Field(default_factory=dict)
@@ -76,14 +78,20 @@ class CatalogEntryIn(BaseModel):
     @field_validator("kind")
     @classmethod
     def _kind(cls, v: str) -> str:
-        if v not in ("source", "sink"):
-            raise ValueError("kind must be 'source' or 'sink'")
+        if v not in ("table", "source", "sink"):
+            raise ValueError("kind must be 'table', 'source' or 'sink'")
         return v
 
 
 class ColumnOut(BaseModel):
     name: str
     type: str
+
+
+class ResourceOut(BaseModel):
+    key: str
+    kind: str
+    label: str
 
 
 class CatalogEntryOut(BaseModel):
@@ -96,6 +104,11 @@ class CatalogEntryOut(BaseModel):
     options: dict[str, str]
     updated_at: UtcDatetime
     used_by: list[str] = Field(default_factory=list)
+    # Which jobs read and write it, from each job's plan or SQL.
+    read_by: list[str] = Field(default_factory=list)
+    written_by: list[str] = Field(default_factory=list)
+    # What it points at; entries with the same key are the same topic or database.
+    resource: ResourceOut | None = None
     # Declared in the DDL. For a raw-passthrough source this is just the envelope
     # (`record_key`, `doc`); what is inside the document needs a sample.
     columns: list[ColumnOut] = Field(default_factory=list)
