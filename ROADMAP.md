@@ -20,6 +20,11 @@ This is a direction of travel, not a release schedule.
 - Scheduled restore drills that check backups actually restore (opt-in).
 - Savepoint retention: the newest few per job are kept and older ones removed through
   Flink, never the one a job would resume from.
+- Job moves between clusters (optional): shared savepoint storage set up and verified
+  from the Clusters page, and Move to cluster on a job, which keeps its state and
+  rolls back if the destination cannot start it.
+- Bulk actions on the Jobs page: select jobs and move, stop or resume them; the
+  console runs the batch itself, so it survives a closed browser or a restart.
 
 ## Next
 
@@ -27,11 +32,18 @@ This is a direction of travel, not a release schedule.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
 - **Operations:** improve job diagnostics and visibility into resource use.
+- **Moves for large state:** wait for a savepoint as long as the job's state needs
+  instead of a fixed three minutes (today a large savepoint is reported failed while
+  Flink is still writing it, then stops the job anyway), and show the expected pause
+  before a move, from the job's state size and the speed of past savepoints.
+  Optionally, native-format savepoints for RocksDB jobs, which copy state files
+  instead of re-serializing every key.
 - **Rolling cluster upgrades:** upgrade Flink or connectors without pausing every
-  job at once. A temporary second cluster starts on the new image, jobs move over
-  one at a time (savepoint, resume on the new cluster), and the old cluster stops.
-  Needs savepoint storage shared by both clusters and a move-job action. Each job
-  pauses for seconds instead of the whole pipeline for a maintenance window.
+  job at once. Shared savepoint storage and moving jobs are in place; what remains is
+  the guided flow: start the second cluster on the new image, move jobs over one at
+  a time with a health check after each, upgrade the first, move them back. Needs a
+  deliberate exception to the same-Flink-version check, since savepoints restore
+  forward across versions but not back.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
   topic; filter the pipeline map by tag or owner, or to only what is failing.
 
