@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { layoutGraph } from '../lib/layout'
+import { filterGraph } from '../lib/pipelineFilter'
+import PanZoom from '../components/PanZoom'
 import { Alert, EmptyState, PageHeader, Spinner } from '../components/ui'
 
 const SIZE = { job: { w: 180, h: 40 }, resource: { w: 170, h: 40 }, external: { w: 150, h: 36 } }
@@ -145,20 +147,34 @@ export default function Pipeline() {
   const [graph, setGraph] = useState(null)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
+  // Filters live in the address, so a narrowed view can be shared or bookmarked.
+  const [params, setParams] = useSearchParams()
+  const focus = params.get('focus')
+  const cluster = params.get('cluster')
+  const setFilter = (key, value) => setParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (value) next.set(key, value); else next.delete(key)
+    return next
+  }, { replace: true })
 
   const load = () => api.pipeline().then((g) => { setGraph(g); setError(null) }).catch((e) => setError(e.message))
   useEffect(() => { load() }, [])
 
+  const shown = useMemo(() => graph && filterGraph(graph, { cluster, focus }), [graph, cluster, focus])
   const layout = useMemo(() => {
-    if (!graph) return null
-    const types = new Map(graph.nodes.map((n) => [n.id, n.type]))
-    return layoutGraph(graph.nodes, graph.edges, { colWidth: 215, sizeOf: (id) => SIZE[types.get(id)] })
-  }, [graph])
+    if (!shown) return null
+    const types = new Map(shown.nodes.map((n) => [n.id, n.type]))
+    return layoutGraph(shown.nodes, shown.edges, { colWidth: 215, sizeOf: (id) => SIZE[types.get(id)] })
+  }, [shown])
 
   if (error && !graph) return <Alert level="danger" title="Could not load the pipeline">{error}</Alert>
   if (!graph) return <Spinner label="Drawing the pipeline" />
 
-  const current = selected && graph.nodes.find((n) => n.id === selected)
+  const current = selected && shown.nodes.find((n) => n.id === selected)
+  const clusters = [...new Set(graph.nodes.filter((n) => n.type === 'job' && n.cluster).map((n) => n.cluster))].sort()
+  const byType = (type) => graph.nodes.filter((n) => n.type === type).sort((a, b) => a.label.localeCompare(b.label))
+  const filtered = Boolean(focus || cluster)
+  const jobCount = (nodes) => nodes.filter((n) => n.type === 'job').length
   const touches = (e) => current && (e.from === current.id || e.to === current.id)
   const select = (node) => {
     if (node.type === 'job' && selected === node.id) navigate(`/jobs/${encodeURIComponent(node.label)}`)
@@ -173,33 +189,77 @@ export default function Pipeline() {
         <EmptyState title="Nothing to draw yet">Jobs appear here once they read or write catalog tables.</EmptyState>
       ) : (
         <>
-          <div className="flex flex-wrap gap-4 text-[12px] text-slate-500 mb-3">
+          <div className="flex flex-wrap items-end gap-3 mb-3">
+            <label className="text-[12px] text-slate-500">
+              <span className="block mb-1">Focus on</span>
+              <select className="input w-64 max-w-full" aria-label="Focus on" value={focus || ''} onChange={(e) => { setSelected(null); setFilter('focus', e.target.value) }}>
+                <option value="">The whole pipeline</option>
+                <optgroup label="Jobs">{byType('job').map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</optgroup>
+                <optgroup label="Topics and tables">{byType('resource').map((n) => <option key={n.id} value={n.id}>{n.label} ({n.kind})</option>)}</optgroup>
+                {byType('external').length > 0 && (
+                  <optgroup label="Outside Flink">{byType('external').map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}</optgroup>
+                )}
+              </select>
+            </label>
+            {clusters.length > 1 && (
+              <label className="text-[12px] text-slate-500">
+                <span className="block mb-1">Cluster</span>
+                <select className="input w-44" aria-label="Cluster" value={cluster || ''} onChange={(e) => { setSelected(null); setFilter('cluster', e.target.value) }}>
+                  <option value="">All clusters</option>
+                  {clusters.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
+            {filtered && (
+              <div className="text-[12px] text-slate-500 pb-2">
+                Showing {jobCount(shown.nodes)} of {jobCount(graph.nodes)} jobs ·{' '}
+                <button type="button" className="link" onClick={() => { setSelected(null); setParams({}, { replace: true }) }}>Show everything</button>
+              </div>
+            )}
+          </div>
+          {current && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] mb-3">
+              <span className="text-slate-500">Selected</span>
+              <span className={`text-slate-900 ${current.type === 'resource' ? 'mono' : ''}`}>{current.label}</span>
+              {focus !== current.id && (
+                <button type="button" className="link text-[13px]" onClick={() => setFilter('focus', current.id)}>Show only what connects to this</button>
+              )}
+              {current.type === 'job' && (
+                <Link className="link" to={`/jobs/${encodeURIComponent(current.label)}`}>Open job</Link>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-4 text-[12px] text-slate-500 mb-2">
             <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-full bg-accent-50 border border-accent-400" />Topic or table</span>
             <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm border border-slate-600" />Flink job</span>
             <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm border border-dashed border-slate-400" />Outside Flink</span>
-            <span className="sm:ml-auto">Select a topic to see and add what reads and writes it. Select a job twice to open it.</span>
+            <span className="sm:ml-auto">Drag to move around. Select a topic to see and add what reads and writes it.</span>
           </div>
-          <div className="card overflow-auto p-0">
-            <svg width={layout.width + PAD * 2} height={layout.height + PAD * 2} role="img"
-                 aria-label="Pipeline graph" className="block">
-              <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-slate-300" /></marker>
-                <marker id="arrow-on" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-accent-500" /></marker>
-              </defs>
-              <g transform={`translate(${PAD} ${PAD})`}>
-                {graph.edges.map((e) => {
-                  const a = layout.positions.get(e.from), b = layout.positions.get(e.to)
-                  return a && b ? <Edge key={`${e.from}>${e.to}`} a={a} b={b} active={touches(e)} /> : null
-                })}
-                {graph.nodes.map((n) => <Node key={n.id} node={n} p={layout.positions.get(n.id)}
-                                              selected={n.id === selected} onSelect={select} />)}
-              </g>
-            </svg>
-          </div>
+          {shown.missing ? (
+            <EmptyState title="Not on this cluster">What you focused on is not connected to any job on {cluster}.</EmptyState>
+          ) : (
+            <div className="card p-0">
+              <PanZoom width={layout.width + PAD * 2} height={layout.height + PAD * 2}
+                       fitKey={`${focus}|${cluster}`} label="Pipeline graph">
+                <defs>
+                  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-slate-300" /></marker>
+                  <marker id="arrow-on" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-accent-500" /></marker>
+                </defs>
+                <g transform={`translate(${PAD} ${PAD})`}>
+                  {shown.edges.map((e) => {
+                    const a = layout.positions.get(e.from), b = layout.positions.get(e.to)
+                    return a && b ? <Edge key={`${e.from}>${e.to}`} a={a} b={b} active={touches(e)} /> : null
+                  })}
+                  {shown.nodes.map((n) => <Node key={n.id} node={n} p={layout.positions.get(n.id)}
+                                                selected={n.id === selected} onSelect={select} />)}
+                </g>
+              </PanZoom>
+            </div>
+          )}
           {current?.type === 'resource' && (
             <ResourcePanel node={current} graph={graph} canWrite={canWrite} onChanged={load} />
           )}
-          {graph.unused.length > 0 && (
+          {!filtered && graph.unused.length > 0 && (
             <p className="text-[12px] text-slate-500 mt-4">
               Not used by any job: {graph.unused.map((n, i) => <span key={n}>{i > 0 && ', '}
                 <Link className="link mono" to={`/catalog/${encodeURIComponent(n)}/edit`}>{n}</Link></span>)}
