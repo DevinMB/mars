@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
-from . import restore_drill, updates
+from . import restore_drill, savepoints, updates
 from .db import session_scope
 from .metrics import SUPERVISOR_RESUBMISSIONS
 from .models import Job, RunState, Schedule, ScheduleMode, utcnow
@@ -100,6 +100,12 @@ class Scheduler:
         # files, and the event loop serves the API meanwhile.
         if restore_drill.is_due(datetime.now(timezone.utc)):
             await asyncio.to_thread(restore_drill.run)
+
+        # Hourly; off when MARS_SAVEPOINTS_KEEP is 0. Needs the cluster registry
+        # to reach each job's cluster.
+        if self._targets is not None and savepoints.is_due(datetime.now(timezone.utc)):
+            with session_scope() as db:
+                await savepoints.prune(db, self._targets)
 
         # Off unless MARS_UPDATE_CHECK is set; at most once a day.
         if updates.is_due(datetime.now(timezone.utc)):

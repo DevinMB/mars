@@ -36,6 +36,14 @@ SUPERVISOR_RESUBMISSIONS = Counter(
     ["mars_job"],
 )
 SUBMISSIONS = Counter("mars_job_submissions_total", "Job submissions", ["outcome"])
+SAVEPOINTS_REMOVED = Counter(
+    "mars_savepoints_removed_total",
+    "Old savepoints removed by retention (MARS_SAVEPOINTS_KEEP).",
+)
+SAVEPOINT_REMOVAL_FAILURES = Counter(
+    "mars_savepoint_removal_failures_total",
+    "Old savepoints retention could not remove; it tries again next hour.",
+)
 # Labelled so they export nothing until set: an unlabelled gauge reports 0 from
 # the start, which would read as a failed drill on every install with it off.
 RESTORE_DRILL_SUCCESS = Gauge(

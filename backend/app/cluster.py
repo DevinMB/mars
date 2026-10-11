@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,6 +19,10 @@ log = logging.getLogger(__name__)
 
 # Flink job states that mean the job is no longer doing work.
 TERMINAL_STATES = {"FINISHED", "FAILED", "CANCELED"}
+
+
+# How Flink says a savepoint to remove is not there (any more).
+_MISSING = re.compile(r"FileNotFoundException|does not exist|Cannot find|No such file", re.I)
 
 
 @dataclass
@@ -312,6 +317,39 @@ class FlinkClusterClient:
             r = await c.get(f"/jobs/{job_id}/savepoints/{request_id}")
             r.raise_for_status()
             return r.json()
+
+    async def dispose_savepoint(self, path: str, budget: float = 60.0) -> None:
+        """Has Flink delete a savepoint, and waits for it.
+
+        Flink rather than MARS removes the files: it knows the savepoint's layout
+        and can reach its storage, local disk, a shared mount or S3 alike, which
+        the console deliberately cannot. A savepoint already gone counts as done.
+        """
+        async with self._client() as c:
+            r = await c.post("/savepoint-disposal", json={"savepoint-path": path})
+            r.raise_for_status()
+            request_id = r.json()["request-id"]
+            deadline = time.monotonic() + budget
+            delay = 0.25
+            while time.monotonic() < deadline:
+                r = await c.get(f"/savepoint-disposal/{request_id}")
+                r.raise_for_status()
+                body = r.json()
+                if (body.get("status") or {}).get("id") == "COMPLETED":
+                    failure = (body.get("operation") or {}).get("failure-cause")
+                    if failure:
+                        trace = failure.get("stack-trace") or str(failure)
+                        if _MISSING.search(trace):
+                            return
+                        # The first line only says it could not; the innermost
+                        # cause says why.
+                        lines = trace.strip().splitlines()
+                        causes = [l.removeprefix("Caused by: ") for l in lines if l.startswith("Caused by:")]
+                        raise RuntimeError((causes[-1] if causes else lines[0])[:300])
+                    return
+                await asyncio.sleep(delay)
+                delay = min(delay * 1.4, 2.0)
+        raise RuntimeError(f"Flink did not finish removing the savepoint within {budget:.0f}s.")
 
     # -- internals ----------------------------------------------------------
 

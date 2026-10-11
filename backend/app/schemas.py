@@ -163,6 +163,8 @@ class RunOut(BaseModel):
     # Where this run's state was saved when it was stopped, and where it resumed
     # from when it started. Both null for a stateless job nobody bothered to save.
     savepoint_path: str | None = None
+    # When retention removed that savepoint; the path is then history only.
+    savepoint_removed_at: UtcDatetime | None = None
     restored_from: str | None = None
 
 

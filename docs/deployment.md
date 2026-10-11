@@ -105,7 +105,7 @@ Flink saves a job's state in two ways:
 |---|---|---|
 | Taken | Automatically, every 30s in the bundled configuration | When you choose **Stop and save state** |
 | Purpose | Recovering from failures | Planned stops: upgrades, config changes |
-| Kept | Superseded ones are deleted | Until you remove it |
+| Kept | Superseded ones are deleted | The newest 3 per job ([retention](#savepoint-retention)) |
 
 **Resume** and the scheduler's supervisor mode restore from the newest of the two.
 MARS records each running job's latest checkpoint location as it reconciles, so the
@@ -134,6 +134,21 @@ exactly-once delivery write those records twice.
 Flink keeps only the newest checkpoint by default. Setting
 `state.checkpoints.num-retained: 2` in `flink/conf/config.yaml` ensures the
 checkpoint MARS last recorded still exists, because MARS checks every 20s.
+
+### Savepoint retention
+
+Flink never deletes a savepoint, and MARS takes one at every planned stop, so
+without cleanup they accumulate for good. MARS keeps the newest
+`MARS_SAVEPOINTS_KEEP` per job (3 by default) and, once an hour, asks Flink to
+remove older ones. Flink does the deleting, so this works the same for local
+disk, a shared mount or object storage. Whatever the count, MARS never removes
+the state a job would resume from or the savepoint its latest run started from.
+
+A removed savepoint stays in the job's history, marked as removed, and is no
+longer offered for resuming. Savepoints MARS did not record, such as one taken
+by hand in Flink's own tools, are left alone. Set `MARS_SAVEPOINTS_KEEP=0` to
+keep everything. Prometheus counts removals in `mars_savepoints_removed_total`
+and failures, retried the next hour, in `mars_savepoint_removal_failures_total`.
 
 Changing Flink configuration restarts the JobManager, so plan it as maintenance:
 
