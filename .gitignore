@@ -30,5 +30,5 @@ venv/
 htmlcov/
 .DS_Store
 
-# Per-installation compose changes, e.g. shared savepoint storage (docs/deployment.md#shared-savepoint-storage).
+# Per-installation compose changes, e.g. job moves (docs/deployment.md#job-moves-between-clusters).
 docker-compose.override.yml

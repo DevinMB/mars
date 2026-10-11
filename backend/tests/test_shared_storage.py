@@ -140,3 +140,65 @@ def test_the_override_can_cover_both_clusters_on_one_machine():
 def test_the_override_refuses_values_that_would_break_the_file(server, export):
     with pytest.raises(ValueError):
         savepoint_override(server, export)
+
+
+# -- job moves: off, ready, broken ---------------------------------------------
+
+from app.models import Job, JobRun, RunState  # noqa: E402
+from app.shared_storage import StorageCheck, depends_on_shared, job_moves  # noqa: E402
+
+SHARED = "file:///flink-savepoints"
+
+
+def _rec(shared, last=None, where=SHARED):
+    return StorageCheck(clusters=["default", "mars-b"], shared=shared, summary="s", checked_at="t",
+                        last_shared_at=last, shared_dir=where if last else None)
+
+
+def test_never_set_up_is_off_not_an_error():
+    dirs = {"default": "file:///flink-state/savepoints", "mars-b": "file:///flink-state/savepoints"}
+    assert job_moves("default", "mars-b", dirs, []).state == "off"
+    # A check that never passed is still just "not set up".
+    assert job_moves("default", "mars-b", dirs, [_rec(False)]).state == "off"
+
+
+def test_ready_while_both_still_save_to_the_shared_place():
+    dirs = {"default": SHARED, "mars-b": SHARED}
+    assert job_moves("default", "mars-b", dirs, [_rec(True, last="t")]).state == "ready"
+
+
+def test_broken_when_it_worked_and_a_cluster_moved_away():
+    dirs = {"default": SHARED, "mars-b": "file:///flink-state/savepoints"}
+    m = job_moves("default", "mars-b", dirs, [_rec(True, last="t")])
+    assert m.state == "broken" and m.summary.startswith("mars-b now saves to file:///flink-state/savepoints")
+
+
+def test_broken_when_a_later_check_fails():
+    dirs = {"default": SHARED, "mars-b": SHARED}
+    assert job_moves("default", "mars-b", dirs, [_rec(False, last="earlier")]).state == "broken"
+
+
+@pytest.mark.asyncio
+async def test_a_failing_check_keeps_when_it_last_passed():
+    disk = {}
+    reg = _Registry(SAME, {"default": _Gateway(disk), "mars-b": _Gateway(disk)})
+    passed = await shared_storage.check(reg, A, B)
+    reg = _Registry(SAME, {"default": _Gateway({}), "mars-b": _Gateway({})})
+    await shared_storage.check(reg, A, B)
+    rec = shared_storage.recorded()[0]
+    assert not rec.shared and rec.last_shared_at == passed.checked_at
+    shared_storage.forget(["mars-b", "default"])
+    assert shared_storage.recorded() == []
+
+
+def test_jobs_resuming_from_the_share_block_turning_it_off(db):
+    on_share = Job(name="sessions", sql_text="s", catalog_refs="[]")
+    local = Job(name="lights", sql_text="s", catalog_refs="[]")
+    db.add_all([on_share, local])
+    db.flush()
+    db.add(JobRun(job_id=on_share.id, job_version=1, state=RunState.CANCELED.value,
+                  savepoint_path="file:/flink-savepoints/savepoint-1"))
+    db.add(JobRun(job_id=local.id, job_version=1, state=RunState.RUNNING.value,
+                  checkpoint_path="file:/flink-state/checkpoints/x/chk-3"))
+    db.commit()
+    assert depends_on_shared([on_share, local], SHARED) == ["sessions"]

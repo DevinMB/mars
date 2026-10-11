@@ -219,7 +219,7 @@ def run(now: datetime | None = None) -> DrillResult:
     points, elsewhere = _restore_point_paths()
     on_other = f"; {elsewhere} on other clusters not checked" if elsewhere else ""
     # Only state under the mounted volume can be looked at. A savepoint on shared
-    # storage (docs/deployment.md#shared-savepoint-storage) lives elsewhere, and
+    # storage (docs/deployment.md#job-moves-between-clusters) lives elsewhere, and
     # reading it as missing would page someone for nothing.
     here = [(name, path) for name, path in points if "/flink-state/" in path]
     outside = len(points) - len(here)

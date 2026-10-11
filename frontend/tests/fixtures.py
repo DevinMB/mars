@@ -56,15 +56,15 @@ def fixtures():
         '/api/jobs/activity': [RUN], '/api/catalog': [SOURCE, SINK, EVENTS_OUT, EVENTS_IN],
         '/api/catalog/readings': SOURCE, '/api/catalog/output': SINK,
         '/api/catalog/readings/versions': [], '/api/catalog/output/versions': [],
-        '/api/targets': [TARGET], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
+        '/api/targets': [TARGET, dict(TARGET, name='mars-b', description='', is_default=False, job_count=0,
+                                          flink_rest_url='http://192.168.10.13:8081', gateway_url='http://192.168.10.13:8083')], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
         '/api/targets/storage': {
             'clusters': [
-                {'name': 'default', 'is_default': True, 'savepoint_dir': 'file:///flink-state/savepoints', 'error': None},
+                {'name': 'default', 'is_default': True, 'savepoint_dir': 'file:///flink-savepoints', 'error': None},
                 {'name': 'mars-b', 'is_default': False, 'savepoint_dir': 'file:///flink-state/savepoints', 'error': None},
             ],
-            'checks': [{'clusters': ['default', 'mars-b'], 'shared': False, 'checked_at': '2026-10-11T18:00:00+00:00',
-                        'summary': 'mars-b does not see what default wrote to file:///flink-state/savepoints. '
-                                   'Both name the same path, but it is a different disk on each.', 'detail': None}],
+            'moves': [{'cluster': 'mars-b', 'default': 'default', 'state': 'off', 'checked_at': None, 'shared_dir': None,
+                       'summary': 'Not set up. Jobs on this cluster cannot move to or from default with their state.'}],
         },
         '/api/targets/storage/setup': {
             'this_machine': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager\nservices: {}\n',

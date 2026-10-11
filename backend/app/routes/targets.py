@@ -23,6 +23,8 @@ from .. import shared_storage
 from ..models import Job, Target
 from ..schemas import (
     ClusterSetupOut,
+    JobMovesOffIn,
+    JobMovesOut,
     StorageCheckIn,
     StorageCheckOut,
     StorageLocationOut,
@@ -116,18 +118,21 @@ async def savepoint_storage(
     db: Session = Depends(get_session),
     registry: TargetRegistry = Depends(get_targets),
 ) -> StorageOut:
-    """Where each cluster saves savepoints, and the last check of each pair."""
+    """Where each cluster saves savepoints, and whether jobs can move between them."""
     rows = registry.all_enabled(db)
     found = await asyncio.gather(*(shared_storage.location(registry, t) for t in rows))
-    names = {t.name for t in rows}
+    dirs = {t.name: d for t, (d, _) in zip(rows, found)}
+    default = next((t.name for t in rows if t.is_default), None)
+    records = shared_storage.recorded()
     return StorageOut(
         clusters=[
             StorageLocationOut(name=t.name, is_default=t.is_default, savepoint_dir=d, error=e)
             for t, (d, e) in zip(rows, found)
         ],
-        # Only pairs that still exist: a removed or renamed cluster's result is moot.
-        checks=[StorageCheckOut(**c.__dict__) for c in shared_storage.recorded()
-                if set(c.clusters) <= names],
+        moves=[
+            JobMovesOut(**shared_storage.job_moves(default, t.name, dirs, records).__dict__)
+            for t in rows if default and not t.is_default
+        ],
     )
 
 
@@ -149,6 +154,37 @@ async def check_savepoint_storage(
         targets.append(t)
     result = await shared_storage.check(registry, *targets)
     return StorageCheckOut(**result.__dict__)
+
+
+@router.post("/storage/off", status_code=status.HTTP_204_NO_CONTENT,
+             response_class=Response)
+def job_moves_off(
+    body: JobMovesOffIn,
+    _: Principal = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> Response:
+    """Records that job moves to and from a cluster are turned off.
+
+    Refused while a job placed there would resume from a savepoint on the shared
+    storage: once the cluster stops mounting it, that job could not resume at all.
+    """
+    default = db.scalar(select(Target).where(Target.is_default.is_(True)))
+    if default is None or body.cluster == default.name:
+        raise HTTPException(status_code=400, detail="Choose a cluster other than the default.")
+    rec = next((r for r in shared_storage.recorded()
+                if set(r.clusters) == {default.name, body.cluster}), None)
+    if rec is not None and rec.shared_dir:
+        jobs = db.query(Job).filter(Job.target_name == body.cluster).all()
+        waiting = shared_storage.depends_on_shared(jobs, rec.shared_dir)
+        if waiting:
+            them = "them" if len(waiting) > 1 else "it"
+            raise HTTPException(status_code=409, detail=(
+                f"{', '.join(waiting)} would resume from a savepoint on the shared storage, "
+                f"which {body.cluster} cannot reach once job moves are off. Move {them} to "
+                f"{default.name} first: stop with state saved, set Runs on to {default.name}, "
+                f"and resume."))
+    shared_storage.forget([default.name, body.cluster])
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/storage/setup", response_model=StorageSetupOut)
