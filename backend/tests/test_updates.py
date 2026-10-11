@@ -41,6 +41,9 @@ def github(*, releases=True, tags=True, compare_status=200, auth_status=None, ah
             return httpx.Response(200, json=commit(NEWEST, "Release v0.2.0"))
         if p.endswith("/tags"):
             return httpx.Response(200, json=[{"name": "v0.1.0", "commit": {"sha": NEWEST}}] if tags else [])
+        if p.endswith("/commits") and request.url.params.get("path") == "flink":
+            # Only the first change touched the Flink image's files.
+            return httpx.Response(200, json=[{"sha": "c0" + "0" * 38}])
         if "/compare/" in p:
             if compare_status != 200:
                 return httpx.Response(compare_status, json={})
@@ -147,3 +150,23 @@ def test_nothing_is_reported_while_checking_is_off(cfg):
     out = system.version(None)
     assert out["latest"] is None and "update_available" not in out["console"]
     assert out["console"]["revision"] == RUNNING
+
+
+@pytest.mark.asyncio
+async def test_flink_counts_only_changes_to_its_image(cfg):
+    cfg.flink_revision = RUNNING
+    r = await updates.check(now=NOW, transport=github(ahead=3))
+    assert r.console.behind_by == 3
+    assert r.flink.behind_by == 1 and [c.title for c in r.flink.commits] == ["Change 0"]
+
+
+@pytest.mark.asyncio
+async def test_flink_with_no_image_changes_is_up_to_date(cfg, monkeypatch):
+    cfg.flink_revision = RUNNING
+
+    async def none(*a, **k):
+        return set()
+
+    monkeypatch.setattr(updates, "_touching", none)
+    r = await updates.check(now=NOW, transport=github(ahead=3))
+    assert r.flink.behind_by == 0 and not r.flink.update_available
