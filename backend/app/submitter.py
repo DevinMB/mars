@@ -25,11 +25,15 @@ from .cluster import FlinkClusterClient
 from .ddl import split_statements
 from .metrics import SUBMISSIONS
 from .gateway import GatewayError, SqlGatewayClient
-from .guards import strip_noise
+from .guards import add_option, strip_noise
+from .lineage import consumer_groups
 from .models import CatalogEntry, Job, JobRun, RunState, utcnow
 from .secrets import SecretStore
 
 log = logging.getLogger(__name__)
+
+
+_CREATE_TABLE = re.compile(r"\s*CREATE\s+(?:TEMPORARY\s+)?TABLE\b", re.I)
 
 
 def _validation_action(statement: str) -> str:
@@ -94,10 +98,16 @@ class JobSubmitter:
                     f"Job '{job.name}' references unknown catalog entries: "
                     f"{', '.join(missing)}. They may have been renamed or deleted."
                 )
+            # Kafka tables that name no consumer group get this job's own, in this
+            # session only; the stored entry is not changed.
+            groups = {n: g.group for n, g in consumer_groups(job, entries).items() if g.automatic}
             # Preserve the order the job declared, so a table that depends on
             # another is created after it.
             for ref in refs:
-                statements.extend(split_statements(entries[ref].sql_text))
+                for statement in split_statements(entries[ref].sql_text):
+                    if ref in groups and _CREATE_TABLE.match(strip_noise(statement)):
+                        statement = add_option(statement, "properties.group.id", groups[ref])
+                    statements.append(statement)
 
         statements.extend(split_statements(job.sql_text))
         if not statements:

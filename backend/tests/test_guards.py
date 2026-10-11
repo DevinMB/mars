@@ -71,10 +71,8 @@ def test_prefixed_consumer_group_is_clean():
     assert ws == []
 
 
-def test_missing_consumer_group_warns_about_restarts():
-    ws = check_catalog_entry(kafka_source("t", None), "source", "kafka")
-    assert [w.code for w in ws] == ["kafka_no_group"]
-    assert ws[0].level == "warning"
+def test_missing_consumer_group_is_fine_since_each_job_gets_its_own():
+    assert check_catalog_entry(kafka_source("t", None), "source", "kafka") == []
 
 
 def test_couchdb_auto_id_warns_about_replays():
@@ -208,3 +206,39 @@ def test_a_table_entry_is_checked_by_how_the_job_uses_it(db):
     codes = {w.code for w in check_job(db, job)}
     assert "kafka_group_collision" in codes, "read as a source, so its group is checked"
     assert "topic_loop" in codes, "reads and writes raw-events"
+
+
+def _reader(name, table):
+    return Job(name=name, sql_text=f"SELECT * FROM {table}", catalog_refs=json.dumps([table]))
+
+
+def test_two_jobs_on_one_explicit_group_are_warned(db):
+    db.add(CatalogEntry(name="a_src", kind="table", connector="kafka",
+                        sql_text=kafka_source("a", "mars-shared")))
+    db.add(CatalogEntry(name="b_src", kind="table", connector="kafka",
+                        sql_text=kafka_source("b", "mars-shared")))
+    one, two = _reader("one", "a_src"), _reader("two", "b_src")
+    db.add_all([one, two])
+    db.commit()
+    w = next(w for w in check_job(db, one) if w.code == "kafka_shared_group")
+    assert "'two'" in w.message and "mars-shared" in w.message
+
+
+def test_two_jobs_reading_an_unnamed_table_get_separate_groups(db):
+    db.add(CatalogEntry(name="src", kind="table", connector="kafka",
+                        sql_text=kafka_source("a", None)))
+    one, two = _reader("one", "src"), _reader("two", "src")
+    db.add_all([one, two])
+    db.commit()
+    assert not [w for w in check_job(db, one) if w.code == "kafka_shared_group"]
+
+
+def test_a_named_group_matching_another_jobs_automatic_one_is_warned(db):
+    db.add(CatalogEntry(name="src", kind="table", connector="kafka",
+                        sql_text=kafka_source("a", None)))
+    db.add(CatalogEntry(name="copy", kind="table", connector="kafka",
+                        sql_text=kafka_source("a", "mars-one")))
+    one, two = _reader("one", "src"), _reader("two", "copy")
+    db.add_all([one, two])
+    db.commit()
+    assert [w for w in check_job(db, two) if w.code == "kafka_shared_group"]

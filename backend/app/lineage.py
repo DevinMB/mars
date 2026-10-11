@@ -22,11 +22,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from .guards import parse_options, strip_noise
+from .guards import GROUP_PREFIX, parse_options, strip_noise
 from .models import CatalogEntry, Job
 
 # INSERT INTO|OVERWRITE [catalog.][db.]name, with or without backticks.
@@ -111,6 +112,39 @@ def record_plan(job: Job, plans: list[str]) -> Usage:
     job.tables_from = "plan"
     job.tables_key = fingerprint(job)
     return usage
+
+
+@dataclass
+class ConsumerGroup:
+    group: str
+    automatic: bool  # chosen by MARS at submission, not written in the entry
+
+
+def consumer_groups(job: Job, entries: dict[str, CatalogEntry]) -> dict[str, ConsumerGroup]:
+    """The consumer group each Kafka table the job reads will use.
+
+    An entry that names a group keeps it. Otherwise the job's own name is used,
+    mars-<job>, so a table shared by several jobs gives each of them its own
+    offsets instead of one group they all commit to. Added to that job's session
+    only: the catalog entry and the job's SQL are left as written.
+
+    entries: catalog entries by name, at least the ones the job uses.
+    """
+    kafka = {n: parse_options(entries[n].sql_text) for n in sorted(job_usage(job).reads)
+             if n in entries and entries[n].connector == "kafka"}
+    unnamed = [n for n, o in kafka.items() if not o.get("properties.group.id")]
+    # Two unnamed tables on one topic in one job would commit over each other.
+    per_topic = Counter(kafka[n].get("topic") for n in unnamed)
+    out = {}
+    for name, o in kafka.items():
+        if o.get("properties.group.id"):
+            out[name] = ConsumerGroup(o["properties.group.id"], automatic=False)
+        else:
+            group = f"{GROUP_PREFIX}{job.name}"
+            if per_topic[o.get("topic")] > 1:
+                group += f"-{name}"
+            out[name] = ConsumerGroup(group, automatic=True)
+    return out
 
 
 # Plans from the editor's live check, by fingerprint, so saving the same SQL

@@ -54,3 +54,17 @@ its own in its manifest:
 `name` is the option naming the target, `server` (optional) the option naming the
 system it lives on, so two clusters with a same-named target stay apart, and
 `label` what to call it. Without `identity`, each table is shown on its own.
+
+## Kafka consumer groups
+
+Leave `properties.group.id` empty on a Kafka table and every job that reads it gets
+its own group, `mars-<job>`, added to that job's session when it is validated or
+submitted. The catalog entry and the job's SQL stay as written; **Preview SQL** on
+a job shows the group it will use. Two tables on one topic in the same job get
+`mars-<job>-<table>`.
+
+A group set on the entry is kept, for adopting an existing one. If two jobs end up
+on the same group, the job checks warn: both commit offsets to it, so its lag is
+meaningless and a job started without saved state resumes from the other's
+position. Renaming a job changes its automatic group, which matters only for a
+fresh start; resuming from a savepoint or checkpoint uses the offsets in that state.

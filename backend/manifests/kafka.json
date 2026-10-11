@@ -37,7 +37,7 @@
       "required": false,
       "secret": false,
       "group": "Connection",
-      "help": "Required for sources. Pick a name unique to this job, or it will share offsets with another."
+      "help": "Leave empty and each job that reads this table gets its own, mars-<job>. Set one only to adopt an existing group."
     },
     {
       "key": "scan.startup.mode",
