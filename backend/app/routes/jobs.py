@@ -24,7 +24,7 @@ from ..ai import AiClient
 from ..drafting import draft_statement
 from ..gateway import SqlGatewayClient
 from ..preview import preview_statement
-from .. import lineage
+from .. import lineage, moves
 from ..explain import Context as ExplainContext
 from ..explain import explain
 from ..guards import check_job, column_names, columns_of
@@ -49,6 +49,9 @@ from ..schemas import (
     DiagnosticsOut,
     JobIn,
     JobOut,
+    MoveIn,
+    MoveOptionOut,
+    MoveOut,
     RunOut,
     ScheduleIn,
     ScheduleOut,
@@ -330,7 +333,15 @@ def update_job(
     job.job_type = body.job_type
     job.sql_text = body.sql_text
     job.catalog_refs = new_refs
-    job.target_name = body.target_name or None
+    new_target = body.target_name or None
+    if new_target != job.target_name and any(r.state in _ACTIVE for r in job.runs):
+        # Re-pointing a running job would make MARS ask the new cluster about it,
+        # hear "no such job", mark it failed while it still runs on the old one,
+        # and let the supervisor start a second copy.
+        raise HTTPException(status_code=409, detail=(
+            "This job is running, so its cluster cannot be changed here. Use Move to "
+            "cluster on the job's page, which keeps its state, or stop it first."))
+    job.target_name = new_target
     if changed and (plans := lineage.recall_plans(job)) is not None:
         lineage.record_plan(job, plans)
 
@@ -755,6 +766,35 @@ async def stop_job(
             detail=f"{exc.summary} {exc.detail}".strip(),
         ) from exc
     return _run_out(active)  # type: ignore[return-value]
+
+
+@router.get("/{name}/move", response_model=list[MoveOptionOut])
+async def move_options(
+    name: str,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+) -> list[MoveOptionOut]:
+    """The other clusters, and for each whether this job can move there now."""
+    job = _get(db, name)
+    return [MoveOptionOut(**o.__dict__) for o in await moves.options(db, targets, job)]
+
+
+@router.post("/{name}/move", response_model=MoveOut)
+async def move_job(
+    name: str,
+    body: MoveIn,
+    principal: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+) -> MoveOut:
+    """Stops the job with a savepoint, and resumes it from there on another cluster."""
+    job = _get(db, name)
+    try:
+        result = await moves.move(db, targets, job, body.cluster, principal.username)
+    except moves.MoveError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return MoveOut(**result.__dict__)
 
 
 @router.get("/{name}/savepoints")

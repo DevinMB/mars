@@ -37,6 +37,7 @@ with sync_playwright() as pw:
             if save_fails[0] and req.request.method=='PUT' and path=='/api/jobs/'+job:
                 return req.fulfill(status=422,json={'detail':'Example save failure'})
             if path.endswith('/validate'):body={'ok':True,'warnings':[]}
+            elif path.endswith('/move'):body={'moved':True,'summary':'readings_to_output now runs on mars-b.','savepoint':None}
             elif req.request.method in ['POST','PUT'] and path.startswith('/api/jobs'):
                 body={'ok':True}
             else:body={}
@@ -114,6 +115,15 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Show only what connects to this').click()
     expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    # Moving a job: from the job's menu, to a cluster MARS says is ready.
+    visit('/jobs/'+job)
+    page.get_by_role('button',name='More').click()
+    page.get_by_role('button',name='Move to cluster…').click()
+    expect(page.get_by_role('heading',name='Move to another cluster')).to_be_visible()
+    expect(page.get_by_role('radio')).to_be_checked()
+    page.get_by_role('button',name='Move to mars-b').click()
+    expect(page.get_by_text('readings_to_output now runs on mars-b.')).to_be_visible()
+    assert any(m=='POST' and p=='/api/jobs/'+job+'/move' for m,p,_ in writes), 'the move was not requested'
     # Job moves: optional, one quiet line on the second cluster's card, guides on demand.
     visit('/cluster')
     expect(page.get_by_text('Savepoint storage')).to_have_count(0)

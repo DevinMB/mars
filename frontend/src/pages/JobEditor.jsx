@@ -16,6 +16,7 @@ export default function JobEditor() {
   const { name: editing } = useParams()
   const navigate = useNavigate()
   const notify = useNotify()
+  const [running, setRunning] = useState(false) // a running job changes cluster only by moving
   const [loaded, setLoaded] = useState(false)
   const [initial, setInitial] = useState(null)
 
@@ -67,6 +68,7 @@ export default function JobEditor() {
         setSql(j.sql_text)
         setRefs(j.catalog_refs)
         setTarget(j.target_name || '')
+        setRunning(['running', 'restarting', 'submitting'].includes(j.latest_run?.state))
         // Editing an existing job: the tables are already chosen, so lead with
         // the columns instead.
         if ((j.catalog_refs || []).length) setPickerOpen(false)
@@ -195,11 +197,11 @@ export default function JobEditor() {
             {targets.length > 1 && (
               <Field
                 label="Runs on"
-                hint={
-                  'The cluster that will run this job.'
-                }
+                hint={running
+                  ? 'It is running, so its cluster cannot change here. Use Move to cluster on the job\'s page, which keeps its state.'
+                  : 'The cluster that will run this job. To keep its state when changing cluster, use Move to cluster on the job\'s page.'}
               >
-                <select className="input" value={target} onChange={(e) => setTarget(e.target.value)}>
+                <select className="input" value={target} disabled={running} onChange={(e) => setTarget(e.target.value)}>
                   <option value="">
                     {targets.find((t) => t.is_default)?.name || 'default'} (default)
                   </option>
