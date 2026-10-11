@@ -104,19 +104,20 @@ class JobSubmitter:
             raise SubmissionError(f"Job '{job.name}' has no SQL to run.")
         return statements
 
-    async def validate(self, db: Session, job: Job) -> None:
-        """Compiles the job without submitting it."""
+    async def validate(self, db: Session, job: Job) -> list[str]:
+        """Compiles the job without submitting it; returns Flink's plans."""
         statements = self.build_script(db, job)
         actions = [_validation_action(statement) for statement in statements]
         resolved = [self._store.resolve(db, s) for s in statements]
 
+        plans: list[str] = []
         session = await self._gateway.open_session()
         try:
             for stmt, action in zip(resolved, actions):
                 if action == "setup":
                     await self._gateway.execute(session, stmt)
                 else:
-                    await self._gateway.validate(session, stmt)
+                    plans.append(await self._gateway.validate(session, stmt))
         except GatewayError as exc:
             raise SubmissionError(
                 self._store.redact(db, exc.summary),
@@ -125,6 +126,7 @@ class JobSubmitter:
             ) from exc
         finally:
             await self._gateway.close_session(session)
+        return plans
 
     async def submit(
         self,

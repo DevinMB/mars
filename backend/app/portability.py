@@ -89,8 +89,8 @@ def _validate_payload(payload: dict[str, Any]) -> None:
                     raise ValueError(f"'{section}.{key}' must be text.")
             if "enabled" in item and type(item["enabled"]) is not bool:
                 raise ValueError("'enabled' must be a boolean.")
-            if section == "catalog" and item.get("kind", "source") not in ("source", "sink"):
-                raise ValueError("Catalog kind must be source or sink.")
+            if section == "catalog" and item.get("kind", "table") not in ("table", "source", "sink"):
+                raise ValueError("Catalog kind must be table, source or sink.")
             if section == "jobs":
                 if item.get("type", "streaming") not in ("streaming", "batch"):
                     raise ValueError("Job type must be streaming or batch.")
@@ -295,7 +295,7 @@ def import_all(
             if not dry_run:
                 db.add(CatalogEntry(
                     name=name,
-                    kind=item.get("kind", "source"),
+                    kind=item.get("kind", "table"),
                     connector=item.get("connector", ""),
                     description=item.get("description"),
                     sql_text=item["sql"],
