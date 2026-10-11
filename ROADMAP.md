@@ -14,7 +14,8 @@ This is a direction of travel, not a release schedule.
   on, what changed since and how to update.
 - Guided cluster setup, on this machine or another, from the exact images in use.
 - A catalog of tables: which jobs read and write each one, from Flink's plan, grouped
-  by the topic or database it points at, and a pipeline view of the whole flow.
+  by the topic or database it points at, and a pipeline map you can drag around and
+  focus on one flow or cluster.
 - A consumer group of its own for each job reading a Kafka table, unless one is set.
 - Scheduled restore drills that check backups actually restore (opt-in).
 
@@ -30,7 +31,7 @@ This is a direction of travel, not a release schedule.
   Needs savepoint storage shared by both clusters and a move-job action. Each job
   pauses for seconds instead of the whole pipeline for a maintenance window.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
-  topic. Filter the pipeline map to the part you care about.
+  topic; filter the pipeline map by tag or owner, or to only what is failing.
 
 ## Later
 
