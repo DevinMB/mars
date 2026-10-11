@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import Response
 
 from .auth import ensure_admin_user
@@ -37,6 +37,7 @@ from .routes import users as user_routes
 from .scheduler import Scheduler
 from .secrets import SecretError
 from .settings import settings
+from . import metrics as mars_metrics
 from .submitter import SubmissionError
 
 logging.basicConfig(
@@ -45,9 +46,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("mars")
 
-JOBS_RUNNING = Gauge("mars_jobs_running", "Jobs MARS believes are running")
-JOBS_FAILED = Gauge("mars_jobs_failed", "Jobs whose most recent run failed")
-SUBMISSIONS = Counter("mars_job_submissions_total", "Job submissions", ["outcome"])
 
 _scheduler: Scheduler | None = None
 
@@ -151,21 +149,8 @@ async def readyz() -> Response:
 
 @app.get("/metrics", include_in_schema=False)
 async def metrics() -> Response:
-    from .models import Job, RunState
-
     with session_scope() as db:
-        jobs = db.query(Job).all()
-        running = failed = 0
-        for job in jobs:
-            latest = job.runs[0] if job.runs else None
-            if latest is None:
-                continue
-            if latest.state == RunState.RUNNING.value:
-                running += 1
-            elif latest.state == RunState.FAILED.value:
-                failed += 1
-    JOBS_RUNNING.set(running)
-    JOBS_FAILED.set(failed)
+        mars_metrics.refresh(db)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
