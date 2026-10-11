@@ -477,3 +477,27 @@ class ExternalEndpoint(Base, TimestampMixin):
     direction: Mapped[str] = mapped_column(String(8))  # "produces" or "consumes"
     note: Mapped[str | None] = mapped_column(String(512))
     created_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class BatchOperation(Base, TimestampMixin):
+    """Several jobs moved, stopped or resumed in turn, by the console itself.
+
+    Run on the server, not driven from a browser, so a maintenance sequence does
+    not depend on the laptop that started it staying awake. Survives a console
+    restart: the worker picks a running batch back up where it was.
+    """
+
+    __tablename__ = "batch_operations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # "move", "stop" or "resume"
+    # For a move, the destination cluster.
+    cluster: Mapped[str | None] = mapped_column(String(64))
+    # "running", "stopping" (asked to stop after the current job), "done",
+    # "failed" (a move stopped at a failure) or "stopped".
+    status: Mapped[str] = mapped_column(String(16), default="running", index=True)
+    # The jobs in order, each {job, was_running, status, note}; small, and
+    # rewritten as a whole on every change.
+    items: Mapped[str] = mapped_column(Text, default="[]")
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

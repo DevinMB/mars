@@ -25,6 +25,7 @@ from .deps import (
 )
 from .ddl import DdlError
 from .routes import ai as ai_routes
+from .routes import batches as batch_routes
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import jobs as job_routes
@@ -92,9 +93,14 @@ async def lifespan(app: FastAPI):
 
     _scheduler = Scheduler(get_submitter(), get_targets())
     _scheduler.start()
+    # Bulk job actions; picks up a batch a restart interrupted.
+    from . import batches
+    batch_worker = batches.worker(get_targets())
+    batch_worker.start()
     try:
         yield
     finally:
+        await batch_worker.stop()
         if _scheduler is not None:
             await _scheduler.stop()
 
@@ -108,6 +114,7 @@ app = FastAPI(
 
 install_browser_security(app)
 app.include_router(auth_routes.router)
+app.include_router(batch_routes.router)
 app.include_router(system_routes.router)
 app.include_router(secret_routes.router)
 app.include_router(catalog_routes.router)

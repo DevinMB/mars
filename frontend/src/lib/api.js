@@ -148,6 +148,10 @@ export const api = {
     request(`/api/jobs/${encodeURIComponent(name)}/run?from_savepoint=${encodeURIComponent(fromSavepoint)}`,
             { method: 'POST' }),
   cancelJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
+  startBatch: (kind, jobs, cluster = null) => request('/api/batches', { method: 'POST', body: { kind, jobs, cluster } }),
+  latestBatch: () => request('/api/batches/latest'),
+  batch: (id) => request(`/api/batches/${id}`),
+  stopBatch: (id) => request(`/api/batches/${id}/stop`, { method: 'POST' }),
   moveOptions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/move`),
   moveJob: (name, cluster) => request(`/api/jobs/${encodeURIComponent(name)}/move`, { method: 'POST', body: { cluster } }),
   stopJob: (name, drain = false) =>

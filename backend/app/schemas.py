@@ -704,3 +704,26 @@ class MoveOut(BaseModel):
     moved: bool
     summary: str
     savepoint: str | None = None
+
+
+class BatchIn(BaseModel):
+    kind: str = Field(pattern=r"^(move|stop|resume)$")
+    jobs: list[str] = Field(min_length=1, max_length=500)
+    cluster: str | None = Field(default=None, max_length=64)
+
+
+class BatchItemOut(BaseModel):
+    job: str
+    status: str  # waiting, working, done, skipped, failed, notrun
+    note: str = ""
+
+
+class BatchOut(BaseModel):
+    id: int
+    kind: str
+    cluster: str | None
+    status: str  # running, stopping, done, failed, stopped
+    items: list[BatchItemOut]
+    created_by: str | None
+    created_at: UtcDatetime
+    finished_at: UtcDatetime | None
