@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # right for the stock compose file.
     flink_ui_url: str = ""
     sql_gateway_url: str = "http://sql-gateway:8083"
+    # The Flink image the default cluster runs, passed in by compose. Shown when
+    # adding a cluster, so a new one runs exactly the same image and connectors.
+    flink_image: str = ""
 
     # --- storage ---
     # SQLite by default so a fresh deploy needs no database container. Point

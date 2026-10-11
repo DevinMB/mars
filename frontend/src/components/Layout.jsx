@@ -11,7 +11,7 @@ const NAV = [
   { to: '/jobs', label: 'Jobs' },
   { to: '/catalog', label: 'Catalog' },
   { to: '/activity', label: 'Activity' },
-  { to: '/cluster', label: 'Cluster' },
+  { to: '/cluster', label: 'Clusters' },
   { to: '/settings', label: 'Settings', adminOnly: true },
 ]
 
@@ -42,10 +42,10 @@ function ClusterDot() {
   const partial = state.reachable && total > 1 && reachable < total
 
   const title = !state.reachable
-    ? 'No execution target is reachable'
+    ? 'No cluster is reachable'
     : partial
       ? `${reachable} of ${total} targets reachable \u2014 capacity shown is only what answered`
-      : `Flink ${state.flink_version}` + (total > 1 ? ` across ${total} targets` : '')
+      : `Flink ${state.flink_version}` + (total > 1 ? ` across ${total} clusters` : '')
 
   return (
     <span className="flex items-center gap-1.5 text-[12px] text-slate-500" title={title}>

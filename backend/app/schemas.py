@@ -348,6 +348,20 @@ class TargetProbeIn(BaseModel):
     gateway_url: str
 
 
+class ClusterSetupOut(BaseModel):
+    """What adding a cluster needs: the image to match, and how to start one."""
+
+    flink_image: str
+    image_pinned: bool
+    registry: str | None
+    same_machine_name: str
+    same_machine_rest_url: str
+    same_machine_gateway_url: str
+    same_machine_command: str
+    same_machine_registered: bool
+    other_machine_compose: str
+
+
 class TargetProbeOut(BaseModel):
     """What a URL pair looks like from the console, before anything is saved."""
 

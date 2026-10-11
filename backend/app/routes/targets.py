@@ -11,8 +11,15 @@ from sqlalchemy.orm import Session
 from ..auth import Principal
 from ..db import get_session
 from ..deps import current_principal, get_targets, require_admin
+from ..cluster_setup import (
+    SAME_MACHINE_COMMAND,
+    SAME_MACHINE_GATEWAY,
+    SAME_MACHINE_NAME,
+    SAME_MACHINE_REST,
+)
+from ..cluster_setup import guide as cluster_setup_guide
 from ..models import Job, Target
-from ..schemas import TargetIn, TargetOut, TargetProbeIn, TargetProbeOut
+from ..schemas import ClusterSetupOut, TargetIn, TargetOut, TargetProbeIn, TargetProbeOut
 from ..targets import TargetRegistry, labels_of
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
@@ -63,6 +70,29 @@ async def list_targets(
 
     live = await asyncio.gather(*(probe(t) for t in rows))
     return [_out(db, t, l) for t, l in zip(rows, live)]
+
+
+@router.get("/setup", response_model=ClusterSetupOut)
+def cluster_setup(
+    _: Principal = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> ClusterSetupOut:
+    """How to start a new cluster, on this machine or another, matching this one."""
+    g = cluster_setup_guide()
+    registered = db.scalar(
+        select(Target).where(Target.flink_rest_url == SAME_MACHINE_REST)
+    ) is not None
+    return ClusterSetupOut(
+        flink_image=g.flink_image,
+        image_pinned=g.image_pinned,
+        registry=g.registry,
+        same_machine_name=SAME_MACHINE_NAME,
+        same_machine_rest_url=SAME_MACHINE_REST,
+        same_machine_gateway_url=SAME_MACHINE_GATEWAY,
+        same_machine_command=SAME_MACHINE_COMMAND,
+        same_machine_registered=registered,
+        other_machine_compose=g.other_machine_compose,
+    )
 
 
 @router.post("/probe", response_model=TargetProbeOut)
