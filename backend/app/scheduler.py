@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from croniter import croniter
 
 from .db import session_scope
+from .metrics import SUPERVISOR_RESUBMISSIONS
 from .models import Job, RunState, Schedule, ScheduleMode, utcnow
 from .submitter import JobSubmitter, SubmissionError
 from .targets import TargetRegistry, UnknownTargetError
@@ -175,6 +176,8 @@ class Scheduler:
                     if mode == ScheduleMode.SUPERVISOR.value
                     else None
                 )
+                if mode == ScheduleMode.SUPERVISOR.value:
+                    SUPERVISOR_RESUBMISSIONS.labels(mars_job=job.name).inc()
                 await submitter.submit(
                     db, job, submitted_by="scheduler", by_schedule=True,
                     savepoint_path=point.path if point else None,

@@ -83,6 +83,11 @@ services:
       dockerfile: backend/Dockerfile
     image: ${MARS_CONSOLE_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0}
     container_name: mars-console
+    # Picked up by a Prometheus that discovers containers by these labels; ignored
+    # otherwise. /metrics is unauthenticated, like /healthz.
+    labels:
+      prometheus.scrape: "true"
+      prometheus.port: "8080"
     restart: unless-stopped
     depends_on:
       sql-gateway:
