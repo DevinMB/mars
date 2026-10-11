@@ -105,6 +105,8 @@ services:
       - MARS_SESSION_COOKIE=${MARS_SESSION_COOKIE:-mars_session}
       - MARS_SESSION_TTL_HOURS=${MARS_SESSION_TTL_HOURS:-12}
       - MARS_SEED_EXAMPLES=${MARS_SEED_EXAMPLES:-true}
+      # Shown when adding a cluster, so a new one runs this exact image.
+      - MARS_FLINK_IMAGE=${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     mem_limit: 512m
     cpus: 0.5
     healthcheck:

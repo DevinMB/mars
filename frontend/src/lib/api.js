@@ -115,6 +115,7 @@ export const api = {
 
   // targets
   targets: () => request('/api/targets'),
+  clusterSetup: () => request('/api/targets/setup'),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),
   probeTarget: (flink_rest_url, gateway_url) =>
     request('/api/targets/probe', { method: 'POST', body: { flink_rest_url, gateway_url } }),

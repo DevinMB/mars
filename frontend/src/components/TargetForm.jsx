@@ -1,17 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import DeployHelp from './DeployHelp'
 import { Alert, Field } from './ui'
 
 // Adding a cluster without a way to check it means saving a guess and finding out
 // at the first submission, so the form probes both URLs before it will save.
-export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1 }) {
+//
+// `defaults` pre-fills a new cluster from the setup guide; `initial` is an existing
+// cluster being edited.
+export default function TargetForm({ initial, defaults, onSaved, onCancel, children }) {
   const editing = Boolean(initial)
-  const [name, setName] = useState(initial?.name || '')
-  const [description, setDescription] = useState(initial?.description || '')
-  const [restUrl, setRestUrl] = useState(initial?.flink_rest_url || '')
-  const [gatewayUrl, setGatewayUrl] = useState(initial?.gateway_url || '')
-  const [uiUrl, setUiUrl] = useState(initial?.ui_url || '')
+  const start = initial || defaults || {}
+  const [name, setName] = useState(start.name || '')
+  const [description, setDescription] = useState(start.description || '')
+  const [restUrl, setRestUrl] = useState(start.flink_rest_url || '')
+  const [gatewayUrl, setGatewayUrl] = useState(start.gateway_url || '')
+  const [uiUrl, setUiUrl] = useState(start.ui_url || '')
   const [labels, setLabels] = useState(
     Object.entries(initial?.labels || {}).map(([k, v]) => `${k}=${v}`).join(', '),
   )
@@ -19,6 +22,18 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
   const [isDefault, setIsDefault] = useState(initial?.is_default ?? false)
 
   const [probe, setProbe] = useState(null)
+
+  // "Use these settings" in the guide hands over new values; take them in place,
+  // so the guide above keeps its state.
+  useEffect(() => {
+    if (!defaults) return
+    setName(defaults.name || '')
+    setDescription(defaults.description || '')
+    setRestUrl(defaults.flink_rest_url || '')
+    setGatewayUrl(defaults.gateway_url || '')
+    setUiUrl(defaults.ui_url || '')
+    setProbe(null)
+  }, [defaults])
   const [probing, setProbing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -63,7 +78,7 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
     try {
       if (editing) await api.updateTarget(initial.name, body)
       else await api.createTarget(body)
-      onSaved()
+      onSaved(name)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -87,22 +102,20 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
   return (
     <div className="card p-5 mb-4">
       <h2 className="eyebrow-accent mb-4">
-        {editing ? `Edit ${initial.name}` : 'Add an execution target'}
+        {editing ? `Edit ${initial.name}` : 'Add a cluster'}
       </h2>
 
       {error && <div className="mb-3"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
-      {/* Only when adding: editing a target means one already exists. Opened by
-          default while there is a single target, since that reader has not done
-          this before. */}
-      {!editing && <DeployHelp defaultOpen={targetCount <= 1} />}
+      {/* The setup guide, when adding. */}
+      {children}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Name"
           required
           hint={editing
-            ? 'A target cannot be renamed — jobs reference it by name.'
+            ? 'A cluster cannot be renamed — jobs reference it by name.'
             : 'Short and stable. Jobs reference it by name and it cannot be renamed later.'}
         >
           <input
@@ -154,7 +167,7 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)}
                    className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30" />
             Make this the default
-            <span className="text-[11px] text-slate-400">(jobs naming no target run here)</span>
+            <span className="text-[11px] text-slate-400">(jobs with no cluster chosen run here)</span>
           </label>
         </div>
       </div>
@@ -164,10 +177,16 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
           <Result ok={probe.flink_ok} label="Flink REST" detail={probe.flink_detail} />
           <Result ok={probe.gateway_ok} label="SQL Gateway" detail={probe.gateway_detail} />
           {!reachable && (
-            <p className="text-[11px] text-slate-500 pt-1">
-              It can still be saved — a target that is down is not a mistake, and MARS
-              will show it as unreachable until it comes back.
-            </p>
+            <div className="text-[12px] text-slate-600 pt-1 space-y-1">
+              <p>
+                Just started it? A new cluster takes up to a minute to answer; test again
+                shortly. Otherwise check the address, and that ports 8081 and 8083 are open
+                to this machine.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                It can still be saved. MARS shows it as unreachable until it answers.
+              </p>
+            </div>
           )}
         </div>
       )}
@@ -178,7 +197,7 @@ export default function TargetForm({ initial, onSaved, onCancel, targetCount = 1
           {probing ? 'Testing…' : 'Test connection'}
         </button>
         <button className="btn-primary" onClick={save} disabled={!canSave}>
-          {saving ? 'Saving…' : editing ? 'Save changes' : 'Add target'}
+          {saving ? 'Saving…' : editing ? 'Save changes' : 'Add cluster'}
         </button>
         <button className="btn-secondary" onClick={onCancel}>Cancel</button>
       </div>

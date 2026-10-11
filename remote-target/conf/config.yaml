@@ -50,6 +50,7 @@ state:
     type: hashmap
   checkpoints:
     dir: file:///flink-state/checkpoints
+    num-retained: 2
   savepoints:
     dir: file:///flink-state/savepoints
 
