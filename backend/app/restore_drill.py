@@ -154,10 +154,10 @@ def run(now: datetime | None = None) -> DrillResult:
         work = Path(tmp)
         try:
             if archive:
-                with tarfile.open(archive) as tar:
-                    # filter="data" refuses absolute paths, ../ and links outside
-                    # work; test_archive_cannot_write_outside_its_directory proves it.
-                    tar.extractall(work, filter="data")  # nosemgrep: tarfile-extractall-traversal
+                # filter="data" refuses absolute paths, ../ and links outside work;
+                # test_archive_cannot_write_outside_its_directory proves it.
+                with tarfile.open(archive) as tar:  # nosemgrep: tarfile-extractall-traversal
+                    tar.extractall(work, filter="data")
             else:
                 _snapshot(work)
         except Exception as exc:  # an unreadable archive is exactly what this is for
