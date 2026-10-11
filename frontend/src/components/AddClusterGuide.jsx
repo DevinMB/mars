@@ -178,7 +178,11 @@ export default function AddClusterGuide({ setup, onUse, onSlots }) {
               </li>
             </ul>
           </Step>
-          <Step n={2} title="Enter the address MARS will reach it on">
+          <Step n={2} title="Enter the new machine's IP address">
+            <p className="text-[12px] text-slate-600">
+              The new machine's own address, not this MARS machine's. Run{' '}
+              <code className="mono">hostname -I</code> on the new machine to see it.
+            </p>
             <input
               className="input mono max-w-xs"
               value={address}
