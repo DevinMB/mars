@@ -6,6 +6,7 @@ import ThemeToggle from './ThemeToggle'
 import ActionMenu from './ActionMenu'
 import { useConfirm, usePendingEdits } from './InteractionProvider'
 import { useAuth } from '../lib/auth'
+import { ComponentUpdate, componentsBehind, short } from './UpdateDetails'
 
 const NAV = [
   { to: '/jobs', label: 'Jobs' },
@@ -75,6 +76,20 @@ function ClusterDot() {
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
+  const [version, setVersion] = useState(null)
+  const [showUpdate, setShowUpdate] = useState(false)
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem('mars.updateDismissed') } catch { return null }
+  })
+  useEffect(() => {
+    if (!user) return
+    api.version().then(setVersion).catch(() => setVersion(null))
+  }, [user])
+  // Administrators only: they are the ones who can act on it. Dismissed per
+  // release, so the next one still shows.
+  const behind = user?.role === 'admin' ? componentsBehind(version) : []
+  const latestRev = version?.latest?.revision
+  const updateBanner = behind.length > 0 && dismissed !== latestRev
   const navigate = useNavigate()
   const confirm = useConfirm()
   const unsaved = usePendingEdits()
@@ -113,6 +128,31 @@ export default function Layout({ children }) {
           </div>
         </div>
       </header>
+      {updateBanner && (
+        <div className="bg-slate-50 border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 text-[13px] text-slate-700">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="w-2 h-2 rounded-full bg-accent-500" aria-hidden="true" />
+              <span>
+                <b className="font-medium text-slate-900">Update available:</b>{' '}
+                {version.latest.label} for {behind.map((c) => (c === 'flink' ? 'Flink' : 'the console')).join(' and ')}.
+              </span>
+              <button type="button" className="link" aria-expanded={showUpdate} onClick={() => setShowUpdate(!showUpdate)}>
+                {showUpdate ? 'Hide' : 'How to update'}
+              </button>
+              <button type="button" className="ml-auto text-[12px] text-slate-500 hover:text-slate-800" onClick={() => {
+                try { localStorage.setItem('mars.updateDismissed', latestRev) } catch { /* private window */ }
+                setDismissed(latestRev)
+              }}>Dismiss</button>
+            </div>
+            {showUpdate && (
+              <div className="grid gap-6 md:grid-cols-2 py-4">
+                {behind.map((c) => <ComponentUpdate key={c} name={c} data={version[c]} latest={version.latest} />)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {user?.must_change_password && (
         <div className="bg-accent-50 border-b border-accent-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 text-[13px] text-accent-900">
@@ -123,7 +163,12 @@ export default function Layout({ children }) {
       )}
       <main id="main-content" tabIndex={-1} className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-7 sm:py-9 min-w-0">{children}</main>
       <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 text-xs text-slate-500">
-        MARS <span className="mx-1.5" aria-hidden="true">/</span> Stream pipelines for Apache Flink®
+        MARS{version?.console?.revision && (
+          <span className="mono ml-1.5" title={`Built ${version.console.built_at || 'at an unknown time'}`}>
+            {short(version.console.revision)}
+          </span>
+        )}
+        <span className="mx-1.5" aria-hidden="true">/</span> Stream pipelines for Apache Flink®
       </footer>
     </div>
   )

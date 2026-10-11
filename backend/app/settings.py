@@ -32,6 +32,24 @@ class Settings(BaseSettings):
     # adding a cluster, so a new one runs exactly the same image and connectors.
     flink_image: str = ""
 
+    # --- versions and updates ---
+    # Stamped into the console image by the release build.
+    revision: str = ""
+    built_at: str = ""
+    # The images this installation runs, passed in by compose.
+    console_image: str = ""
+    # The commit the Flink image was built from, when the deployment records it.
+    flink_revision: str = ""
+    # Asking GitHub what's newest is an outbound request, so it is off by default.
+    update_check: bool = False
+    update_channel: str = "releases"  # "releases" (tagged versions) or "main"
+    update_repo: str = "DevinMB/mars"
+    # A MARS secret holding a read-only GitHub token, for a private repository.
+    update_token_secret: str = ""
+    # How this installation updates, e.g. "deploy.sh {component} {commit}". Empty
+    # gives generic Docker Compose steps.
+    update_instructions: str = ""
+
     # --- restore drill (off unless enabled) ---
     # A scheduled check that backups can actually be restored. See restore_drill.py.
     restore_drill: bool = False

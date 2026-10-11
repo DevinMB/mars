@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
-from . import restore_drill
+from . import restore_drill, updates
 from .db import session_scope
 from .metrics import SUPERVISOR_RESUBMISSIONS
 from .models import Job, RunState, Schedule, ScheduleMode, utcnow
@@ -100,6 +100,10 @@ class Scheduler:
         # files, and the event loop serves the API meanwhile.
         if restore_drill.is_due(datetime.now(timezone.utc)):
             await asyncio.to_thread(restore_drill.run)
+
+        # Off unless MARS_UPDATE_CHECK is set; at most once a day.
+        if updates.is_due(datetime.now(timezone.utc)):
+            await updates.check()
 
     async def _reconcile(self, db) -> None:
         """Asks each cluster about the jobs placed on it.
