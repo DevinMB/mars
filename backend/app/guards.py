@@ -41,6 +41,25 @@ def parse_options(sql_text: str) -> dict[str, str]:
     return {k: v.replace("''", "'") for k, v in _OPTION.findall(body)}
 
 
+_WITH_OPEN = re.compile(r"\bWITH\s*\(", re.I)
+
+
+def add_option(sql_text: str, key: str, value: str) -> str:
+    """Adds one option to a CREATE TABLE's WITH clause, leaving the rest as written.
+
+    Inserted rather than rebuilt, so watermarks, keys and comments survive. The
+    clause is found with comments and string literals blanked out, since prose in
+    a comment can say "with (".
+    """
+    matches = list(_WITH_OPEN.finditer(strip_noise(sql_text)))
+    if not matches:
+        return sql_text
+    at = matches[-1].end()
+    empty = sql_text[at:].lstrip().startswith(")")
+    option = "\n  '%s' = '%s'%s" % (key, value.replace("'", "''"), "" if empty else ",")
+    return sql_text[:at] + option + sql_text[at:]
+
+
 def table_name(sql_text: str) -> str | None:
     m = _TABLE_NAME.search(sql_text)
     return m.group(1) if m else None
@@ -52,17 +71,10 @@ def check_catalog_entry(entry_sql: str, kind: str, connector: str) -> list[Warni
     opts = parse_options(entry_sql)
 
     if connector == "kafka" and kind == "source":
+        # No group is fine: each job that reads the table gets mars-<job> when it is
+        # submitted (see lineage.consumer_groups). Only a group someone chose is checked.
         group = opts.get("properties.group.id", "")
-        if not group:
-            out.append(
-                Warning_(
-                    "warning",
-                    "kafka_no_group",
-                    "No consumer group is set. Flink will generate one, so this job "
-                    "cannot resume where it left off after a restart.",
-                )
-            )
-        elif not group.startswith(GROUP_PREFIX):
+        if group and not group.startswith(GROUP_PREFIX):
             out.append(
                 Warning_(
                     "danger",
@@ -160,7 +172,7 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
     # Whether the job reads or writes each table comes from the job itself (Flink's
     # plan, or its SQL), not from a role fixed on the catalog entry: one job
     # writes the topic another reads.
-    from .lineage import job_usage
+    from .lineage import consumer_groups, job_usage
 
     usage = job_usage(job)
     sources = {n: e for n, e in entries.items() if n in usage.reads}
@@ -171,6 +183,29 @@ def check_job(db: Session, job: Job) -> list[Warning_]:
             out.extend(check_catalog_entry(entry.sql_text, "source", entry.connector))
         if name in sinks:
             out.extend(check_catalog_entry(entry.sql_text, "sink", entry.connector))
+
+    # Two jobs on one consumer group both commit offsets to it. Flink takes no
+    # partitions from the group, so neither stops reading, but the group's offsets
+    # follow whichever committed last: lag for it means nothing, and a job started
+    # without saved state picks up from the other job's position.
+    mine = {g.group: name for name, g in consumer_groups(job, entries).items()}
+    if mine:
+        everything = {e.name: e for e in db.query(CatalogEntry).all()}
+        for other in db.query(Job).filter(Job.id != job.id).order_by(Job.name).all():
+            for g in consumer_groups(other, everything).values():
+                if g.group in mine:
+                    out.append(
+                        Warning_(
+                            "warning",
+                            "kafka_shared_group",
+                            f"Job '{other.name}' also reads with consumer group "
+                            f"'{g.group}' (through '{mine[g.group]}' here). Both jobs "
+                            f"commit offsets to it, so its lag is meaningless and a job "
+                            f"started without saved state resumes from the other's "
+                            f"position. Remove the group from the entry to give each "
+                            f"job its own, or set a different one.",
+                        )
+                    )
 
     # A job reading and writing the same Kafka topic feeds itself forever.
     source_topics = {

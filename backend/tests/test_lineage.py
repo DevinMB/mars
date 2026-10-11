@@ -146,3 +146,54 @@ def test_role_hint_for_drafting():
     assert hint("table", "datagen") == "source"
     assert hint("table", "couchdb") == "sink"
     assert hint("table", "kafka") == "table"
+
+
+# -- consumer groups ---------------------------------------------------------
+
+from app.guards import add_option, parse_options  # noqa: E402
+from app.lineage import consumer_groups  # noqa: E402
+
+
+def _kafka(name, topic, group=None):
+    opts = f"'connector' = 'kafka', 'topic' = '{topic}'" + (f", 'properties.group.id' = '{group}'" if group else "")
+    return CatalogEntry(name=name, kind="table", connector="kafka",
+                        sql_text=f"-- feeds (with) things\nCREATE TABLE `{name}` (`doc` STRING) WITH ({opts})")
+
+
+def test_unnamed_kafka_reads_get_the_jobs_group_and_named_ones_keep_theirs():
+    entries = {e.name: e for e in [_kafka("a", "ta"), _kafka("b", "tb", "mars-mine"), _kafka("out", "to")]}
+    job = Job(name="enrich", sql_text="INSERT INTO out SELECT * FROM a JOIN b ON true",
+              catalog_refs=json.dumps(["a", "b", "out"]))
+    groups = consumer_groups(job, entries)
+    assert {n: (g.group, g.automatic) for n, g in groups.items()} == {
+        "a": ("mars-enrich", True), "b": ("mars-mine", False)}  # out is written, not read
+
+
+def test_two_unnamed_tables_on_one_topic_in_one_job_do_not_share_a_group():
+    entries = {e.name: e for e in [_kafka("x1", "t"), _kafka("x2", "t")]}
+    job = Job(name="j", sql_text="SELECT * FROM x1 JOIN x2 ON true", catalog_refs=json.dumps(["x1", "x2"]))
+    assert sorted(g.group for g in consumer_groups(job, entries).values()) == ["mars-j-x1", "mars-j-x2"]
+
+
+def test_add_option_inserts_into_the_with_clause_not_into_a_comment():
+    sql = _kafka("a", "ta").sql_text
+    out = add_option(sql, "properties.group.id", "mars-j")
+    assert out.startswith("-- feeds (with) things")
+    assert parse_options(out)["properties.group.id"] == "mars-j"
+    assert parse_options(out)["topic"] == "ta"
+    assert parse_options(add_option("CREATE TABLE t (x INT) WITH ()", "k", "v")) == {"k": "v"}
+
+
+def test_the_submitted_script_carries_the_group_but_the_entry_does_not(db):
+    from app.submitter import JobSubmitter
+
+    entry = _kafka("a", "ta")
+    db.add_all([entry, _kafka("b", "tb", "mars-mine")])
+    job = Job(name="enrich", sql_text="SELECT * FROM a JOIN b ON true", catalog_refs=json.dumps(["a", "b"]))
+    db.add(job)
+    db.commit()
+    script = JobSubmitter(None, None, None).build_script(db, job)
+    assert parse_options(script[0])["properties.group.id"] == "mars-enrich"
+    assert parse_options(script[1])["properties.group.id"] == "mars-mine"
+    assert script[-1] == job.sql_text  # the job's SQL is never rewritten
+    assert "group.id" not in db.get(CatalogEntry, entry.id).sql_text
