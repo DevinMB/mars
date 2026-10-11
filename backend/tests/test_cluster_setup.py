@@ -49,7 +49,7 @@ def test_state_volume_is_kept():
 
 def test_published_ports_require_an_explicit_bind_address():
     services = _rendered()["services"]
-    ports = services["jobmanager"]["ports"] + services["sql-gateway"]["ports"]
+    ports = sum((services[s]["ports"] for s in ("jobmanager", "taskmanager", "sql-gateway")), [])
     assert ports and all("TARGET_BIND_ADDRESS:?" in p for p in ports)
     assert not any("127.0.0.1" in p for p in ports)
 
@@ -68,3 +68,9 @@ def test_slot_count_is_set_in_the_inlined_config():
 def test_default_keeps_the_template_untouched():
     content = _rendered()["configs"]["flink-config"]["content"]
     assert content == (TEMPLATE_DIR / "conf" / "config.yaml").read_text()
+
+
+def test_metrics_ports_are_published_for_monitoring():
+    services = _rendered()["services"]
+    assert any(p.endswith(":9249") and "9249" in p for p in services["jobmanager"]["ports"])
+    assert any("TARGET_TM_METRICS_PORT:-9250}:9249" in p for p in services["taskmanager"]["ports"])

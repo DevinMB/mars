@@ -167,7 +167,8 @@ export default function AddClusterGuide({ setup, onUse, onSlots }) {
             <ul className="text-[12px] text-slate-600 list-disc ml-4 space-y-1">
               <li>Docker with Compose 2.23 or newer.</li>
               <li>
-                Ports 8081 and 8083 reachable from this MARS machine. Neither is
+                Ports 8081 and 8083 reachable from this MARS machine, and 9249 and 9250
+                from your monitoring if it should scrape Flink's metrics. None is
                 authenticated, so keep them on a trusted network.
               </li>
               <li>
