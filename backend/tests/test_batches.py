@@ -50,7 +50,7 @@ class _Submitter:
         db.add(JobRun(job_id=job.id, job_version=1, state=RunState.RUNNING.value))
         db.commit()
 
-    async def stop_with_savepoint(self, db, run):
+    async def stop_with_savepoint(self, db, run, native=False):
         job = db.get(Job, run.job_id)
         if job.name in self.fail:
             raise SubmissionError("Could not save this job's state, so it has been left running.")
@@ -77,7 +77,7 @@ class _Registry:
 def fake_move(monkeypatch):
     log, fail = [], set()
 
-    async def move(db, registry, job, dest, user):
+    async def move(db, registry, job, dest, user, native=False):
         if job.name in fail:
             raise moves.MoveError("mars-b has no free task slot.")
         log.append(("move", job.name, dest))

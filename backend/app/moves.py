@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from . import shared_storage
+from . import shared_storage, state_estimates
 from .models import Job, RunState, Target
 from .submitter import SubmissionError
 
@@ -41,6 +41,10 @@ class Option:
     cluster: str
     ok: bool
     reasons: list[str] = field(default_factory=list)
+    # How much state moves and how long the job should be stopped for it.
+    state_bytes: int | None = None
+    pause_seconds: float | None = None
+    rate_measured: bool = False
 
 
 def _local(path: str) -> str:
@@ -77,13 +81,28 @@ async def _shared_dir(registry, db: Session, a: Target, b: Target) -> tuple[str 
     return shared, ""
 
 
+async def state_of(db: Session, registry, job: Job) -> tuple[int | None, float | None, bool]:
+    """(state bytes, expected pause in seconds, whether the speed was measured)."""
+    run = next((r for r in job.runs if r.state in ACTIVE and r.flink_job_id), None)
+    if run is None:
+        return None, None, False
+    try:
+        size = await registry.cluster(registry.for_job(db, job)).state_size(run.flink_job_id)
+    except Exception:
+        return None, None, False
+    r = state_estimates.rate(db)
+    return size, state_estimates.expected_pause(size, r), r.measured
+
+
 async def options(db: Session, registry, job: Job) -> list[Option]:
     current = registry.for_job(db, job)
+    size, pause, measured = await state_of(db, registry, job)
     out = []
     for dest in registry.all_enabled(db):
         if dest.name == current.name:
             continue
-        out.append(Option(dest.name, *(await _check(db, registry, job, current, dest))))
+        ok, reasons = await _check(db, registry, job, current, dest)
+        out.append(Option(dest.name, ok, reasons, size, pause, measured))
     return out
 
 
@@ -128,17 +147,19 @@ class MoveResult:
     savepoint: str | None = None
 
 
-async def move(db: Session, registry, job: Job, dest_name: str, user: str) -> MoveResult:
+async def move(db: Session, registry, job: Job, dest_name: str, user: str,
+               native: bool = False) -> MoveResult:
     if job.name in _moving:
         raise MoveError(f"{job.name} is already being moved.")
     _moving.add(job.name)
     try:
-        return await _move(db, registry, job, dest_name, user)
+        return await _move(db, registry, job, dest_name, user, native)
     finally:
         _moving.discard(job.name)
 
 
-async def _move(db: Session, registry, job: Job, dest_name: str, user: str) -> MoveResult:
+async def _move(db: Session, registry, job: Job, dest_name: str, user: str,
+                native: bool = False) -> MoveResult:
     src = registry.for_job(db, job)
     dest = next((t for t in registry.all_enabled(db) if t.name == dest_name), None)
     if dest is None:
@@ -160,7 +181,7 @@ async def _move(db: Session, registry, job: Job, dest_name: str, user: str) -> M
 
     # 1. Stop with a savepoint. A failure leaves it running where it was.
     try:
-        savepoint = await registry.submitter(src).stop_with_savepoint(db, active)
+        savepoint = await registry.submitter(src).stop_with_savepoint(db, active, native=native)
     except SubmissionError as exc:
         raise MoveError(f"Nothing was moved: {exc.summary}") from exc
     if not _under(savepoint, shared):

@@ -208,7 +208,7 @@ export default function JobDetail() {
       {job.description && <p className="text-sm text-slate-600 -mt-2 mb-6 max-w-3xl">{job.description}</p>}
       {moving && (
         <MoveJob job={job} running={Boolean(isActive)} onClose={() => setMoving(false)}
-                 onMoved={async (r) => { setMoving(false); notify(r.summary); await load() }} />
+                 onMoved={async (b) => { setMoving(false); notify(b.items?.[0]?.note || 'Moved.'); await load() }} />
       )}
 
       {error && <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}

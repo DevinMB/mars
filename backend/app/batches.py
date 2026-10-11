@@ -63,8 +63,15 @@ def current(db: Session) -> BatchOperation | None:
     return db.query(BatchOperation).filter(BatchOperation.status.in_(OPEN)).first()
 
 
+def options_of(batch: BatchOperation) -> dict:
+    try:
+        return json.loads(batch.options or "{}")
+    except json.JSONDecodeError:
+        return {}
+
+
 def create(db: Session, registry, kind: str, job_names: list[str], cluster: str | None,
-           user: str) -> BatchOperation:
+           user: str, options: dict | None = None) -> BatchOperation:
     if kind not in KINDS:
         raise BatchError(f"Unknown action '{kind}'.")
     if current(db) is not None:
@@ -83,7 +90,8 @@ def create(db: Session, registry, kind: str, job_names: list[str], cluster: str 
         cluster = None
     items = [{"job": n, "was_running": _active(jobs[n]), "status": "waiting", "note": ""} for n in names]
     batch = BatchOperation(kind=kind, cluster=cluster, status="running",
-                           items=json.dumps(items), created_by=user)
+                           items=json.dumps(items), created_by=user,
+                           options=json.dumps({"native": bool((options or {}).get("native"))}))
     db.add(batch)
     db.commit()
     log.info("%s started a bulk %s of %d job(s)%s", user, kind, len(names),
@@ -117,7 +125,8 @@ async def _do(db: Session, registry, batch: BatchOperation, item: dict) -> tuple
             if item.get("was_running") and not _active(job):
                 return "done", await resume(dest) + ", finishing a move the console was interrupted in."
             return "skipped", f"Already on {dest}."
-        result = await moves.move(db, registry, job, dest, user)
+        result = await moves.move(db, registry, job, dest, user,
+                                  native=options_of(batch).get("native", False))
         db.expire(job)
         if item.get("interrupted") and item.get("was_running") and not _active(job):
             # Stopped before the console restarted, so the move only re-pointed it.
@@ -128,7 +137,8 @@ async def _do(db: Session, registry, batch: BatchOperation, item: dict) -> tuple
         run = next((r for r in job.runs if r.state in ACTIVE), None)
         if run is None:
             return "skipped", "Not running."
-        await registry.for_job_submitter(db, job).stop_with_savepoint(db, run)
+        await registry.for_job_submitter(db, job).stop_with_savepoint(
+            db, run, native=options_of(batch).get("native", False))
         return "done", "Stopped with its state saved."
 
     if _active(job):
