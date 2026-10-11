@@ -125,6 +125,7 @@ export const api = {
   savepointStorage: () => request('/api/targets/storage'),
   checkSavepointStorage: (a, b) => request('/api/targets/storage/check', { method: 'POST', body: { a, b } }),
   jobMovesOff: (cluster) => request('/api/targets/storage/off', { method: 'POST', body: { cluster } }),
+  nfsExports: (server) => request(`/api/targets/storage/exports?server=${encodeURIComponent(server)}`),
   savepointStorageSetup: (server, exportPath) =>
     request(`/api/targets/storage/setup?server=${encodeURIComponent(server)}&export=${encodeURIComponent(exportPath)}`),
   probeTarget: (flink_rest_url, gateway_url) =>

@@ -202,3 +202,37 @@ def test_jobs_resuming_from_the_share_block_turning_it_off(db):
                   checkpoint_path="file:/flink-state/checkpoints/x/chk-3"))
     db.commit()
     assert depends_on_shared([on_share, local], SHARED) == ["sessions"]
+
+
+# -- listing an NFS server's shares ------------------------------------------------
+
+import struct  # noqa: E402
+
+from app.nfs import Export, parse_exports  # noqa: E402
+
+
+def _xdr_string(s):
+    b = s.encode()
+    return struct.pack(">I", len(b)) + b + b"\0" * ((4 - len(b) % 4) % 4)
+
+
+def test_exports_are_read_from_the_mount_reply():
+    body = (struct.pack(">I", 1) + _xdr_string("/volume/u/.srv/.unifi-drive/mars.savepoints/.data")
+            + struct.pack(">I", 1) + _xdr_string("192.168.10.13")
+            + struct.pack(">I", 1) + _xdr_string("192.168.1.250") + struct.pack(">I", 0)
+            + struct.pack(">I", 1) + _xdr_string("/srv/nfs/open") + struct.pack(">I", 0)
+            + struct.pack(">I", 0))
+    found = parse_exports(body)
+    assert [(e.name, e.clients) for e in found] == [
+        ("mars.savepoints", ["192.168.10.13", "192.168.1.250"]), ("open", [])]
+
+
+def test_a_reply_cut_short_is_an_error_not_a_crash():
+    from app.nfs import NfsError
+    with pytest.raises(NfsError):
+        parse_exports(struct.pack(">I", 1) + struct.pack(">I", 40) + b"short")
+
+
+def test_share_names_skip_hidden_parts():
+    assert Export("/volume1/flink-savepoints", []).name == "flink-savepoints"
+    assert Export("/volume/x/.srv/.unifi-drive/a.b/.data", []).name == "a.b"
