@@ -24,12 +24,14 @@ RESTORE_POINT_AGE = Gauge(
     "mars_restore_point_age_seconds",
     "For each running job, how old the newest state MARS could resume it from is. "
     "Grows past the checkpoint interval only if MARS has stopped recording checkpoints.",
-    ["job"],
+    ["mars_job"],
 )
+# Labelled mars_job, not job: Prometheus reserves `job` for the scrape job and
+# would rename ours to exported_job.
 SUPERVISOR_RESUBMISSIONS = Counter(
     "mars_supervisor_resubmissions_total",
     "Times the supervisor restarted a stopped job. Rising steadily means a job keeps dying.",
-    ["job"],
+    ["mars_job"],
 )
 SUBMISSIONS = Counter("mars_job_submissions_total", "Job submissions", ["outcome"])
 
@@ -63,4 +65,4 @@ def refresh(db: Session, now: datetime | None = None) -> None:
     # than holding its last age forever.
     RESTORE_POINT_AGE.clear()
     for name, age in ages.items():
-        RESTORE_POINT_AGE.labels(job=name).set(age)
+        RESTORE_POINT_AGE.labels(mars_job=name).set(age)

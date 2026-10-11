@@ -50,7 +50,7 @@ def test_restore_point_age_tracks_the_recorded_checkpoint(db):
          checkpoint_path="file:/cp/chk-9", checkpoint_at=NOW - timedelta(seconds=20))
 
     metrics.refresh(db, now=NOW)
-    assert value("mars_restore_point_age_seconds", job="recording") == 20
+    assert value("mars_restore_point_age_seconds", mars_job="recording") == 20
 
 
 def test_an_old_savepoint_does_not_hide_a_run_that_never_recorded(db):
@@ -66,18 +66,18 @@ def test_an_old_savepoint_does_not_hide_a_run_that_never_recorded(db):
     metrics.refresh(db, now=NOW)
     # Measured from when this run started, not from the two-day-old savepoint, and
     # not hidden either: an hour without a recorded checkpoint is the signal.
-    assert value("mars_restore_point_age_seconds", job="stuck") == 3600
+    assert value("mars_restore_point_age_seconds", mars_job="stuck") == 3600
 
 
 def test_a_job_that_stops_running_stops_being_reported(db):
     job = _job(db, "stopping", state=RunState.RUNNING.value, started_at=NOW)
     metrics.refresh(db, now=NOW)
-    assert value("mars_restore_point_age_seconds", job="stopping") == 0
+    assert value("mars_restore_point_age_seconds", mars_job="stopping") == 0
 
     job.runs[0].state = RunState.CANCELED.value
     db.commit()
     metrics.refresh(db, now=NOW)
-    assert value("mars_restore_point_age_seconds", job="stopping") is None
+    assert value("mars_restore_point_age_seconds", mars_job="stopping") is None
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_supervisor_resubmissions_are_counted_per_job(db, monkeypatch):
         async def submit(self, db, job, **kw):
             pass
 
-    before = value("mars_supervisor_resubmissions_total", job="flaky") or 0
+    before = value("mars_supervisor_resubmissions_total", mars_job="flaky") or 0
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
-    assert value("mars_supervisor_resubmissions_total", job="flaky") == before + 2
+    assert value("mars_supervisor_resubmissions_total", mars_job="flaky") == before + 2

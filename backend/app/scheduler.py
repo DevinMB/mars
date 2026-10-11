@@ -177,7 +177,7 @@ class Scheduler:
                     else None
                 )
                 if mode == ScheduleMode.SUPERVISOR.value:
-                    SUPERVISOR_RESUBMISSIONS.labels(job=job.name).inc()
+                    SUPERVISOR_RESUBMISSIONS.labels(mars_job=job.name).inc()
                 await submitter.submit(
                     db, job, submitted_by="scheduler", by_schedule=True,
                     savepoint_path=point.path if point else None,
