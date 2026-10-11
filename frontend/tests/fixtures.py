@@ -66,6 +66,11 @@ def fixtures():
             'moves': [{'cluster': 'mars-b', 'default': 'default', 'state': 'off', 'checked_at': None, 'shared_dir': None,
                        'summary': 'Not set up. Jobs on this cluster cannot move to or from default with their state.'}],
         },
+        '/api/targets/storage/exports': [
+            {'name': 'backups', 'path': '/volume1/backups', 'clients': ['192.168.1.6']},
+            {'name': 'mars.savepoints', 'path': '/volume/u/.srv/.unifi-drive/mars.savepoints/.data',
+             'clients': ['192.168.10.13', '192.168.1.250']},
+        ],
         '/api/targets/storage/setup': {
             'this_machine': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager\nservices: {}\n',
             'this_machine_with_second': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager jobmanager-b taskmanager-b\nservices: {}\n',

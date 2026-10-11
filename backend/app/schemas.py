@@ -682,3 +682,9 @@ class StorageSetupOut(BaseModel):
     this_machine: str
     this_machine_with_second: str
     other_machine: str
+
+
+class NfsExportOut(BaseModel):
+    name: str
+    path: str
+    clients: list[str]

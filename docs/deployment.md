@@ -193,10 +193,12 @@ needs one free task slot on each cluster for a few seconds, and leaves a few-byt
 
 1. Create a share every cluster's machine can reach, allowing each one's IP.
    Size hardly matters: [retention](#savepoint-retention) keeps a few per job.
-2. On the Clusters page, choose **Set up** next to Job moves, enter the server
-   and export path (`showmount -e <server>` lists exports), and copy the generated
-   file. Save it as `docker-compose.override.yml` next to each machine's
-   `docker-compose.yml`. Compose reads it by itself.
+2. On the Clusters page, choose **Set up** next to Job moves and enter the NAS
+   address. MARS asks it which folders it shares (the NFS `EXPORT` call, the same
+   as `showmount -e`), so you pick yours by name instead of typing its export
+   path, which on UniFi is a long hidden one. For each cluster not yet on the
+   share, the guide gives a `docker-compose.override.yml` to save next to that
+   machine's `docker-compose.yml`. Compose reads it by itself.
 3. Stop that cluster's jobs with their state saved, run the `docker compose up -d`
    line at the top of the file, resume the jobs, and press **Check**.
 

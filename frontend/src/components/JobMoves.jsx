@@ -70,111 +70,178 @@ function CheckStep({ pair, onDone }) {
       </p>
       {error && <Alert level="danger">{error}</Alert>}
       {result && (
-        <Alert level={result.shared ? 'success' : 'warning'}>{result.summary}</Alert>
+        <Alert level={result.shared ? 'success' : 'warning'} title={result.shared ? 'Ready' : 'Not shared yet'}>
+          {result.summary}
+        </Alert>
       )}
     </div>
   )
 }
 
-function SetupGuide({ moves, locations, sameMachine, onDone }) {
+// Where a cluster runs, in the words someone setting it up would use.
+const SHARED_DIR = 'file:///flink-savepoints'
+function hostOf(target) {
+  try { return new URL(target.flink_rest_url).hostname } catch { return '' }
+}
+function placeOf(target) {
+  const host = hostOf(target)
+  if (target.is_default || host === 'jobmanager') return { label: 'the MARS machine', file: 'mars' }
+  if (host === 'jobmanager-b') return { label: 'the MARS machine (its second cluster)', file: 'second' }
+  return { label: `the machine at ${host}`, file: 'other', host }
+}
+
+function ShareChooser({ hosts, onChosen }) {
   const [server, setServer] = useState('')
-  const [exportPath, setExportPath] = useState('')
-  const [files, setFiles] = useState(null)
-  const [machine, setMachine] = useState('mars')
-  const [withSecond, setWithSecond] = useState(sameMachine)
+  const [shares, setShares] = useState(null)
+  const [manual, setManual] = useState(false)
+  const [path, setPath] = useState('')
+  const [chosen, setChosen] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const pair = [moves.default, moves.cluster]
 
-  const generate = async (e) => {
+  const find = async (e) => {
     e.preventDefault()
-    setBusy(true)
-    try { setFiles(await api.savepointStorageSetup(server.trim(), exportPath.trim())); setError(null) }
-    catch (err) { setError(err.message) } finally { setBusy(false) }
+    setBusy(true); setError(null); setShares(null); setChosen('')
+    try {
+      const found = await api.nfsExports(server.trim())
+      // Shares that already allow the cluster machines first.
+      const allows = (s) => hosts.filter((h) => s.clients.length === 0 || s.clients.includes(h)).length
+      setShares([...found].sort((a, b) => allows(b) - allows(a) || a.name.localeCompare(b.name)))
+      if (!found.length) setManual(true)
+    } catch (err) { setError(err.message); setManual(true) } finally { setBusy(false) }
   }
-  const file = !files ? null
-    : machine === 'other' ? files.other_machine
-      : withSecond ? files.this_machine_with_second : files.this_machine
+  const choose = async (exportPath) => {
+    setChosen(exportPath); setError(null)
+    try { onChosen(await api.savepointStorageSetup(server.trim(), exportPath)) }
+    catch (err) { setError(err.message); onChosen(null) }
+  }
+
+  return (
+    <div className="space-y-2">
+      <form className="flex flex-wrap gap-2 items-center" onSubmit={find}>
+        <input className="input w-56" aria-label="NFS server" placeholder="NAS address, e.g. 192.168.1.10"
+               value={server} onChange={(e) => setServer(e.target.value)} />
+        <button className="btn-secondary" disabled={!server.trim() || busy}>{busy ? 'Looking…' : 'Find shared folders'}</button>
+      </form>
+      {error && <p className="text-[12px] text-red-700">{error}</p>}
+      {shares && shares.length > 0 && (
+        <fieldset className="space-y-1.5">
+          <legend className="text-[12px] text-slate-500 mb-1">Folders {server.trim()} shares. Pick the one you created:</legend>
+          {shares.map((s) => {
+            const missing = hosts.filter((h) => s.clients.length && !s.clients.includes(h))
+            return (
+              <label key={s.path} className={`flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer ${
+                chosen === s.path ? 'border-accent-400 bg-accent-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                <input type="radio" name="share" className="mt-1" checked={chosen === s.path} onChange={() => choose(s.path)} />
+                <span className="min-w-0">
+                  <span className="block text-[13px] text-slate-900">{s.name}</span>
+                  <span className="block text-[11px] text-slate-500">
+                    {s.clients.length ? `Allows ${s.clients.join(', ')}` : 'Allows any machine'}
+                    {missing.length > 0 && <span className="text-amber-700"> · not {missing.join(', ')}</span>}
+                  </span>
+                </span>
+              </label>
+            )
+          })}
+        </fieldset>
+      )}
+      {(manual || shares) && (
+        <div className="text-[12px]">
+          {!manual ? (
+            <button type="button" className="link" onClick={() => setManual(true)}>Enter the folder's path instead</button>
+          ) : (
+            <form className="flex flex-wrap gap-2 items-center" onSubmit={(e) => { e.preventDefault(); choose(path.trim()) }}>
+              <input className="input flex-1 min-w-56" aria-label="Export path" placeholder="Export path, e.g. /volume1/flink-savepoints"
+                     value={path} onChange={(e) => setPath(e.target.value)} />
+              <button className="btn-secondary" disabled={!path.trim()}>Use this path</button>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ClusterTodo({ target, location, files }) {
+  const place = placeOf(target)
+  if (location?.savepoint_dir === SHARED_DIR) {
+    return (
+      <div className="rounded-md border border-slate-200 px-3 py-2 text-[13px]">
+        <span className="text-emerald-600">✓</span> <span className="mono">{target.name}</span>
+        <span className="text-slate-600"> already saves to a shared folder. Nothing to do here.</span>
+      </div>
+    )
+  }
+  const file = files && (place.file === 'other' ? files.other_machine
+    : place.file === 'second' ? files.this_machine_with_second : files.this_machine)
+  const jobs = target.job_count || 0
+  return (
+    <div className="rounded-md border border-slate-200 px-3 py-3 space-y-2">
+      <div className="text-[13px]">
+        <span className="mono text-slate-900">{target.name}</span>
+        <span className="text-slate-600"> runs on {place.label} and saves to its own disk.</span>
+      </div>
+      {!file ? (
+        <p className="text-[12px] text-slate-500">Choose the shared folder above to see what to do here.</p>
+      ) : (
+        <ol className="list-decimal pl-5 space-y-2 text-[12px] text-slate-700">
+          {jobs > 0 && <li>Stop its {jobs} job{jobs === 1 ? '' : 's'} with their state saved.</li>}
+          <li>
+            On {place.label}, in the folder with its <code className="mono">docker-compose.yml</code>,
+            save this as <code className="mono">docker-compose.override.yml</code>:
+            {place.file === 'second' && ' (it also covers the main cluster on that machine; if that machine already has this file, replace it).'}
+            <div className="mt-1.5"><Copyable tall>{file}</Copyable></div>
+          </li>
+          <li>
+            Restart the cluster with it:
+            <div className="mt-1.5"><Copyable>{file.match(/docker compose up -d .*/)?.[0] || 'docker compose up -d'}</Copyable></div>
+            {place.file === 'other' && (
+              <span className="text-slate-500">Put <code className="mono">TARGET_BIND_ADDRESS=…</code> in front if you start it that way.</span>
+            )}
+          </li>
+          {jobs > 0 && <li>Resume the jobs.</li>}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+function SetupGuide({ moves, locations, targets, onDone }) {
+  const [files, setFiles] = useState(null)
+  const pair = [moves.default, moves.cluster]
+  const pairTargets = pair.map((n) => targets.find((t) => t.name === n)).filter(Boolean)
+  // Addresses the share must allow; the MARS machine's own is not known here.
+  const hosts = pairTargets.map(placeOf).filter((p) => p.host).map((p) => p.host)
+  const todo = pairTargets.filter((t) => locations.find((l) => l.name === t.name)?.savepoint_dir !== SHARED_DIR)
 
   return (
     <>
       <p className="text-[13px] text-slate-600 max-w-3xl">
-        Optional. Lets a job stop on one cluster and resume on the other where it left
-        off, which is also how a cluster can be upgraded without stopping everything.
-        Both clusters keep savepoints in one shared folder; checkpoints stay on each
-        cluster's own disk. <a className="link" href={DOCS} target="_blank" rel="noreferrer">More</a>
+        Optional. Lets a job stop on one cluster and carry on from the same place on the
+        other, which is also how a cluster can be upgraded without stopping everything.
+        For that, both clusters keep their savepoints in one shared folder on your network.{' '}
+        <a className="link" href={DOCS} target="_blank" rel="noreferrer">More</a>
       </p>
       {moves.state === 'broken' && <div className="mt-3"><Alert level="danger">{moves.summary}</Alert></div>}
-      <dl className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-[auto_1fr] text-[12px]">
-        {pair.map((name) => {
-          const loc = locations.find((l) => l.name === name)
-          return (
-            <div key={name} className="contents">
-              <dt className="mono text-slate-800">{name} saves to</dt>
-              <dd className={`min-w-0 break-all ${loc?.error ? 'text-red-700' : 'mono text-slate-600'}`}>
-                {loc?.error || loc?.savepoint_dir || '—'}
-              </dd>
-            </div>
-          )
-        })}
-      </dl>
-      {error && <div className="mt-3"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
-      <ol className="space-y-4 mt-4">
-        <Step n={1} title="Create a shared folder both machines can reach">
+      <ol className="space-y-5 mt-4">
+        <Step n={1} title="Create a shared folder on your NAS or file server">
           <p className="text-[12px] text-slate-600">
-            An NFS share on a NAS or file server, allowing each machine that runs one of
-            these clusters (by IP address). A few gigabytes is plenty: MARS keeps only the
-            newest savepoints of each job. S3 or MinIO instead? See the{' '}
+            Share it over NFS and allow {hosts.length ? <>the MARS machine and {hosts.join(', ')}</> : 'the machines these clusters run on'}.
+            A few gigabytes is plenty. Using S3 or MinIO instead? See the{' '}
             <a className="link" href={DOCS} target="_blank" rel="noreferrer">deployment guide</a>.
           </p>
         </Step>
-        <Step n={2} title="Enter where it is">
-          <form className="flex flex-wrap gap-2 items-center" onSubmit={generate}>
-            <input className="input w-48" aria-label="NFS server" placeholder="NFS server, e.g. 192.168.1.10"
-                   value={server} onChange={(e) => setServer(e.target.value)} />
-            <input className="input flex-1 min-w-56" aria-label="Export path" placeholder="Export path, e.g. /volume1/flink-savepoints"
-                   value={exportPath} onChange={(e) => setExportPath(e.target.value)} />
-            <button className="btn-secondary" disabled={!server.trim() || !exportPath.trim() || busy}>
-              {busy ? 'Generating…' : 'Generate'}
-            </button>
-          </form>
-          <p className="text-[11px] text-slate-500">
-            Not sure of the export path? <code className="mono">showmount -e &lt;NFS server&gt;</code> lists it.
-          </p>
+        <Step n={2} title="Choose it">
+          <ShareChooser hosts={hosts} onChosen={setFiles} />
         </Step>
-        {files && (
-          <>
-            <Step n={3} title="Stop the jobs on each cluster you are changing, with their state saved">
-              <p className="text-[12px] text-slate-600">
-                Applying the file restarts that cluster. Savepoints taken before stay where they
-                are and still work for resuming on the same cluster. A cluster that already
-                saves to the shared folder needs nothing.
-              </p>
-            </Step>
-            <Step n={4} title="On each machine, save this as docker-compose.override.yml next to docker-compose.yml">
-              <div className="flex flex-wrap gap-2 text-[12px]">
-                {[['mars', 'The MARS machine'], ['other', 'Another machine']].map(([key, label]) => (
-                  <button key={key} type="button" aria-pressed={machine === key} onClick={() => setMachine(key)}
-                          className={`px-2.5 py-1 rounded-md border ${machine === key
-                            ? 'border-accent-400 bg-accent-50 text-slate-900' : 'border-slate-200 text-slate-600'}`}>
-                    {label}
-                  </button>
-                ))}
-                {machine === 'mars' && (
-                  <label className="flex items-center gap-1.5 text-slate-600 ml-1">
-                    <input type="checkbox" checked={withSecond} onChange={(e) => setWithSecond(e.target.checked)} />
-                    It also runs the second cluster (the second-target profile)
-                  </label>
-                )}
-              </div>
-              <Copyable tall>{file}</Copyable>
-            </Step>
-            <Step n={5} title="Apply it, then resume the jobs">
-              <Copyable>{file.match(/docker compose up -d .*/)?.[0] || 'docker compose up -d'}</Copyable>
-            </Step>
-          </>
-        )}
-        <Step n={files ? 6 : 3} title="Check it">
+        <Step n={3} title={todo.length ? 'Point each cluster at it' : 'Point each cluster at it (done)'}>
+          <div className="space-y-2">
+            {pairTargets.map((t) => (
+              <ClusterTodo key={t.name} target={t} location={locations.find((l) => l.name === t.name)} files={files} />
+            ))}
+          </div>
+        </Step>
+        <Step n={4} title="Check that both clusters see the same folder">
           <CheckStep pair={pair} onDone={onDone} />
         </Step>
       </ol>
@@ -223,7 +290,8 @@ function OffGuide({ moves, jobCount, onDone }) {
 }
 
 /** The guide for one cluster, opened from its card. */
-export function JobMovesGuide({ mode, moves, locations, target, onClose, onChanged }) {
+export function JobMovesGuide({ mode, moves, locations, targets, onClose, onChanged }) {
+  const target = targets.find((t) => t.name === moves.cluster)
   const titles = {
     setup: `Set up job moves between ${moves.default} and ${moves.cluster}`,
     check: `Check job moves between ${moves.default} and ${moves.cluster}`,
@@ -239,8 +307,7 @@ export function JobMovesGuide({ mode, moves, locations, target, onClose, onChang
       {mode === 'off' && <OffGuide moves={moves} jobCount={target?.job_count || 0} onDone={done} />}
       {mode === 'check' && <CheckStep pair={[moves.default, moves.cluster]} onDone={onChanged} />}
       {mode === 'setup' && (
-        <SetupGuide moves={moves} locations={locations} onDone={done}
-                    sameMachine={/jobmanager-b/.test(target?.flink_rest_url || '')} />
+        <SetupGuide moves={moves} locations={locations} targets={targets} onDone={done} />
       )}
     </div>
   )

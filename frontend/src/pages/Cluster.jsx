@@ -250,7 +250,7 @@ export default function Cluster() {
           mode={guide.mode}
           moves={storage.moves.find((m) => m.cluster === guide.cluster)}
           locations={storage.clusters}
-          target={targets.find((t) => t.name === guide.cluster)}
+          targets={targets}
           onClose={() => setGuide(null)}
           onChanged={loadStorage}
         />

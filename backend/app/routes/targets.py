@@ -19,12 +19,13 @@ from ..cluster_setup import (
 )
 from ..cluster_setup import guide as cluster_setup_guide
 from ..cluster_setup import savepoint_override
-from .. import shared_storage
+from .. import nfs, shared_storage
 from ..models import Job, Target
 from ..schemas import (
     ClusterSetupOut,
     JobMovesOffIn,
     JobMovesOut,
+    NfsExportOut,
     StorageCheckIn,
     StorageCheckOut,
     StorageLocationOut,
@@ -185,6 +186,19 @@ def job_moves_off(
                 f"and resume."))
     shared_storage.forget([default.name, body.cluster])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/storage/exports", response_model=list[NfsExportOut])
+async def nfs_exports(
+    server: str = Query(..., min_length=1, max_length=253, pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]*$"),
+    _: Principal = Depends(require_admin),
+) -> list[NfsExportOut]:
+    """The folders an NFS server shares, to pick from instead of typing a path."""
+    try:
+        found = await asyncio.to_thread(nfs.exports, server)
+    except nfs.NfsError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not list the shares on {server}: {exc}") from exc
+    return [NfsExportOut(name=e.name, path=e.path, clients=e.clients) for e in found]
 
 
 @router.get("/storage/setup", response_model=StorageSetupOut)

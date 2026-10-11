@@ -120,12 +120,16 @@ with sync_playwright() as pw:
     expect(page.get_by_text('Not set up')).to_be_visible()
     page.get_by_role('button',name='Set up').click()
     expect(page.get_by_role('heading',name='Set up job moves between default and mars-b')).to_be_visible()
-    page.get_by_label('NFS server').fill('192.168.1.10')
-    page.get_by_label('Export path').fill('/volume1/flink-savepoints')
-    page.get_by_role('button',name='Generate').click()
+    # The cluster already on the share needs nothing; the other gets its file once a share is picked.
+    expect(page.get_by_text('already saves to a shared folder. Nothing to do here.')).to_be_visible()
+    page.get_by_label('NFS server').fill('192.168.10.10')
+    page.get_by_role('button',name='Find shared folders').click()
+    # The share that allows mars-b's machine comes first.
+    expect(page.get_by_role('radio').first).to_be_visible()
+    assert 'mars.savepoints' in page.locator('fieldset label').first.inner_text()
+    page.get_by_role('radio').first.check()
     expect(page.get_by_text('docker compose up -d jobmanager taskmanager').first).to_be_visible()
-    page.get_by_label('It also runs the second cluster (the second-target profile)').check()
-    expect(page.get_by_text('docker compose up -d jobmanager taskmanager jobmanager-b taskmanager-b').first).to_be_visible()
+    expect(page.get_by_text('runs on the machine at 192.168.10.13 and saves to its own disk.')).to_be_visible()
     page.get_by_role('button',name='Check',exact=True).click()
     expect(page.get_by_role('button',name='Check',exact=True)).to_be_enabled()
     assert any(m=='POST' and p=='/api/targets/storage/check' for m,p,_ in writes), 'the check was not requested'
