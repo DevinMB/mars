@@ -150,10 +150,11 @@ async def _latest(c: httpx.AsyncClient, repo: str, channel: str) -> Latest:
                   published_at=d.get("published_at"), url=d["html_url"])
 
 
-# The files a Flink image is built from. Most commits change only the console, docs
-# or CI; counting those as Flink updates would ask for a maintenance window that
-# changes nothing.
-FLINK_PATHS = ("flink",)
+# The files the Flink image is built from: its Dockerfile, and the pin naming its
+# connector JARs. Most commits change only the console, docs or CI, and flink/conf
+# is mounted from the checkout rather than built in; counting any of those as a
+# Flink update would ask for a maintenance window that changes nothing.
+FLINK_PATHS = ("flink/Dockerfile", "flink/connectors.image")
 
 
 async def _touching(c: httpx.AsyncClient, repo: str, latest: str, paths: tuple[str, ...]) -> set[str]:

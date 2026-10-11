@@ -41,9 +41,11 @@ def github(*, releases=True, tags=True, compare_status=200, auth_status=None, ah
             return httpx.Response(200, json=commit(NEWEST, "Release v0.2.0"))
         if p.endswith("/tags"):
             return httpx.Response(200, json=[{"name": "v0.1.0", "commit": {"sha": NEWEST}}] if tags else [])
-        if p.endswith("/commits") and request.url.params.get("path") == "flink":
+        if p.endswith("/commits") and request.url.params.get("path") == "flink/Dockerfile":
             # Only the first change touched the Flink image's files.
             return httpx.Response(200, json=[{"sha": "c0" + "0" * 38}])
+        if p.endswith("/commits") and request.url.params.get("path"):
+            return httpx.Response(200, json=[])
         if "/compare/" in p:
             if compare_status != 200:
                 return httpx.Response(compare_status, json={})
