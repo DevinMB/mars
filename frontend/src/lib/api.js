@@ -148,6 +148,8 @@ export const api = {
     request(`/api/jobs/${encodeURIComponent(name)}/run?from_savepoint=${encodeURIComponent(fromSavepoint)}`,
             { method: 'POST' }),
   cancelJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
+  moveOptions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/move`),
+  moveJob: (name, cluster) => request(`/api/jobs/${encodeURIComponent(name)}/move`, { method: 'POST', body: { cluster } }),
   stopJob: (name, drain = false) =>
     request(`/api/jobs/${encodeURIComponent(name)}/stop?drain=${drain}`, { method: 'POST' }),
   activity: (limit = 200) => request(`/api/jobs/activity?limit=${limit}`),

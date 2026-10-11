@@ -688,3 +688,19 @@ class NfsExportOut(BaseModel):
     name: str
     path: str
     clients: list[str]
+
+
+class MoveOptionOut(BaseModel):
+    cluster: str
+    ok: bool
+    reasons: list[str] = []
+
+
+class MoveIn(BaseModel):
+    cluster: str = Field(min_length=1, max_length=64)
+
+
+class MoveOut(BaseModel):
+    moved: bool
+    summary: str
+    savepoint: str | None = None

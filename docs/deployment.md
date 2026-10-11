@@ -189,6 +189,21 @@ cluster defaults to `file:///flink-state/savepoints`, each on its own disk). It
 needs one free task slot on each cluster for a few seconds, and leaves a few-byte
 `mars-storage-check` folder behind.
 
+### Moving a job
+
+On a job's page, **More → Move to cluster…** lists the other clusters and, for
+each, whether the job can go there now: job moves ready between the two, the
+destination reachable with a free task slot, and the same Flink version. Nothing
+is stopped until those pass. A running job is then stopped with a savepoint,
+pointed at the destination and resumed there from that savepoint; if the
+destination cannot start it, MARS points it back and resumes it where it was,
+from the same savepoint. A stopped job only changes cluster, and only if the
+state it would resume from is on the shared storage.
+
+Changing **Runs on** in the editor is refused while a job is running: MARS would
+then ask the new cluster about it, hear that it does not exist, and mark it
+failed while it kept running on the old one.
+
 ### On an NFS share
 
 1. Create a share every cluster's machine can reach, allowing each one's IP.
