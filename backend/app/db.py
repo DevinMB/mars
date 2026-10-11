@@ -26,7 +26,11 @@ def _build_engine() -> Engine:
         settings().data_dir.mkdir(parents=True, exist_ok=True)
         eng = create_engine(
             url,
-            connect_args={"check_same_thread": False, "timeout": 30},
+            # How long a write waits for the lock. The wait blocks the thread, and
+            # for code on the event loop that is the whole console, so it is kept
+            # short: writes here take milliseconds, and none is held open across
+            # a network call (see JobSubmitter._submit).
+            connect_args={"check_same_thread": False, "timeout": 5},
             pool_pre_ping=True,
         )
 

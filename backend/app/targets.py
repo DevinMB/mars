@@ -63,7 +63,9 @@ class TargetRegistry:
             )
             db.add(target)
         target.is_default = True
-        db.flush()
+        # Committed, not flushed: callers go on to await the cluster, and an open
+        # write would hold SQLite's only write lock meanwhile.
+        db.commit()
         log.info("Default execution target is '%s' (%s)", target.name, target.flink_rest_url)
         return target
 

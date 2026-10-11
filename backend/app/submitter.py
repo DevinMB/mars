@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -54,6 +54,10 @@ def _validation_action(statement: str) -> str:
     if re.match(r"^CREATE\s+(?:TEMPORARY\s+)?(?:VIEW|(?:SYSTEM\s+)?FUNCTION)\b|^(SET|USE)\b", text, re.I):
         return "setup"
     raise SubmissionError("This script contains a statement that cannot safely run during validation.")
+
+
+# A submission takes seconds; one still going after this never will.
+STALE_SUBMISSION = timedelta(minutes=10)
 
 
 class SubmissionError(RuntimeError):
@@ -174,8 +178,32 @@ class JobSubmitter:
             restored_from=savepoint_path or None,
         )
         db.add(run)
-        db.flush()
+        # Committed before anything is awaited. SQLite allows one writer, and a
+        # write held open across the calls to Flink below blocked every other
+        # writer -- the scheduler's reconcile first. Its wait for the lock is a
+        # blocking call on the event loop, so the whole console froze until the
+        # wait timed out, the submission included. The SUBMITTING run also stops a
+        # second click from starting a duplicate meanwhile.
+        db.commit()
 
+        try:
+            return await self._start(db, job, run, statements, savepoint_path)
+        except SubmissionError:
+            raise
+        except Exception as exc:
+            # Anything unexpected, such as the gateway being unreachable: the run
+            # is already recorded, so it has to end failed rather than be left
+            # SUBMITTING, which reads as active and would block running it again.
+            summary = self._store.redact(db, f"Could not start the job: {exc}")
+            db.rollback()
+            _fail(run, summary[:500])
+            db.commit()
+            raise SubmissionError(summary) from exc
+
+    async def _start(
+        self, db: Session, job: Job, run: JobRun, statements: list[str],
+        savepoint_path: str | None,
+    ) -> JobRun:
         # Ask the cluster, not just our own records. MARS refuses to start a job
         # it believes is running, but that belief is a row in a database: if it
         # goes stale -- a cluster briefly unreachable, a reconcile against the
@@ -299,6 +327,28 @@ class JobSubmitter:
         run.ended_at = utcnow()
         db.commit()
         return location
+
+    @staticmethod
+    def expire_stale_submissions(db: Session, older_than: timedelta = STALE_SUBMISSION) -> int:
+        """Fails runs left SUBMITTING with no Flink job, e.g. by a console restart
+        mid-submission. Left alone, they would read as active forever and keep the
+        supervisor from ever starting the job again."""
+        cutoff = utcnow() - older_than
+        stale = (
+            db.query(JobRun)
+            .filter(JobRun.state == RunState.SUBMITTING.value, JobRun.flink_job_id.is_(None))
+            .all()
+        )
+        n = 0
+        for run in stale:
+            started = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=timezone.utc)
+            if started < cutoff:
+                _fail(run, "The submission never finished; the console was probably restarted "
+                           "while starting this job. Nothing is running for it.")
+                n += 1
+        if n:
+            db.commit()
+        return n
 
     async def refresh_states(self, db: Session, target_name: str | None = ...) -> int:
         """Reconciles MARS's view of runs with what this cluster reports.
