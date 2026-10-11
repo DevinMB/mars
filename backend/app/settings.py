@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # Flink's state volume, mounted read-only, to check restore points exist.
     flink_state_dir: str = "/flink-state"
 
+    # --- savepoint retention ---
+    # Neither Flink nor MARS deleted old savepoints, so they piled up for good.
+    # The newest this many per job are kept, plus anything a job would resume
+    # from; older ones are removed through Flink. 0 keeps every savepoint.
+    savepoints_keep: int = 3
+
     # --- storage ---
     # SQLite by default so a fresh deploy needs no database container. Point
     # DATABASE_URL at Postgres for anything with more than one operator.

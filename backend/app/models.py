@@ -335,7 +335,7 @@ class Job(Base, TimestampMixin):
         the wrong way round.
         """
         for run in self.runs:
-            if run.savepoint_path:
+            if run.savepoint_path and not run.savepoint_removed_at:
                 return run.savepoint_path
         return None
 
@@ -364,7 +364,7 @@ class Job(Base, TimestampMixin):
         }
         points: list[RestorePoint] = []
         for run in self.runs:
-            if run.savepoint_path:
+            if run.savepoint_path and not run.savepoint_removed_at:
                 points.append(RestorePoint(
                     run.savepoint_path, "savepoint", _aware(run.ended_at or run.started_at)
                 ))
@@ -418,6 +418,9 @@ class JobRun(Base):
     # empty state: a half-finished session window, a running count, a join buffer
     # are all simply gone. This is what makes a restart safe.
     savepoint_path: Mapped[str | None] = mapped_column(String(1024))
+    # When retention removed that savepoint. The path stays, for history; a
+    # removed savepoint is never offered as somewhere to resume from.
+    savepoint_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The newest checkpoint Flink completed for this run, recorded on every
     # reconcile while the cluster still knows the job. Flink forgets a job when
     # its JobManager restarts without HA, and with it the only record of where

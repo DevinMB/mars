@@ -92,6 +92,7 @@ def _run_out(run: JobRun | None) -> RunOut | None:
         triggered_by_schedule=run.triggered_by_schedule,
         submitted_by=run.submitted_by,
         savepoint_path=run.savepoint_path,
+        savepoint_removed_at=run.savepoint_removed_at,
         restored_from=run.restored_from,
     )
 
@@ -769,6 +770,8 @@ def list_savepoints(
             "path": r.savepoint_path,
             "taken_at": r.ended_at,
             "job_version": r.job_version,
+            # Removed by retention: kept here for history, no longer usable.
+            "removed_at": r.savepoint_removed_at,
         }
         for r in job.runs
         if r.savepoint_path

@@ -18,6 +18,8 @@ This is a direction of travel, not a release schedule.
   focus on one flow or cluster.
 - A consumer group of its own for each job reading a Kafka table, unless one is set.
 - Scheduled restore drills that check backups actually restore (opt-in).
+- Savepoint retention: the newest few per job are kept and older ones removed through
+  Flink, never the one a job would resume from.
 
 ## Next
 
