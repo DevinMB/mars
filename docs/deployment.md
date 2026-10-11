@@ -145,6 +145,40 @@ Changing Flink configuration restarts the JobManager, so plan it as maintenance:
    not pick up changed file contents.
 4. **Resume** each job and confirm it restored from the savepoint taken in step 1.
 
+## Restore drill
+
+A backup you have never restored is a guess. MARS can check its own on a schedule.
+It is off unless enabled:
+
+```bash
+MARS_RESTORE_DRILL=true
+MARS_RESTORE_DRILL_SCHEDULE=0 6 1 1,4,7,10 *      # default: quarterly, 06:00 UTC
+MARS_RESTORE_DRILL_BACKUPS_DIR=/path/to/backups   # mounted read-only at /backups
+```
+
+Each run restores the newest `.tgz` or `.tar.gz` in the backups directory (each
+holding `mars.db` and `secret.key`) into a scratch directory and checks that:
+
+- the database opens and its schema is one this release can upgrade from;
+- its jobs, catalog entries and users match the live console;
+- every secret decrypts with the key in the backup;
+- every running job's restore point exists in Flink's state volume.
+
+With no archives in the directory, it tests a fresh snapshot of the live database
+instead, which shows the data can be backed up but not that your backups restore.
+The archives must be readable by the console's user (uid 10001).
+
+Nothing is written outside the scratch directory and nothing touches the network.
+Run it on demand with `docker compose exec console python -m app.admin restore-drill`.
+The result is published as `mars_restore_drill_success` (1 or 0) and
+`mars_restore_drill_last_run_timestamp_seconds`; both are absent while the drill is
+off. To be told when a drill fails, alert on:
+
+```yaml
+- alert: MarsRestoreDrillFailed
+  expr: mars_restore_drill_success == 0
+```
+
 ## Monitoring
 
 `/healthz` checks the console process; `/readyz` checks default Flink reachability.
