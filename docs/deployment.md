@@ -200,6 +200,12 @@ destination cannot start it, MARS points it back and resumes it where it was,
 from the same savepoint. A stopped job only changes cluster, and only if the
 state it would resume from is on the shared storage.
 
+To move several, tick them on the Jobs page (the box in the header selects every
+job shown, so search or filter first) and choose **Move to cluster…** in the bar
+that appears. They move one at a time with each one's result shown, and the run
+stops at the first job that cannot move, which is left where it was. The same bar
+stops or resumes the selected jobs.
+
 Changing **Runs on** in the editor is refused while a job is running: MARS would
 then ask the new cluster about it, hear that it does not exist, and mark it
 failed while it kept running on the old one.
