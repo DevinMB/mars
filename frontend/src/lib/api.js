@@ -122,6 +122,10 @@ export const api = {
   checkForUpdates: () => request('/api/system/version/check', { method: 'POST' }),
   clusterSetup: (slots = 8) => request(`/api/targets/setup?slots=${encodeURIComponent(slots)}`),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),
+  savepointStorage: () => request('/api/targets/storage'),
+  checkSavepointStorage: (a, b) => request('/api/targets/storage/check', { method: 'POST', body: { a, b } }),
+  savepointStorageSetup: (server, exportPath) =>
+    request(`/api/targets/storage/setup?server=${encodeURIComponent(server)}&export=${encodeURIComponent(exportPath)}`),
   probeTarget: (flink_rest_url, gateway_url) =>
     request('/api/targets/probe', { method: 'POST', body: { flink_rest_url, gateway_url } }),
   updateTarget: (name, body) => request(`/api/targets/${encodeURIComponent(name)}`, { method: 'PUT', body }),

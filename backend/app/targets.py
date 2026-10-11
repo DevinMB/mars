@@ -109,6 +109,10 @@ class TargetRegistry:
     def for_job_submitter(self, db: Session, job: Job) -> JobSubmitter:
         return self.submitter(self.for_job(db, job))
 
+    def gateway(self, target: Target, timeout: float = 90.0) -> SqlGatewayClient:
+        """A gateway client of its own, for work that waits on a whole job."""
+        return SqlGatewayClient(target.gateway_url, timeout=timeout)
+
     def all_enabled(self, db: Session) -> list[Target]:
         return list(db.scalars(select(Target).where(Target.enabled.is_(True)).order_by(Target.name)))
 

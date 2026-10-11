@@ -64,7 +64,7 @@ with sync_playwright() as pw:
                 overflow=page.evaluate('document.documentElement.scrollWidth > innerWidth + 1')
                 print(theme,width,path,'overflow' if overflow else 'ok',flush=True)
                 if overflow:failures.append(f'Overflow {theme} {width} {path}')
-                if width in [1440,390] and label in ['jobs','editor','accounts','catalog','ai','pipeline']:
+                if width in [1440,390] and label in ['jobs','editor','accounts','catalog','ai','pipeline','cluster']:
                     page.screenshot(path=f'{SCREENSHOTS}/{label}-{theme}-{width}.png',full_page=True)
     page.set_viewport_size({'width':1440,'height':1000})
     for path in ['/settings/accounts','/settings/ai','/settings/registry','/settings/backup','/settings/secrets','/activity','/cluster']:
@@ -114,6 +114,19 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Show only what connects to this').click()
     expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    # Savepoint storage: where each cluster saves, the check, and the setup steps.
+    visit('/cluster')
+    expect(page.get_by_text('Both name the same path, but it is a different disk on each.')).to_be_visible()
+    page.get_by_role('button',name='Check again').click()
+    expect(page.get_by_role('button',name='Check again')).to_be_enabled()
+    assert any(m=='POST' and p=='/api/targets/storage/check' for m,p,_ in writes), 'the check was not requested'
+    page.get_by_role('button',name='How to share savepoint storage').click()
+    page.get_by_label('NFS server').fill('192.168.1.10')
+    page.get_by_label('Export path').fill('/volume1/flink-savepoints')
+    page.get_by_role('button',name='Generate').click()
+    expect(page.get_by_text('docker compose up -d jobmanager taskmanager').first).to_be_visible()
+    page.get_by_label('It also runs the second cluster (the second-target profile)').check()
+    expect(page.get_by_text('docker compose up -d jobmanager taskmanager jobmanager-b taskmanager-b').first).to_be_visible()
     # Adding a cluster: the guide fills in the form for either place it can run.
     visit('/cluster')
     page.get_by_role('button',name='Add cluster').click()
