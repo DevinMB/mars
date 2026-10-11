@@ -69,7 +69,7 @@ def install(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(restore_drill, "settings", lambda: cfg)
     monkeypatch.setattr(metrics, "settings", lambda: cfg)
-    monkeypatch.setattr(restore_drill, "_restore_point_paths", lambda: [])
+    monkeypatch.setattr(restore_drill, "_restore_point_paths", lambda: ([], 0))
     return SimpleNamespace(data=data, backups=backups, state=state, cfg=cfg, root=tmp_path)
 
 
@@ -140,10 +140,10 @@ def test_archive_cannot_write_outside_its_directory(install):
 def test_missing_restore_point_fails(install, monkeypatch):
     (install.state / "savepoints" / "sp-1").mkdir(parents=True)
     (install.state / "savepoints" / "sp-1" / "_metadata").write_bytes(b"m")
-    monkeypatch.setattr(restore_drill, "_restore_point_paths", lambda: [
+    monkeypatch.setattr(restore_drill, "_restore_point_paths", lambda: ([
         ("a", "file:/flink-state/savepoints/sp-1"),
         ("b", "file:/flink-state/checkpoints/x/chk-9"),
-    ])
+    ], 0))
     result = restore_drill.run(now=NOW)
     assert failed(result)["every running job's restore point is on disk"] == "1/2; missing: b"
 
@@ -180,3 +180,33 @@ def test_metrics_report_a_failure(install, db):
     metrics.refresh(db, now=NOW)
     assert sample("mars_restore_drill_success", "archive no-key.tgz") == 0
     assert sample("mars_restore_drill_last_run_timestamp_seconds", "archive no-key.tgz") == NOW.timestamp()
+
+
+def test_jobs_on_other_clusters_are_skipped_and_said_so(db, monkeypatch):
+    """A job on a remote cluster keeps its state on that machine, not here."""
+    from app.models import JobRun, RunState, Target
+
+    monkeypatch.setattr(restore_drill, "settings",
+                        lambda: SimpleNamespace(flink_rest_url="http://jobmanager:8081"))
+
+    @__import__("contextlib").contextmanager
+    def scope():
+        yield db
+
+    monkeypatch.setattr(restore_drill, "session_scope", scope)
+    db.add(Target(name="default", flink_rest_url="http://jobmanager:8081",
+                  gateway_url="http://sql-gateway:8083", is_default=True))
+    db.add(Target(name="mars-b", flink_rest_url="http://192.168.10.13:8081",
+                  gateway_url="http://192.168.10.13:8083"))
+    for name, target in (("here", None), ("named-here", "default"), ("there", "mars-b")):
+        job = Job(name=name, sql_text="s", catalog_refs="[]", target_name=target)
+        db.add(job)
+        db.flush()
+        db.add(JobRun(job_id=job.id, job_version=1, state=RunState.RUNNING.value,
+                      started_at=NOW, checkpoint_path=f"file:/flink-state/checkpoints/{name}/chk-1",
+                      checkpoint_at=NOW))
+    db.commit()
+
+    local, elsewhere = restore_drill._restore_point_paths()
+    assert [n for n, _ in local] == ["here", "named-here"]
+    assert elsewhere == 1

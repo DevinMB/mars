@@ -162,7 +162,9 @@ holding `mars.db` and `secret.key`) into a scratch directory and checks that:
 - the database opens and its schema is one this release can upgrade from;
 - its jobs, catalog entries and users match the live console;
 - every secret decrypts with the key in the backup;
-- every running job's restore point exists in Flink's state volume.
+- every running job's restore point exists in Flink's state volume. Only jobs on the
+  local cluster are checked; jobs on other clusters keep their state on those
+  machines and are reported as not checked.
 
 With no archives in the directory, it tests a fresh snapshot of the live database
 instead, which shows the data can be backed up but not that your backups restore.
