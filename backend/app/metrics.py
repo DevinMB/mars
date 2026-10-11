@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from prometheus_client import Counter, Gauge
 from sqlalchemy.orm import Session
 
+from . import restore_drill
 from .models import Job, RunState, _aware
+from .settings import settings
 
 JOBS_RUNNING = Gauge("mars_jobs_running", "Jobs MARS believes are running")
 JOBS_FAILED = Gauge("mars_jobs_failed", "Jobs whose most recent run failed")
@@ -34,6 +36,18 @@ SUPERVISOR_RESUBMISSIONS = Counter(
     ["mars_job"],
 )
 SUBMISSIONS = Counter("mars_job_submissions_total", "Job submissions", ["outcome"])
+# Labelled so they export nothing until set: an unlabelled gauge reports 0 from
+# the start, which would read as a failed drill on every install with it off.
+RESTORE_DRILL_SUCCESS = Gauge(
+    "mars_restore_drill_success",
+    "1 if the last restore drill passed, 0 if it failed. Absent when the drill is off.",
+    ["source"],
+)
+RESTORE_DRILL_LAST_RUN = Gauge(
+    "mars_restore_drill_last_run_timestamp_seconds",
+    "When the last restore drill ran. Absent when the drill is off.",
+    ["source"],
+)
 
 
 def refresh(db: Session, now: datetime | None = None) -> None:
@@ -66,3 +80,11 @@ def refresh(db: Session, now: datetime | None = None) -> None:
     RESTORE_POINT_AGE.clear()
     for name, age in ages.items():
         RESTORE_POINT_AGE.labels(mars_job=name).set(age)
+
+    RESTORE_DRILL_SUCCESS.clear()
+    RESTORE_DRILL_LAST_RUN.clear()
+    last = restore_drill.last_result() if settings().restore_drill else None
+    if last is not None:
+        RESTORE_DRILL_SUCCESS.labels(source=last.source).set(1 if last.passed else 0)
+        RESTORE_DRILL_LAST_RUN.labels(source=last.source).set(
+            datetime.fromisoformat(last.ran_at).timestamp())
