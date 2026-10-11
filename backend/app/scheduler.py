@@ -118,6 +118,7 @@ class Scheduler:
         cluster its job names, and asking the wrong cluster returns "no such job",
         which would mark a healthy run as lost.
         """
+        self._submitter.expire_stale_submissions(db)
         if self._targets is None:
             await self._submitter.refresh_states(db)
             return
