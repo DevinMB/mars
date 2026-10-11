@@ -115,6 +115,22 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Show only what connects to this').click()
     expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    # Bulk actions: tick jobs (or all shown), then move them one at a time.
+    visit('/jobs')
+    page.get_by_role('checkbox',name='Select all shown jobs').check()
+    total=len(fixtures['/api/jobs'])
+    expect(page.get_by_text(f'{total} selected')).to_be_visible()
+    page.get_by_role('checkbox',name='Select '+job).uncheck()
+    expect(page.get_by_role('button',name='Clear selection')).to_have_count(0)
+    page.get_by_role('checkbox',name='Select '+job).check()
+    page.get_by_role('button',name='Move to cluster…').click()
+    page.get_by_role('radio',name='mars-b').check()
+    moves_before=sum(1 for m,p,_ in writes if p.endswith('/move'))
+    page.get_by_role('button',name=f'Move {total} to mars-b').click()
+    expect(page.get_by_role('button',name='Done')).to_be_visible()
+    assert sum(1 for m,p,_ in writes if p.endswith('/move'))-moves_before==total, 'each selected job is moved once'
+    page.get_by_role('button',name='Done').click()
+    expect(page.get_by_text('selected',exact=False)).to_have_count(0)
     # Moving a job: from the job's menu, to a cluster MARS says is ready.
     visit('/jobs/'+job)
     page.get_by_role('button',name='More').click()

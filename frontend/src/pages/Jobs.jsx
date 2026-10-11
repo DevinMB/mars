@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import { relativeTime, duration, millis } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
+import BulkJobs from '../components/BulkJobs'
 
 const COLUMNS = 6
 
@@ -52,14 +53,14 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
 }
 
 /** The band above each cluster's jobs when the list is grouped. */
-function ClusterHeading({ target, jobs }) {
+function ClusterHeading({ target, jobs, cols }) {
   const running = jobs.filter((j) => j.latest_run?.state === 'running').length
   const unhealthy = jobs.filter((j) =>
     ['failed', 'restarting'].includes(j.latest_run?.state)).length
 
   return (
     <tr className="bg-slate-50/80 border-y border-slate-200">
-      <td colSpan={COLUMNS} className="px-4 py-2">
+      <td colSpan={cols} className="px-4 py-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-slate-900">{target.name}</span>
           {target.is_default && <Badge tone="slate">default</Badge>}
@@ -106,10 +107,15 @@ function Staleness({ ms }) {
   )
 }
 
-function JobRow({ job, showCluster }) {
+function JobRow({ job, showCluster, selectable, checked, onToggle }) {
   const run = job.latest_run
   return (
-    <tr className="hover:bg-slate-50/60">
+    <tr className={checked ? 'bg-accent-50/60' : 'hover:bg-slate-50/60'}>
+      {selectable && (
+        <td className="w-8 pr-0!">
+          <input type="checkbox" aria-label={`Select ${job.name}`} checked={checked} onChange={() => onToggle(job.name)} />
+        </td>
+      )}
       <td>
         <Link to={`/jobs/${encodeURIComponent(job.name)}`}
               className="block max-w-48 sm:max-w-md wrap-break-word font-medium text-slate-900 hover:text-brand-700">
@@ -165,6 +171,10 @@ export default function Jobs() {
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
   const [cluster, setCluster] = useState('all')
+  // Jobs ticked for a bulk action, by name; and which action's panel is open.
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulk, setBulk] = useState(null)
+  const allBox = useRef(null)
 
   useEffect(() => {
     let alive = true
@@ -224,8 +234,31 @@ export default function Jobs() {
     return out
   }, [jobs, defaultName])
 
+  const toggle = (name) => setSelected((prev) => {
+    const next = new Set(prev)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    return next
+  })
+  // Select all means all that is shown: search or filter first, then select.
+  const shownSelected = shown.filter((j) => selected.has(j.name)).length
+  const allShown = shown.length > 0 && shownSelected === shown.length
+  useEffect(() => {
+    if (allBox.current) allBox.current.indeterminate = shownSelected > 0 && !allShown
+  })
+  const toggleAll = () => setSelected((prev) => {
+    const next = new Set(prev)
+    for (const j of shown) { if (allShown) next.delete(j.name); else next.add(j.name) }
+    return next
+  })
+
   if (error && !jobs) return <Alert level="danger" title="Could not load jobs">{error}</Alert>
   if (!jobs) return <Spinner label="Loading jobs" />
+
+  // Jobs deleted since they were ticked simply drop out.
+  const chosen = jobs.filter((j) => selected.has(j.name))
+  const selectable = canWrite
+  const cols = COLUMNS + (selectable ? 1 : 0)
+  const rowProps = (job) => ({ selectable, checked: selected.has(job.name), onToggle: toggle })
 
   // Nothing matching is one answer, not an empty band under every cluster.
   const grouped = multi && cluster === 'all' && shown.length > 0
@@ -273,6 +306,23 @@ export default function Jobs() {
                      onChange={setCluster} total={jobs.length} />
       )}
 
+      {selectable && chosen.length > 0 && !bulk && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent-200 bg-accent-50 px-3 py-2 text-[13px]">
+          <span className="text-slate-900 font-medium">{chosen.length} selected</span>
+          <span className="flex flex-wrap gap-2 ml-1">
+            {multi && <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('move')}>Move to cluster…</button>}
+            <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('stop')}>Stop and save state</button>
+            <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('resume')}>Resume</button>
+          </span>
+          <button type="button" className="ml-auto link text-[12px]" onClick={() => setSelected(new Set())}>Clear selection</button>
+        </div>
+      )}
+      {bulk && (
+        <BulkJobs key={bulk} mode={bulk} jobs={chosen} targets={targets} defaultName={defaultName}
+                  onChanged={() => setReload((n) => n + 1)}
+                  onClose={(acted) => { setBulk(null); if (acted) setSelected(new Set()) }} />
+      )}
+
       {jobs.length === 0 ? (
         <EmptyState
           title="No jobs yet"
@@ -286,6 +336,12 @@ export default function Jobs() {
           <table className="tbl">
             <thead>
               <tr>
+                {selectable && (
+                  <th className="w-8 pr-0!">
+                    <input ref={allBox} type="checkbox" aria-label="Select all shown jobs"
+                           checked={allShown} onChange={toggleAll} disabled={!shown.length} />
+                  </th>
+                )}
                 <th>Job</th><th>State</th>{!grouped && <th>Cluster</th>}<th>Type</th>
                 <th>Last run</th><th>Duration</th><th>Schedule</th>
               </tr>
@@ -295,15 +351,15 @@ export default function Jobs() {
               <>
                 {groups.map(([target, rows]) => (
                   <tbody key={target.name}>
-                    <ClusterHeading target={target} jobs={rows} />
+                    <ClusterHeading target={target} jobs={rows} cols={cols} />
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={COLUMNS} className="px-4 py-4 text-sm text-slate-500">
+                        <td colSpan={cols} className="px-4 py-4 text-sm text-slate-500">
                           No jobs on this cluster.
                         </td>
                       </tr>
                     ) : (
-                      rows.map((job) => <JobRow key={job.id} job={job} showCluster={false} />)
+                      rows.map((job) => <JobRow key={job.id} job={job} showCluster={false} {...rowProps(job)} />)
                     )}
                   </tbody>
                 ))}
@@ -311,7 +367,7 @@ export default function Jobs() {
                 {orphans.length > 0 && (
                   <tbody>
                     <tr className="bg-amber-50/70 border-y border-amber-200">
-                      <td colSpan={COLUMNS} className="px-4 py-2">
+                      <td colSpan={cols} className="px-4 py-2">
                         <span className="font-medium text-amber-900">Unknown cluster</span>
                         <span className="ml-2 text-xs text-amber-800">
                           These jobs name a cluster that no longer exists, or one you
@@ -321,7 +377,7 @@ export default function Jobs() {
                       </td>
                     </tr>
                     {orphans.map((job) => (
-                      <JobRow key={job.id} job={job} showCluster={false} />
+                      <JobRow key={job.id} job={job} showCluster={false} {...rowProps(job)} />
                     ))}
                   </tbody>
                 )}
@@ -330,13 +386,13 @@ export default function Jobs() {
               <tbody>
                 {shown.length === 0 ? (
                   <tr>
-                    <td colSpan={grouped ? COLUMNS : COLUMNS + 1} className="px-4 py-8 text-sm text-slate-500 text-center">
+                    <td colSpan={cols + 1} className="px-4 py-8 text-sm text-slate-500 text-center">
                       No jobs match.
                     </td>
                   </tr>
                 ) : (
                   shown.map((job) => (
-                    <JobRow key={job.id} job={job} showCluster={!grouped} />
+                    <JobRow key={job.id} job={job} showCluster={!grouped} {...rowProps(job)} />
                   ))
                 )}
               </tbody>
