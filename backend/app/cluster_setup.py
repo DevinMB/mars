@@ -129,7 +129,8 @@ def render_remote_compose(
         "# Needs Docker Compose 2.23 or newer. Start it with this machine's own IP\n"
         "# address (hostname -I shows it), not the MARS machine's:\n"
         "#   TARGET_BIND_ADDRESS=<this machine's IP> docker compose up -d\n"
-        "# Only ports 8081 and 8083 need to be reachable, and only from the MARS\n"
-        "# console's machine. Neither is authenticated: keep them on a trusted network.\n"
+        "# MARS needs ports 8081 and 8083 from its own machine. 9249 (JobManager) and\n"
+        "# 9250 (TaskManager) serve Prometheus metrics for your monitoring. None is\n"
+        "# authenticated: keep them on a trusted network.\n"
     )
     return header + yaml.dump(compose, Dumper=_Dumper, sort_keys=False, width=100)
