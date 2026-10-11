@@ -129,6 +129,18 @@ def cmd_revoke_token(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_restore_drill(args: argparse.Namespace) -> int:
+    """Runs the restore drill now, whether or not it is scheduled, and records it."""
+    from . import restore_drill
+
+    result = restore_drill.run()
+    print(f"Restore drill: {result.source}")
+    for c in result.checks:
+        print(f"  {'ok  ' if c.ok else 'FAIL'}  {c.name}" + (f" ({c.detail})" if c.detail else ""))
+    print("PASSED" if result.passed else "FAILED")
+    return 0 if result.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m app.admin",
@@ -165,6 +177,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("revoke-token", help="Revoke API tokens by name")
     p.add_argument("--name", required=True)
     p.set_defaults(func=cmd_revoke_token)
+
+    sub.add_parser(
+        "restore-drill", help="Check now that the newest backup restores (see MARS_RESTORE_DRILL)",
+    ).set_defaults(func=cmd_restore_drill)
 
     args = parser.parse_args(argv)
     # Works against a database that has never been started by the app.

@@ -99,6 +99,10 @@ services:
       # Read-only view of the connector JARs, so the console can read the
       # manifests inside them and offer a form per connector.
       - ./flink/jars:/jars:ro,z
+      # Read-only, for the restore drill (off unless MARS_RESTORE_DRILL=true):
+      # Flink's state, to check restore points exist, and the backup archives.
+      - flink-state:/flink-state:ro
+      - ${MARS_RESTORE_DRILL_BACKUPS_DIR:-./backups}:/backups:ro,z
     environment:
       - TZ=${TZ:-UTC}
       - MARS_FLINK_REST_URL=http://jobmanager:8081
@@ -112,6 +116,9 @@ services:
       - MARS_SEED_EXAMPLES=${MARS_SEED_EXAMPLES:-true}
       # Shown when adding a cluster, so a new one runs this exact image.
       - MARS_FLINK_IMAGE=${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
+      # Scheduled check that backups restore; publishes mars_restore_drill_success.
+      - MARS_RESTORE_DRILL=${MARS_RESTORE_DRILL:-false}
+      - MARS_RESTORE_DRILL_SCHEDULE=${MARS_RESTORE_DRILL_SCHEDULE:-0 6 1 1,4,7,10 *}
     mem_limit: 512m
     cpus: 0.5
     healthcheck:

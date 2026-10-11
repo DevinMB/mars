@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     # adding a cluster, so a new one runs exactly the same image and connectors.
     flink_image: str = ""
 
+    # --- restore drill (off unless enabled) ---
+    # A scheduled check that backups can actually be restored. See restore_drill.py.
+    restore_drill: bool = False
+    restore_drill_schedule: str = "0 6 1 1,4,7,10 *"  # quarterly, 06:00 UTC
+    # Where backup archives are mounted. Empty or missing: test a fresh snapshot.
+    restore_drill_backups_dir: str = "/backups"
+    # Flink's state volume, mounted read-only, to check restore points exist.
+    flink_state_dir: str = "/flink-state"
+
     # --- storage ---
     # SQLite by default so a fresh deploy needs no database container. Point
     # DATABASE_URL at Postgres for anything with more than one operator.
