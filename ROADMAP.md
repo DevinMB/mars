@@ -24,6 +24,17 @@ This is a direction of travel, not a release schedule.
   window (the console updates without stopping jobs; Flink needs every job saved
   and resumed). The console only reports; it never updates itself, because that
   would require control of the host's container runtime.
+- **Guided cluster setup:** one name throughout ("cluster"), and an **Add cluster**
+  flow that starts with where it will run. On the same machine: one command, with
+  the form filled in. On another machine: a ready-to-copy compose file built from
+  the exact images the existing cluster runs. Then a connection test that explains
+  failures, a warning when clusters run different Flink versions, and a pointer to
+  moving a job onto the new cluster.
+- **Rolling cluster upgrades:** upgrade Flink or connectors without pausing every
+  job at once. A temporary second cluster starts on the new image, jobs move over
+  one at a time (savepoint, resume on the new cluster), and the old cluster stops.
+  Needs savepoint storage shared by both clusters and a move-job action. Each job
+  pauses for seconds instead of the whole pipeline for a maintenance window.
 - **Data flow:** treat catalog entries as tables rather than fixed sources or sinks.
   A Kafka topic is usually written by one job and read by others, so its role
   belongs to each job's use of it, not to the definition. MARS would derive who
