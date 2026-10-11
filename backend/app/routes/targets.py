@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -74,11 +74,13 @@ async def list_targets(
 
 @router.get("/setup", response_model=ClusterSetupOut)
 def cluster_setup(
+    # Task slots for a cluster on another machine: one per job it will run.
+    slots: int = Query(8, ge=1, le=64),
     _: Principal = Depends(require_admin),
     db: Session = Depends(get_session),
 ) -> ClusterSetupOut:
     """How to start a new cluster, on this machine or another, matching this one."""
-    g = cluster_setup_guide()
+    g = cluster_setup_guide(slots=slots)
     registered = db.scalar(
         select(Target).where(Target.flink_rest_url == SAME_MACHINE_REST)
     ) is not None

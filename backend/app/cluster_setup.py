@@ -16,6 +16,7 @@ on the other.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,7 +52,7 @@ def flink_image() -> str:
     return settings().flink_image or "mars/flink:0.1.0"
 
 
-def guide() -> SetupGuide:
+def guide(slots: int | None = None) -> SetupGuide:
     image = flink_image()
     pinned = "@sha256:" in image
     registry = image.split("/", 1)[0] if "." in image.split("/", 1)[0] else None
@@ -59,7 +60,7 @@ def guide() -> SetupGuide:
         flink_image=image,
         image_pinned=pinned,
         registry=registry,
-        other_machine_compose=render_remote_compose(image),
+        other_machine_compose=render_remote_compose(image, slots=slots),
     )
 
 
@@ -78,7 +79,9 @@ class _Dumper(yaml.SafeDumper):
 _Dumper.add_representer(_Literal, _literal)
 
 
-def render_remote_compose(image: str, template_dir: Path = TEMPLATE_DIR) -> str:
+def render_remote_compose(
+    image: str, template_dir: Path = TEMPLATE_DIR, slots: int | None = None,
+) -> str:
     """remote-target/docker-compose.yml, made self-contained.
 
     The bind-mounted config becomes an inline ``configs`` entry (Docker Compose
@@ -88,6 +91,14 @@ def render_remote_compose(image: str, template_dir: Path = TEMPLATE_DIR) -> str:
     """
     compose = yaml.safe_load((template_dir / "docker-compose.yml").read_text())
     config_text = (template_dir / "conf" / "config.yaml").read_text()
+    if slots is not None:
+        # One slot runs one job at parallelism 1. Edited in place, so the inlined
+        # config keeps the template's comments.
+        config_text, n = re.subn(
+            r"^(\s*numberOfTaskSlots:\s*)\d+", rf"\g<1>{int(slots)}", config_text, flags=re.M,
+        )
+        if n != 1:
+            raise ValueError("The template must set numberOfTaskSlots exactly once.")
 
     for service in compose["services"].values():
         service["image"] = image

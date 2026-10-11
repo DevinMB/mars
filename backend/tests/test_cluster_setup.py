@@ -58,3 +58,13 @@ def test_job_submission_stays_disabled_in_the_inlined_config():
     config = yaml.safe_load(_rendered()["configs"]["flink-config"]["content"])
     assert config["web"]["submit"]["enable"] is False
     assert config["web"]["cancel"]["enable"] is False
+
+
+def test_slot_count_is_set_in_the_inlined_config():
+    config = yaml.safe_load(yaml.safe_load(render_remote_compose(IMAGE, slots=12))["configs"]["flink-config"]["content"])
+    assert config["taskmanager"]["numberOfTaskSlots"] == 12
+
+
+def test_default_keeps_the_template_untouched():
+    content = _rendered()["configs"]["flink-config"]["content"]
+    assert content == (TEMPLATE_DIR / "conf" / "config.yaml").read_text()
