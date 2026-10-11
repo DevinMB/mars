@@ -33,7 +33,7 @@ from croniter import croniter
 
 from .db import session_scope
 from .migrations import _config
-from .models import Job, RunState
+from .models import Job, RunState, Target
 from .settings import settings
 
 log = logging.getLogger(__name__)
@@ -127,15 +127,29 @@ def _contents(db_file: Path) -> dict:
         conn.close()
 
 
-def _restore_point_paths() -> list[tuple[str, str]]:
+def _restore_point_paths() -> tuple[list[tuple[str, str]], int]:
+    """Running jobs' restore points on the local cluster, and how many run elsewhere.
+
+    Only the local cluster's state is mounted here: the cluster at the console's own
+    Flink address, from the same compose file. A job on another cluster keeps its
+    checkpoints on that machine's disk, so checking it here would report it missing.
+    """
+    local_url = settings().flink_rest_url.rstrip("/")
     with session_scope() as db:
-        out = []
+        targets = {t.name: t for t in db.query(Target)}
+        default = next((t for t in targets.values() if t.is_default), None)
+        local, elsewhere = [], 0
         for job in db.query(Job).order_by(Job.name):
             latest = job.runs[0] if job.runs else None
             point = job.restore_point
-            if latest is not None and latest.state == RunState.RUNNING.value and point:
-                out.append((job.name, point.path))
-        return out
+            if latest is None or latest.state != RunState.RUNNING.value or not point:
+                continue
+            target = targets.get(job.target_name) if job.target_name else default
+            if target is not None and target.flink_rest_url.rstrip("/") != local_url:
+                elsewhere += 1
+                continue
+            local.append((job.name, point.path))
+        return local, elsewhere
 
 
 def run(now: datetime | None = None) -> DrillResult:
@@ -202,7 +216,8 @@ def run(now: datetime | None = None) -> DrillResult:
               + (f"; failing: {', '.join(failing)}" if failing else ""))
 
     state_dir = Path(s.flink_state_dir)
-    points = _restore_point_paths()
+    points, elsewhere = _restore_point_paths()
+    on_other = f"; {elsewhere} on other clusters not checked" if elsewhere else ""
     if state_dir.is_dir():
         missing = [
             name for name, path in points
@@ -210,7 +225,7 @@ def run(now: datetime | None = None) -> DrillResult:
         ]
         check("every running job's restore point is on disk", not missing,
               f"{len(points) - len(missing)}/{len(points)}"
-              + (f"; missing: {', '.join(missing)}" if missing else ""))
+              + (f"; missing: {', '.join(missing)}" if missing else "") + on_other)
     else:
         check("every running job's restore point is on disk", True,
               f"skipped: {state_dir} is not mounted")
