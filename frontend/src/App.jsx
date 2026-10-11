@@ -10,6 +10,7 @@ import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
 import JobEditor from './pages/JobEditor'
 import Catalog from './pages/Catalog'
+import Pipeline from './pages/Pipeline'
 import CatalogEditor from './pages/CatalogEditor'
 import Cluster from './pages/Cluster'
 import Account from './pages/Account'
@@ -36,6 +37,7 @@ function Shell() {
       <Route path="/jobs/:name" element={<Protected><JobDetail /></Protected>} />
       <Route path="/jobs/:name/edit" element={<Protected writer><JobEditor /></Protected>} />
       <Route path="/catalog" element={<Protected><Catalog /></Protected>} />
+      <Route path="/pipeline" element={<Protected><Pipeline /></Protected>} />
       <Route path="/catalog/new" element={<Protected writer><CatalogEditor /></Protected>} />
       <Route path="/catalog/:name/edit" element={<Protected writer><CatalogEditor /></Protected>} />
       <Route path="/secrets" element={<Navigate to="/settings/secrets" replace />} />

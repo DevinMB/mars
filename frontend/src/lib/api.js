@@ -116,6 +116,9 @@ export const api = {
   // targets
   targets: () => request('/api/targets'),
   version: () => request('/api/system/version'),
+  pipeline: () => request('/api/pipeline'),
+  addExternal: (body) => request('/api/pipeline/external', { method: 'POST', body }),
+  removeExternal: (id) => request(`/api/pipeline/external/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   checkForUpdates: () => request('/api/system/version/check', { method: 'POST' }),
   clusterSetup: (slots = 8) => request(`/api/targets/setup?slots=${encodeURIComponent(slots)}`),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),

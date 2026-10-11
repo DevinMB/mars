@@ -200,3 +200,71 @@ def catalog_usage(db: Session) -> dict[str, TableUsage]:
             if name in out:
                 out[name].written_by.append(job.name)
     return out
+
+
+def pipeline_graph(db: Session, registry=None) -> dict:
+    """Jobs connected through the topics and tables they share, as nodes and edges.
+
+    A job writing a table points at that table's resource; a resource points at the
+    jobs reading it. Several catalog entries on one topic become one node. Declared
+    outside producers and consumers attach to resources by key. Entries no job uses
+    and nothing outside touches are left out, and listed as unused.
+    """
+    from .models import ExternalEndpoint
+
+    entries = {e.name: e for e in db.query(CatalogEntry)}
+    resources: dict[str, dict] = {}
+
+    def resource_node(entry_name: str) -> str:
+        r = resource_of(entries[entry_name], registry)
+        node = resources.setdefault(r.key, {
+            "id": f"res:{r.key}", "type": "resource", "kind": r.kind, "label": r.label,
+            "key": r.key, "entries": [],
+        })
+        if entry_name not in node["entries"]:
+            node["entries"].append(entry_name)
+        return node["id"]
+
+    nodes: list[dict] = []
+    edges: set[tuple[str, str]] = set()
+    used: set[str] = set()
+    for job in db.query(Job).order_by(Job.name):
+        latest = job.runs[0] if job.runs else None
+        job_id = f"job:{job.name}"
+        nodes.append({
+            "id": job_id, "type": "job", "label": job.name,
+            "state": latest.state if latest else None,
+            "cluster": job.target_name,
+        })
+        u = job_usage(job)
+        for name in u.reads & entries.keys():
+            edges.add((resource_node(name), job_id))
+            used.add(name)
+        for name in u.writes & entries.keys():
+            edges.add((job_id, resource_node(name)))
+            used.add(name)
+
+    # Entries that only outside systems touch still belong on the map.
+    keys_of = {resource_of(e, registry).key: n for n, e in entries.items()}
+    for ext in db.query(ExternalEndpoint).order_by(ExternalEndpoint.name):
+        if ext.resource_key in resources:
+            target = resources[ext.resource_key]["id"]
+        elif ext.resource_key in keys_of:
+            target = resource_node(keys_of[ext.resource_key])
+            used.add(keys_of[ext.resource_key])
+        else:
+            continue  # the topic it described is gone from the catalog
+        ext_id = f"ext:{ext.id}"
+        nodes.append({"id": ext_id, "type": "external", "label": ext.name,
+                      "direction": ext.direction, "note": ext.note, "endpoint_id": ext.id,
+                      "resource": ext.resource_key})
+        edges.add((ext_id, target) if ext.direction == "produces" else (target, ext_id))
+
+    nodes.extend(sorted(resources.values(), key=lambda n: n["id"]))
+    for r in resources.values():
+        r["entries"].sort()
+    return {
+        "nodes": nodes,
+        "edges": [{"from": a, "to": b} for a, b in sorted(edges)],
+        "unused": sorted(set(entries) - used),
+    }
