@@ -29,3 +29,6 @@ venv/
 .coverage
 htmlcov/
 .DS_Store
+
+# Per-installation compose changes, e.g. shared savepoint storage (docs/deployment.md#shared-savepoint-storage).
+docker-compose.override.yml
