@@ -150,7 +150,26 @@ async def _latest(c: httpx.AsyncClient, repo: str, channel: str) -> Latest:
                   published_at=d.get("published_at"), url=d["html_url"])
 
 
-async def _compare(c: httpx.AsyncClient, repo: str, running: str | None, latest: str) -> ComponentStatus:
+# The files a Flink image is built from. Most commits change only the console, docs
+# or CI; counting those as Flink updates would ask for a maintenance window that
+# changes nothing.
+FLINK_PATHS = ("flink",)
+
+
+async def _touching(c: httpx.AsyncClient, repo: str, latest: str, paths: tuple[str, ...]) -> set[str]:
+    """Commits up to latest that changed any of paths (recent history is enough)."""
+    shas: set[str] = set()
+    for path in paths:
+        r = await c.get(f"{API}/repos/{repo}/commits", params={"sha": latest, "path": path, "per_page": 100})
+        r.raise_for_status()
+        shas |= {x["sha"] for x in r.json()}
+    return shas
+
+
+async def _compare(
+    c: httpx.AsyncClient, repo: str, running: str | None, latest: str,
+    only_paths: tuple[str, ...] | None = None,
+) -> ComponentStatus:
     if not running:
         return ComponentStatus(running=None, behind_by=None)
     r = await c.get(f"{API}/repos/{repo}/compare/{running}...{latest}")
@@ -159,12 +178,18 @@ async def _compare(c: httpx.AsyncClient, repo: str, running: str | None, latest:
         return ComponentStatus(running=running, behind_by=None)
     r.raise_for_status()
     d = r.json()
+    raw = list(reversed(d.get("commits", [])))
+    behind = d.get("ahead_by", 0)
+    if only_paths and raw:
+        relevant = await _touching(c, repo, latest, only_paths)
+        raw = [x for x in raw if x["sha"] in relevant]
+        behind = len(raw)
     commits = [
         Commit(sha=x["sha"], title=x["commit"]["message"].splitlines()[0][:200],
                date=x["commit"]["committer"]["date"])
-        for x in reversed(d.get("commits", []))
+        for x in raw
     ][:MAX_COMMITS]
-    return ComponentStatus(running=running, behind_by=d.get("ahead_by", 0), commits=commits)
+    return ComponentStatus(running=running, behind_by=behind, commits=commits)
 
 
 async def check(now: datetime | None = None, transport: httpx.AsyncBaseTransport | None = None) -> CheckResult:
@@ -176,7 +201,8 @@ async def check(now: datetime | None = None, transport: httpx.AsyncBaseTransport
         async with httpx.AsyncClient(timeout=15, headers=_headers(), transport=transport) as c:
             result.latest = await _latest(c, s.update_repo, s.update_channel)
             result.console = await _compare(c, s.update_repo, s.revision or None, result.latest.revision)
-            result.flink = await _compare(c, s.update_repo, s.flink_revision or None, result.latest.revision)
+            result.flink = await _compare(c, s.update_repo, s.flink_revision or None,
+                                          result.latest.revision, only_paths=FLINK_PATHS)
     except httpx.HTTPStatusError as exc:
         code = exc.response.status_code
         result.error = (
