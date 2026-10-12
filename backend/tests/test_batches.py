@@ -47,7 +47,7 @@ class _Submitter:
 
     async def submit(self, db, job, submitted_by=None, savepoint_path=None):
         self.log.append(("start", job.name, job.target_name))
-        db.add(JobRun(job_id=job.id, job_version=1, state=RunState.RUNNING.value))
+        db.add(JobRun(job_id=job.id, job_version=1, state=RunState.RUNNING.value, flink_job_id="e" * 32))
         db.commit()
 
     async def stop_with_savepoint(self, db, run, native=False):
@@ -59,9 +59,26 @@ class _Submitter:
         db.commit()
 
 
+class _Cluster:
+    """Reports every job running and checkpointing, unless told it never does."""
+
+    def __init__(self, checkpoints=1):
+        self.checkpoints = checkpoints
+
+    async def get_job(self, job_id):
+        return SimpleNamespace(state="RUNNING")
+
+    async def checkpoint_health(self, job_id):
+        return SimpleNamespace(completed=self.checkpoints, interval_ms=1000)
+
+
 class _Registry:
-    def __init__(self, log, fail_stop=()):
+    def __init__(self, log, fail_stop=(), checkpoints=1):
         self.sub = _Submitter(log, fail_stop)
+        self._cluster = _Cluster(checkpoints)
+
+    def cluster(self, target):
+        return self._cluster
 
     def all_enabled(self, db):
         return [DEFAULT, B]
@@ -82,6 +99,8 @@ def fake_move(monkeypatch):
             raise moves.MoveError("mars-b has no free task slot.")
         log.append(("move", job.name, dest))
         job.target_name = None if dest == "default" else dest
+        for r in job.runs:
+            r.flink_job_id = r.flink_job_id or "f" * 32
         db.commit()
         return moves.MoveResult(True, f"{job.name} now runs on {dest}.")
 
@@ -95,7 +114,7 @@ def _jobs(Session, *names, running=True, target=None):
             job = Job(name=n, sql_text="s", catalog_refs="[]", target_name=target)
             db.add(job)
             db.flush()
-            db.add(JobRun(job_id=job.id, job_version=1,
+            db.add(JobRun(job_id=job.id, job_version=1, flink_job_id="f" * 32 if running else None,
                           state=RunState.RUNNING.value if running else RunState.CANCELED.value))
         db.commit()
 
@@ -181,3 +200,21 @@ def test_a_move_needs_a_known_cluster(Session):
     _jobs(Session, "a")
     with Session() as db, pytest.raises(batches.BatchError, match="Choose a cluster"):
         batches.create(db, _Registry([]), "move", ["a"], "nowhere", "devin")
+
+
+@pytest.mark.asyncio
+async def test_a_moved_job_that_never_checkpoints_halts_the_batch(Session, fake_move, monkeypatch):
+    monkeypatch.setattr(batches, "HEALTH_FLOOR_SECONDS", 10.0)
+
+    async def no_wait(_):
+        pass
+    real = batches.healthy
+    monkeypatch.setattr(batches, "healthy", lambda db, reg, job: real(db, reg, job, sleep=no_wait))
+    _jobs(Session, "a", "b")
+    reg = _Registry([], checkpoints=0)
+    bid = _start(Session, reg, "move", ["a", "b"], "mars-b")
+    await batches.run(bid, reg)
+    assert _result(Session, bid) == ("failed", [("a", "failed"), ("b", "notrun")])
+    with Session() as db:
+        note = batches.items_of(db.get(BatchOperation, bid))[0]["note"]
+    assert "completed no checkpoint" in note

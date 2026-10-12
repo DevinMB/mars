@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { copyText, selectContents } from '../lib/clipboard'
 
 const LABELS = { console: 'Console', flink: 'Flink' }
@@ -53,7 +54,8 @@ export function ComponentUpdate({ name, data, latest }) {
         ? 'bg-amber-50 text-amber-900 border border-amber-200'
         : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
         {how?.needs_window
-          ? 'Needs a short maintenance window: every job on this cluster stops while Flink is replaced, then resumes from its saved state.'
+          ? <>Needs a short maintenance window: every job on this cluster stops while Flink is replaced, then resumes from its saved state.
+            {' '}With a second cluster and job moves set up, <Link className="link" to="/cluster">upgrade one cluster at a time</Link> instead, so each job pauses only for its own move.</>
           : 'Jobs keep running. Only the console restarts, for a few seconds.'}
       </p>
       {commits.length > 0 && (

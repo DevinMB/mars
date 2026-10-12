@@ -105,6 +105,50 @@ def request_stop(db: Session, batch: BatchOperation) -> None:
         db.commit()
 
 
+# How long a moved job gets to prove itself healthy: a few checkpoint intervals,
+# at least this, never more than the ceiling.
+HEALTH_FLOOR_SECONDS = 90.0
+HEALTH_CEILING_SECONDS = 15 * 60.0
+
+
+async def healthy(db: Session, registry, job: Job, sleep=asyncio.sleep) -> str | None:
+    """None when the job runs on its cluster and has completed a checkpoint since
+    it started there; otherwise what is wrong.
+
+    Running is not enough: a job can be RUNNING and stuck, unable to reach a
+    sink or restore its state, and moving the next job before knowing would
+    spread the damage. A completed checkpoint means it restored and makes
+    progress. A job without checkpointing is judged on staying RUNNING.
+    """
+    run = next((r for r in job.runs if r.state in ACTIVE and r.flink_job_id), None)
+    if run is None:
+        return "It is not running after the move."
+    cluster = registry.cluster(registry.for_job(db, job))
+    waited, limit = 0.0, HEALTH_FLOOR_SECONDS
+    while True:
+        try:
+            overview = await cluster.get_job(run.flink_job_id)
+            health = await cluster.checkpoint_health(run.flink_job_id)
+        except Exception:
+            overview, health = None, None
+        if overview is not None and overview.state in ("FAILED", "CANCELED", "FINISHED"):
+            return f"It stopped on {registry.for_job(db, job).name} ({overview.state.lower()}) after the move."
+        if health is not None:
+            if health.interval_ms:
+                limit = min(HEALTH_CEILING_SECONDS, max(HEALTH_FLOOR_SECONDS, 3 * health.interval_ms / 1000))
+            if overview is not None and overview.state == "RUNNING":
+                if health.completed > 0:
+                    return None
+                if not health.interval_ms and waited >= 30:
+                    return None  # no checkpointing: running steadily is all there is
+        if waited >= limit:
+            where = registry.for_job(db, job).name
+            return (f"It runs on {where} but completed no checkpoint in {limit / 60:.0f} minutes, so it "
+                    f"may not be making progress. The batch stopped here so you can look.")
+        await sleep(5)
+        waited += 5
+
+
 async def _do(db: Session, registry, batch: BatchOperation, item: dict) -> tuple[str, str]:
     """Runs one job's step; returns (status, note)."""
     job = db.query(Job).filter(Job.name == item["job"]).first()
@@ -128,10 +172,17 @@ async def _do(db: Session, registry, batch: BatchOperation, item: dict) -> tuple
         result = await moves.move(db, registry, job, dest, user,
                                   native=options_of(batch).get("native", False))
         db.expire(job)
+        note = result.summary
         if item.get("interrupted") and item.get("was_running") and not _active(job):
             # Stopped before the console restarted, so the move only re-pointed it.
-            return "done", await resume(dest) + ", finishing a move the console was interrupted in."
-        return "done", result.summary
+            note = await resume(dest) + ", finishing a move the console was interrupted in."
+            db.expire(job)
+        if item.get("was_running"):
+            problem = await healthy(db, registry, job)
+            if problem:
+                return "failed", problem
+            note += " Checkpointing there."
+        return "done", note
 
     if batch.kind == "stop":
         run = next((r for r in job.runs if r.state in ACTIVE), None)

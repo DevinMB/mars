@@ -41,6 +41,8 @@ class Option:
     cluster: str
     ok: bool
     reasons: list[str] = field(default_factory=list)
+    # Worth knowing, but not a reason to refuse: e.g. moving to a newer Flink.
+    notes: list[str] = field(default_factory=list)
     # How much state moves and how long the job should be stopped for it.
     state_bytes: int | None = None
     pause_seconds: float | None = None
@@ -101,13 +103,23 @@ async def options(db: Session, registry, job: Job) -> list[Option]:
     for dest in registry.all_enabled(db):
         if dest.name == current.name:
             continue
-        ok, reasons = await _check(db, registry, job, current, dest)
-        out.append(Option(dest.name, ok, reasons, size, pause, measured))
+        ok, reasons, notes = await _check(db, registry, job, current, dest)
+        out.append(Option(dest.name, ok, reasons, notes, size, pause, measured))
     return out
 
 
-async def _check(db: Session, registry, job: Job, src: Target, dest: Target) -> tuple[bool, list[str]]:
+def _version(v: str) -> tuple[int, ...]:
+    parts = []
+    for p in (v or "").split("."):
+        digits = "".join(ch for ch in p if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
+async def _check(db: Session, registry, job: Job, src: Target, dest: Target
+                 ) -> tuple[bool, list[str], list[str]]:
     reasons: list[str] = []
+    notes: list[str] = []
     shared, why = await _shared_dir(registry, db, src, dest)
     if not shared:
         reasons.append(why)
@@ -126,18 +138,26 @@ async def _check(db: Session, registry, job: Job, src: Target, dest: Target) -> 
         dest_info = await registry.cluster(dest).info()
     except Exception:
         reasons.append(f"{dest.name} is not answering.")
-        return False, reasons
+        return False, reasons, notes
     if active is not None and dest_info.slots_available < 1:
         reasons.append(f"{dest.name} has no free task slot.")
     try:
         src_info = await registry.cluster(src).info()
-        if src_info.flink_version != dest_info.flink_version:
-            reasons.append(f"{dest.name} runs Flink {dest_info.flink_version} and {src.name} runs "
-                           f"{src_info.flink_version}; a savepoint may not restore across versions.")
+        here, there = _version(src_info.flink_version), _version(dest_info.flink_version)
+        # Flink restores savepoints from older versions, not newer ones. So a move
+        # onto a newer Flink -- the point of a rolling upgrade -- is allowed, and
+        # said plainly, since the job cannot then come back.
+        if there < here:
+            reasons.append(f"{dest.name} runs Flink {dest_info.flink_version}, older than "
+                           f"{src_info.flink_version} here. Flink cannot restore a savepoint "
+                           f"onto an older version.")
+        elif there > here:
+            notes.append(f"Moves up from Flink {src_info.flink_version} to {dest_info.flink_version}. "
+                         f"It cannot move back to {src.name} until that is upgraded too.")
     except Exception:
         if active is not None:
             reasons.append(f"{src.name}, where it runs now, is not answering.")
-    return not reasons, reasons
+    return not reasons, reasons, notes
 
 
 @dataclass
@@ -166,7 +186,7 @@ async def _move(db: Session, registry, job: Job, dest_name: str, user: str,
         raise MoveError(f"No enabled cluster named {dest_name}.")
     if dest.name == src.name:
         raise MoveError(f"{job.name} already runs on {dest.name}.")
-    ok, reasons = await _check(db, registry, job, src, dest)
+    ok, reasons, _ = await _check(db, registry, job, src, dest)
     if not ok:
         raise MoveError(" ".join(reasons))
     shared, _ = await _shared_dir(registry, db, src, dest)
