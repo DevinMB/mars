@@ -46,6 +46,9 @@ This is a direction of travel, not a release schedule.
   Prometheus. Separate from the health check that follows, which waits for a
   checkpoint while the job is already processing. (First rolling upgrade, measured by
   hand: median 3.6 s, at most 6.4 s per job, inside a 3½-minute batch.)
+- **State size on the Jobs page:** each job's current state size (from its latest
+  checkpoint) as a column, so the heavy jobs stand out at a glance, sortable, and
+  pointing at the move-time estimate for large ones.
 - **Operations, continued:** trends over time (state growth, checkpoint duration, busy
   ratio), and warnings before a cluster runs short of memory or slots.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
