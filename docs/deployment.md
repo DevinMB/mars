@@ -200,6 +200,17 @@ destination cannot start it, MARS points it back and resumes it where it was,
 from the same savepoint. A stopped job only changes cluster, and only if the
 state it would resume from is on the shared storage.
 
+The job is stopped while its state is written and then read back, so the pause
+grows with its state. The move panel shows the state size (from the latest
+checkpoint) and the expected pause. Every savepoint MARS takes records its size
+and how long it took, and the median speed of recent large ones becomes the
+estimate; until there are some, 50 MB/s is assumed. How long MARS waits for a
+savepoint scales the same way, up to 12 hours, so a large one is not reported
+failed while Flink is still writing it. For jobs with large RocksDB state, the
+**native savepoint format** (offered for state over 1 GB, and in bulk actions)
+copies the state files instead of re-serializing every key: much faster, but
+restorable only with the same state backend.
+
 To move several, tick them on the Jobs page (the box in the header selects every
 job shown, so search or filter first) and choose **Move to cluster…** in the bar
 that appears. The same bar stops or resumes the selected jobs.

@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/batches", tags=["batches"])
 def _out(b: BatchOperation) -> BatchOut:
     return BatchOut(
         id=b.id, kind=b.kind, cluster=b.cluster, status=b.status,
+        native=bool(batches.options_of(b).get("native")),
         items=[BatchItemOut(job=i["job"], status=i["status"], note=i.get("note", ""))
                for i in batches.items_of(b)],
         created_by=b.created_by, created_at=b.created_at, finished_at=b.finished_at,
@@ -32,7 +33,8 @@ def start_batch(
     registry: TargetRegistry = Depends(get_targets),
 ) -> BatchOut:
     try:
-        batch = batches.create(db, registry, body.kind, body.jobs, body.cluster, principal.username)
+        batch = batches.create(db, registry, body.kind, body.jobs, body.cluster, principal.username,
+                               options={"native": body.native})
     except batches.BatchError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     batches.worker().wake()

@@ -23,6 +23,8 @@ This is a direction of travel, not a release schedule.
 - Job moves between clusters (optional): shared savepoint storage set up and verified
   from the Clusters page, and Move to cluster on a job, which keeps its state and
   rolls back if the destination cannot start it.
+- Moves sized to the job's state: the expected pause shown first, from measured
+  savepoint speed; waits that scale with state; optional native savepoints.
 - Bulk actions on the Jobs page: select jobs and move, stop or resume them; the
   console runs the batch itself, so it survives a closed browser or a restart.
 
@@ -32,12 +34,6 @@ This is a direction of travel, not a release schedule.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
 - **Operations:** improve job diagnostics and visibility into resource use.
-- **Moves for large state:** wait for a savepoint as long as the job's state needs
-  instead of a fixed three minutes (today a large savepoint is reported failed while
-  Flink is still writing it, then stops the job anyway), and show the expected pause
-  before a move, from the job's state size and the speed of past savepoints.
-  Optionally, native-format savepoints for RocksDB jobs, which copy state files
-  instead of re-serializing every key.
 - **Rolling cluster upgrades:** upgrade Flink or connectors without pausing every
   job at once. Shared savepoint storage and moving jobs are in place; what remains is
   the guided flow: start the second cluster on the new image, move jobs over one at

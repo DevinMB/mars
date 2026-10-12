@@ -42,6 +42,7 @@ function Items({ rows }) {
  */
 export function BulkPlan({ mode, jobs, targets, defaultName, onClose, onStarted }) {
   const [dest, setDest] = useState('')
+  const [native, setNative] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -62,7 +63,7 @@ export function BulkPlan({ mode, jobs, targets, defaultName, onClose, onStarted 
 
   const start = async () => {
     setBusy(true); setError(null)
-    try { onStarted(await api.startBatch(mode, todo.map((p) => p.job), mode === 'move' ? dest : null)) }
+    try { onStarted(await api.startBatch(mode, todo.map((p) => p.job), mode === 'move' ? dest : null, native)) }
     catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
@@ -106,6 +107,18 @@ export function BulkPlan({ mode, jobs, targets, defaultName, onClose, onStarted 
           {' '}{slotsNeeded} running job{slotsNeeded === 1 ? '' : 's'} would move. The move stops at the first
           {' '}one that does not fit, which stays where it is. Add slots, or move fewer.
         </Alert></div>
+      )}
+      {mode !== 'resume' && (
+        <label className="mt-3 flex items-start gap-2 text-[13px] text-slate-700">
+          <input type="checkbox" className="mt-1" checked={native} onChange={(e) => setNative(e.target.checked)} />
+          <span>
+            Use the native savepoint format
+            <span className="block text-[12px] text-slate-500">
+              For jobs with large RocksDB state: copies its files instead of re-serializing every key,
+              much faster, and restorable only with the same state backend. No difference for small state.
+            </span>
+          </span>
+        </label>
       )}
       {error && <div className="mt-3"><Alert level="danger">{error}</Alert></div>}
 

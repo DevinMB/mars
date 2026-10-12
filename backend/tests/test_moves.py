@@ -18,7 +18,8 @@ class _Submitter:
     def __init__(self, name, log, fail_submit=None, savepoint=f"{SHARED}/savepoint-1"):
         self.name, self.log, self.fail_submit, self.savepoint = name, log, fail_submit, savepoint
 
-    async def stop_with_savepoint(self, db, run):
+    async def stop_with_savepoint(self, db, run, native=False):
+        self.native = native
         self.log.append(("stop", self.name))
         run.savepoint_path, run.state, run.ended_at = self.savepoint, RunState.CANCELED.value, utcnow()
         db.commit()

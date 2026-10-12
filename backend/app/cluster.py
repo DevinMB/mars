@@ -21,6 +21,10 @@ log = logging.getLogger(__name__)
 TERMINAL_STATES = {"FINISHED", "FAILED", "CANCELED"}
 
 
+class SavepointStillRunning(RuntimeError):
+    """Gave up waiting while Flink still reported the savepoint in progress."""
+
+
 # How Flink says a savepoint to remove is not there (any more).
 _MISSING = re.compile(r"FileNotFoundException|does not exist|Cannot find|No such file", re.I)
 
@@ -269,8 +273,15 @@ class FlinkClusterClient:
             r.raise_for_status()
             return r.json()["request-id"]
 
+    async def state_size(self, job_id: str) -> int | None:
+        """Bytes in the job's latest completed checkpoint: how much a savepoint of
+        it will write, and a restore read back."""
+        async with self._client() as c:
+            return (await self._checkpoints(c, job_id)).latest_completed_size_bytes
+
     async def stop_with_savepoint(
-        self, job_id: str, target_dir: str | None = None, drain: bool = False
+        self, job_id: str, target_dir: str | None = None, drain: bool = False,
+        native: bool = False,
     ) -> str:
         """Stops a job after writing its state, and returns the request id.
 
@@ -283,6 +294,11 @@ class FlinkClusterClient:
         body: dict[str, Any] = {"drain": drain}
         if target_dir:
             body["targetDirectory"] = target_dir
+        if native:
+            # The state backend's own files rather than every key re-serialized:
+            # much faster for large RocksDB state, but restorable only with the
+            # same state backend.
+            body["formatType"] = "NATIVE"
         async with self._client() as c:
             r = await c.post(f"/jobs/{job_id}/stop", json=body)
             r.raise_for_status()
@@ -301,7 +317,12 @@ class FlinkClusterClient:
         deadline = time.monotonic() + budget
         delay = 0.25
         while time.monotonic() < deadline:
-            body = await self.savepoint_status(job_id, request_id)
+            try:
+                body = await self.savepoint_status(job_id, request_id)
+            except httpx.HTTPError:
+                # A blip while a long savepoint writes is not a failed savepoint.
+                await asyncio.sleep(min(delay * 4, 10.0))
+                continue
             status = (body.get("status") or {}).get("id")
             if status == "COMPLETED":
                 operation = body.get("operation") or {}
@@ -317,7 +338,9 @@ class FlinkClusterClient:
                 return location
             await asyncio.sleep(delay)
             delay = min(delay * 1.4, 2.0)
-        raise RuntimeError(f"The savepoint did not finish within {budget:.0f}s.")
+        raise SavepointStillRunning(
+            f"Flink was still writing the savepoint after {budget / 60:.0f} minutes, longer "
+            f"than this job's state should take. It may yet finish, and then the job stops.")
 
     async def savepoint_status(self, job_id: str, request_id: str) -> dict[str, Any]:
         async with self._client() as c:

@@ -694,6 +694,10 @@ class MoveOptionOut(BaseModel):
     cluster: str
     ok: bool
     reasons: list[str] = []
+    state_bytes: int | None = None
+    pause_seconds: float | None = None
+    # True when the pause comes from this installation's measured savepoint speed.
+    rate_measured: bool = False
 
 
 class MoveIn(BaseModel):
@@ -710,6 +714,8 @@ class BatchIn(BaseModel):
     kind: str = Field(pattern=r"^(move|stop|resume)$")
     jobs: list[str] = Field(min_length=1, max_length=500)
     cluster: str | None = Field(default=None, max_length=64)
+    # Native-format savepoints: faster for large RocksDB state.
+    native: bool = False
 
 
 class BatchItemOut(BaseModel):
@@ -723,6 +729,7 @@ class BatchOut(BaseModel):
     kind: str
     cluster: str | None
     status: str  # running, stopping, done, failed, stopped
+    native: bool = False
     items: list[BatchItemOut]
     created_by: str | None
     created_at: UtcDatetime

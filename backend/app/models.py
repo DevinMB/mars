@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -421,6 +422,10 @@ class JobRun(Base):
     # When retention removed that savepoint. The path stays, for history; a
     # removed savepoint is never offered as somewhere to resume from.
     savepoint_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How big that savepoint was and how long Flink took to write it: this
+    # installation's measured speed, for estimating the next ones.
+    savepoint_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    savepoint_ms: Mapped[int | None] = mapped_column(Integer)
     # The newest checkpoint Flink completed for this run, recorded on every
     # reconcile while the cluster still knows the job. Flink forgets a job when
     # its JobManager restarts without HA, and with it the only record of where
@@ -499,5 +504,7 @@ class BatchOperation(Base, TimestampMixin):
     # The jobs in order, each {job, was_running, status, note}; small, and
     # rewritten as a whole on every change.
     items: Mapped[str] = mapped_column(Text, default="[]")
+    # Settings for the whole batch, e.g. {"native": true} for native savepoints.
+    options: Mapped[str] = mapped_column(Text, default="{}")
     created_by: Mapped[str | None] = mapped_column(String(64))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -17,11 +17,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from .cluster import FlinkClusterClient
+from . import state_estimates
+from .cluster import FlinkClusterClient, SavepointStillRunning
 from .ddl import split_statements
 from .metrics import SUBMISSIONS
 from .gateway import GatewayError, SqlGatewayClient
@@ -298,7 +300,7 @@ class JobSubmitter:
 
     async def stop_with_savepoint(
         self, db: Session, run: JobRun, target_dir: str | None = None,
-        drain: bool = False,
+        drain: bool = False, native: bool = False,
     ) -> str:
         """Writes the job's state somewhere durable, then stops it.
 
@@ -307,21 +309,40 @@ class JobSubmitter:
         stateful job whose state was not saved is the outcome this exists to
         prevent, and doing it anyway while reporting an error would be worse than
         not trying.
+
+        How long to wait comes from the job's state size and this installation's
+        measured savepoint speed (state_estimates), and the size and time taken
+        are recorded to refine the next estimate.
         """
         if not run.flink_job_id:
             raise SubmissionError("This run has no job on the cluster to stop.")
 
         try:
+            size = await self._cluster.state_size(run.flink_job_id)
+        except Exception:
+            size = None
+        budget = state_estimates.savepoint_budget(size, state_estimates.rate(db))
+        started = time.monotonic()
+        try:
             request_id = await self._cluster.stop_with_savepoint(
-                run.flink_job_id, target_dir, drain=drain
+                run.flink_job_id, target_dir, drain=drain, native=native
             )
-            location = await self._cluster.await_savepoint(run.flink_job_id, request_id)
+            location = await self._cluster.await_savepoint(run.flink_job_id, request_id, budget=budget)
+        except SavepointStillRunning as exc:
+            # Not "left running": Flink stops the job once its savepoint is done.
+            raise SubmissionError(
+                "Gave up waiting for this job's savepoint, which Flink was still writing. "
+                "When it finishes the job stops; resume it from the job's page then.",
+                detail=str(exc),
+            ) from exc
         except Exception as exc:
             raise SubmissionError(
                 "Could not save this job's state, so it has been left running.",
                 detail=self._store.redact(db, str(exc)),
             ) from exc
 
+        run.savepoint_bytes = size
+        run.savepoint_ms = int((time.monotonic() - started) * 1000)
         run.savepoint_path = location
         run.state = RunState.CANCELED.value
         run.ended_at = utcnow()

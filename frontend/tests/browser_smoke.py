@@ -149,9 +149,13 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Move to cluster…').click()
     expect(page.get_by_role('heading',name='Move to another cluster')).to_be_visible()
     expect(page.get_by_role('radio')).to_be_checked()
+    expect(page.get_by_text('of state: expect it to be stopped for a few seconds')).to_be_visible()
+    # Small state: the native format would make no difference, so it is not offered.
+    expect(page.get_by_text('Use the native savepoint format')).to_have_count(0)
     page.get_by_role('button',name='Move to mars-b').click()
-    expect(page.get_by_text('readings_to_output now runs on mars-b.')).to_be_visible()
-    assert any(m=='POST' and p=='/api/jobs/'+job+'/move' for m,p,_ in writes), 'the move was not requested'
+    expect(page.get_by_text('readings_to_output now runs on mars-b.').first).to_be_visible(timeout=10000)
+    assert any(m=='POST' and p=='/api/batches' and '"jobs":["'+job+'"]' in (d or '').replace(' ','') for m,p,d in writes), \
+        'the move was not handed to the console'
     # Job moves: optional, one quiet line on the second cluster's card, guides on demand.
     visit('/cluster')
     expect(page.get_by_text('Savepoint storage')).to_have_count(0)
