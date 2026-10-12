@@ -37,6 +37,13 @@ This is a direction of travel, not a release schedule.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
+- **Downtime of each move, measured:** record and show how long each job actually
+  stopped processing when it moved: from the savepoint being triggered on the old
+  cluster to its tasks running again, state restored, on the new one. Shown per job in
+  bulk-move results and the job's history, with the batch total, and exported to
+  Prometheus. Separate from the health check that follows, which waits for a
+  checkpoint while the job is already processing. (First rolling upgrade, measured by
+  hand: median 3.6 s, at most 6.4 s per job, inside a 3½-minute batch.)
 - **Operations, continued:** trends over time (state growth, checkpoint duration, busy
   ratio), and warnings before a cluster runs short of memory or slots.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
