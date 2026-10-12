@@ -338,6 +338,14 @@ off. To be told when a drill fails, alert on:
 
 ## Monitoring
 
+**Clusters → Resources** on each cluster shows what it has and what uses it, from
+Flink's own metrics: per TaskManager, CPU load, slots used, heap (operators, and
+state held by the hashmap backend) and managed memory (RocksDB and batch
+sorting), plus the JobManager's heap; then each job on the cluster with the slots
+it holds, its state size, its last checkpoint's duration and how busy its
+busiest operator is, heaviest first. A job's own Diagnostics tab goes deeper:
+backpressure, throughput and lag per operator.
+
 `/healthz` checks the console process; `/readyz` checks default Flink reachability.
 `/metrics` exposes Prometheus metrics including running and failed job counts.
 These endpoints are unauthenticated, so keep them inside the same access boundary.

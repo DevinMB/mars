@@ -27,6 +27,8 @@ This is a direction of travel, not a release schedule.
   savepoint speed; waits that scale with state; optional native savepoints.
 - Rolling cluster upgrades: a guide that empties, upgrades and refills one cluster
   at a time, with each moved job checked healthy before the next.
+- Cluster resources: memory, CPU and slots per TaskManager, and each job's slots,
+  state, checkpoint time and busiest operator, heaviest first.
 - Bulk actions on the Jobs page: select jobs and move, stop or resume them; the
   console runs the batch itself, so it survives a closed browser or a restart.
 
@@ -35,7 +37,8 @@ This is a direction of travel, not a release schedule.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
-- **Operations:** improve job diagnostics and visibility into resource use.
+- **Operations, continued:** trends over time (state growth, checkpoint duration, busy
+  ratio), and warnings before a cluster runs short of memory or slots.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
   topic; filter the pipeline map by tag or owner, or to only what is failing.
 

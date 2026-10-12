@@ -122,6 +122,7 @@ export const api = {
   checkForUpdates: () => request('/api/system/version/check', { method: 'POST' }),
   clusterSetup: (slots = 8) => request(`/api/targets/setup?slots=${encodeURIComponent(slots)}`),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),
+  clusterResources: (name) => request(`/api/targets/${encodeURIComponent(name)}/resources`),
   savepointStorage: () => request('/api/targets/storage'),
   checkSavepointStorage: (a, b) => request('/api/targets/storage/check', { method: 'POST', body: { a, b } }),
   jobMovesOff: (cluster) => request('/api/targets/storage/off', { method: 'POST', body: { cluster } }),
