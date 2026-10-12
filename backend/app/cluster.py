@@ -273,6 +273,56 @@ class FlinkClusterClient:
             r.raise_for_status()
             return r.json()["request-id"]
 
+    async def resources(self) -> dict[str, Any]:
+        """Memory, CPU and slots of each TaskManager, and the JobManager's memory.
+
+        From Flink's own JVM metrics. Heap is what operators and the hashmap state
+        backend live in; managed memory is what RocksDB and batch sorting use.
+        """
+        tm_metrics = ("Status.JVM.Memory.Heap.Used,Status.JVM.Memory.Heap.Max,Status.JVM.CPU.Load,"
+                      "Status.Flink.Memory.Managed.Used,Status.Flink.Memory.Managed.Total")
+        async with self._client() as c:
+            r = await c.get("/taskmanagers")
+            r.raise_for_status()
+            managers = []
+            for tm in r.json().get("taskmanagers", []):
+                values: dict[str, float] = {}
+                # Flink fetches TaskManager metrics on demand, so the first ask
+                # after a quiet spell can come back empty; the next has them.
+                for attempt in range(2):
+                    try:
+                        m = await c.get(f"/taskmanagers/{tm['id']}/metrics", params={"get": tm_metrics})
+                        if m.status_code == 200:
+                            values = {e["id"]: _float(e.get("value")) for e in m.json()}
+                    except httpx.HTTPError:
+                        pass
+                    if values or attempt:
+                        break
+                    await asyncio.sleep(1.0)
+                hw = tm.get("hardware") or {}
+                managers.append({
+                    "id": tm.get("id", ""),
+                    "slots_total": tm.get("slotsNumber", 0),
+                    "slots_free": tm.get("freeSlots", 0),
+                    "cpu_cores": hw.get("cpuCores"),
+                    "cpu_load": values.get("Status.JVM.CPU.Load"),
+                    "heap_used": _int(values.get("Status.JVM.Memory.Heap.Used")),
+                    "heap_max": _int(values.get("Status.JVM.Memory.Heap.Max")),
+                    "managed_used": _int(values.get("Status.Flink.Memory.Managed.Used")),
+                    "managed_total": _int(values.get("Status.Flink.Memory.Managed.Total")),
+                })
+            jobmanager: dict[str, int | None] = {"heap_used": None, "heap_max": None}
+            try:
+                m = await c.get("/jobmanager/metrics",
+                                params={"get": "Status.JVM.Memory.Heap.Used,Status.JVM.Memory.Heap.Max"})
+                if m.status_code == 200:
+                    v = {e["id"]: _float(e.get("value")) for e in m.json()}
+                    jobmanager = {"heap_used": _int(v.get("Status.JVM.Memory.Heap.Used")),
+                                  "heap_max": _int(v.get("Status.JVM.Memory.Heap.Max"))}
+            except httpx.HTTPError:
+                pass
+        return {"taskmanagers": managers, "jobmanager": jobmanager}
+
     async def checkpoint_health(self, job_id: str) -> CheckpointHealth:
         async with self._client() as c:
             return await self._checkpoints(c, job_id)

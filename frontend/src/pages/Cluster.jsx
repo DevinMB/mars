@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import AddClusterGuide from '../components/AddClusterGuide'
 import { JobMovesGuide, JobMovesLine } from '../components/JobMoves'
 import RollingUpgrade from '../components/RollingUpgrade'
+import ClusterResources from '../components/ClusterResources'
 import TargetForm from '../components/TargetForm'
 import { Alert, Badge, PageHeader, Spinner } from '../components/ui'
 
@@ -25,6 +26,7 @@ function Stat({ label, value, tone = 'slate' }) {
 // and there is no supported way to pin a job to a machine within one. Choosing where
 // a job runs means choosing which cluster receives it.
 function TargetCard({ target, defaultVersion, canManage, onEdit, onRemove, moves, onJobMoves }) {
+  const [showResources, setShowResources] = useState(false)
   // Clusters on different Flink versions can disagree about connectors and state,
   // which shows up as a job that works on one and fails on another.
   const mismatch = target.reachable && defaultVersion && !target.is_default
@@ -95,6 +97,15 @@ function TargetCard({ target, defaultVersion, canManage, onEdit, onRemove, moves
         </div>
       )}
       <JobMovesLine moves={moves} canManage={canManage} onOpen={onJobMoves} />
+      {target.reachable && (
+        <div className="mt-3">
+          <button type="button" className="link text-[12px]" aria-expanded={showResources}
+                  onClick={() => setShowResources(!showResources)}>
+            {showResources ? 'Hide resources' : 'Resources'}
+          </button>
+          {showResources && <ClusterResources name={target.name} />}
+        </div>
+      )}
     </div>
   )
 }

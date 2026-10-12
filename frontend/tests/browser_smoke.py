@@ -143,6 +143,14 @@ with sync_playwright() as pw:
     expect(page.get_by_text(f'{job} now runs on mars-b.')).to_be_visible()
     page.get_by_role('status').get_by_role('button',name='Dismiss').click()
     expect(page.get_by_role('heading',name=f'Moving {total} job{"" if total==1 else "s"} to mars-b')).to_have_count(0)
+    # Resources: each cluster's machines and the jobs using them, on demand.
+    visit('/cluster')
+    page.get_by_role('button',name='Resources').first.click()
+    expect(page.get_by_text('TaskManager · 4 cores · 1 of 12 slots used · CPU 12%')).to_be_visible()
+    expect(page.get_by_text('Managed memory')).to_be_visible()
+    expect(page.get_by_role('link',name='readings_to_output')).to_be_visible()
+    expect(page.get_by_text('4% busy')).to_be_visible()
+    page.get_by_role('button',name='Hide resources').click()
     # Rolling upgrade: offered once job moves are ready; the empty cluster goes first.
     fixtures['/api/targets/storage']['moves'][0]['state']='ready'
     visit('/cluster')

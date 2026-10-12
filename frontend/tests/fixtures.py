@@ -79,6 +79,14 @@ def fixtures():
             'other_machine': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager\nservices: {}\n',
         },
         '/api/batches/latest': None,
+        '/api/targets/default/resources': {
+            'cluster': 'default',
+            'taskmanagers': [{'id': 'tm:1', 'slots_total': 12, 'slots_free': 11, 'cpu_cores': 4, 'cpu_load': 0.12,
+                              'heap_used': 180_000_000, 'heap_max': 939_524_096, 'managed_used': 0, 'managed_total': 858_993_470}],
+            'jobmanager': {'heap_used': 110_000_000, 'heap_max': 454_164_480},
+            'jobs': [{'job': 'readings_to_output', 'available': True, 'slots': 1, 'state_bytes': 18385,
+                      'checkpoint_ms': 3, 'busiest': 'Source: readings -> output', 'busy_ratio': 0.04}],
+        },
         '/api/pipeline': {
             'nodes': [
                 {'id': 'job:enrich_events', 'type': 'job', 'label': 'enrich_events', 'state': 'running', 'cluster': 'local'},

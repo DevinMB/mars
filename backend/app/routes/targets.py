@@ -19,9 +19,10 @@ from ..cluster_setup import (
 )
 from ..cluster_setup import guide as cluster_setup_guide
 from ..cluster_setup import savepoint_override
-from .. import nfs, shared_storage
+from .. import nfs, resources, shared_storage
 from ..models import Job, Target
 from ..schemas import (
+    ClusterResourcesOut,
     ClusterSetupOut,
     JobMovesOffIn,
     JobMovesOut,
@@ -217,6 +218,23 @@ def savepoint_storage_setup(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/{name}/resources", response_model=ClusterResourcesOut)
+async def cluster_resources(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    registry: TargetRegistry = Depends(get_targets),
+) -> ClusterResourcesOut:
+    """Memory, CPU and slots on this cluster, and how much each job on it uses."""
+    target = db.scalar(select(Target).where(Target.name == name))
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"No cluster named '{name}'.")
+    try:
+        return ClusterResourcesOut(**await resources.cluster_resources(db, registry, target))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"{name} did not answer: {exc}") from exc
 
 
 @router.post("/probe", response_model=TargetProbeOut)

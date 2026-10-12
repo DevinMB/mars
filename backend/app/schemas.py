@@ -735,3 +735,37 @@ class BatchOut(BaseModel):
     created_by: str | None
     created_at: UtcDatetime
     finished_at: UtcDatetime | None
+
+
+class TaskManagerOut(BaseModel):
+    id: str
+    slots_total: int = 0
+    slots_free: int = 0
+    cpu_cores: int | None = None
+    cpu_load: float | None = None  # 0..1, the JVM's share of the machine's CPU
+    heap_used: int | None = None
+    heap_max: int | None = None
+    managed_used: int | None = None
+    managed_total: int | None = None
+
+
+class JobManagerOut(BaseModel):
+    heap_used: int | None = None
+    heap_max: int | None = None
+
+
+class JobFootprintOut(BaseModel):
+    job: str
+    available: bool = False
+    slots: int | None = None
+    state_bytes: int | None = None
+    checkpoint_ms: int | None = None
+    busiest: str | None = None
+    busy_ratio: float | None = None
+
+
+class ClusterResourcesOut(BaseModel):
+    cluster: str
+    taskmanagers: list[TaskManagerOut]
+    jobmanager: JobManagerOut
+    jobs: list[JobFootprintOut]
