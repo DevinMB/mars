@@ -65,4 +65,7 @@ This is a direction of travel, not a release schedule.
   gauge, a button, a hint of what it shows: heap, memory, the JobManager, the jobs on
   that cluster); and a review of every feature from the user's side, with suggestions
   for making MARS the one place to run Flink: jobs, pipelines, data movement and
-  operations.
+  operations. The pipeline map in particular: managing systems outside Flink is hard
+  to find. Adding one is a form inside a topic's details, and removing one is a small
+  link next to its name there; neither is visible from the map itself, so it should be
+  clearer how to add, edit and remove them.
