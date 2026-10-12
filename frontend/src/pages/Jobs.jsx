@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import { relativeTime, duration, millis } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
 import { BatchProgress, BulkPlan } from '../components/BulkJobs'
+import BulkTags from '../components/BulkTags'
+import TagChips from '../components/TagChips'
 
 const COLUMNS = 6
 
@@ -107,7 +109,7 @@ function Staleness({ ms }) {
   )
 }
 
-function JobRow({ job, showCluster, selectable, checked, onToggle }) {
+function JobRow({ job, showCluster, selectable, checked, onToggle, tag, onTag }) {
   const run = job.latest_run
   return (
     <tr className={checked ? 'bg-accent-50/60' : 'hover:bg-slate-50/60'}>
@@ -124,6 +126,7 @@ function JobRow({ job, showCluster, selectable, checked, onToggle }) {
         {job.description && (
           <div className="text-xs text-slate-500 truncate max-w-48 sm:max-w-md">{job.description}</div>
         )}
+        <TagChips tags={job.tags} active={tag} onPick={onTag} className="mt-1" />
         {run?.state === 'restarting' && run.error_summary && (
           <div className="text-xs text-amber-700 truncate max-w-48 sm:max-w-md mt-0.5">
             {run.error_summary}
@@ -171,6 +174,14 @@ export default function Jobs() {
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
   const [cluster, setCluster] = useState('all')
+  // In the address, so a tag chip elsewhere can link to its jobs.
+  const [params, setParams] = useSearchParams()
+  const tag = params.get('tag') || ''
+  const setTag = (t) => setParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (t) next.set('tag', t); else next.delete('tag')
+    return next
+  }, { replace: true })
   // Jobs ticked for a bulk action, by name; and which action's panel is open.
   const [selected, setSelected] = useState(() => new Set())
   const [bulk, setBulk] = useState(null)
@@ -233,17 +244,19 @@ export default function Jobs() {
     return jobs.filter((j) => {
       if (state !== 'all' && (j.latest_run?.state || 'never') !== state) return false
       if (multi && cluster !== 'all' && clusterOf(j, defaultName) !== cluster) return false
+      if (tag && !(j.tags || []).includes(tag)) return false
       if (!q) return true
       return (
         j.name.toLowerCase().includes(q) ||
         (j.description || '').toLowerCase().includes(q) ||
         (j.latest_run?.state || '').toLowerCase().includes(q) ||
         j.job_type.toLowerCase().includes(q) ||
+        (j.tags || []).some((t) => t.includes(q)) ||
         // So typing a cluster name narrows to it, the same as a state does.
         clusterOf(j, defaultName).toLowerCase().includes(q)
       )
     })
-  }, [jobs, query, cluster, multi, defaultName, state])
+  }, [jobs, query, cluster, multi, defaultName, state, tag])
 
   const counts = useMemo(() => {
     const out = {}
@@ -278,7 +291,8 @@ export default function Jobs() {
   const chosen = jobs.filter((j) => selected.has(j.name))
   const selectable = canWrite
   const cols = COLUMNS + (selectable ? 1 : 0)
-  const rowProps = (job) => ({ selectable, checked: selected.has(job.name), onToggle: toggle })
+  const rowProps = (job) => ({ selectable, checked: selected.has(job.name), onToggle: toggle, tag, onTag: setTag })
+  const allTags = [...new Set(jobs.flatMap((j) => j.tags || []))].sort()
 
   // Nothing matching is one answer, not an empty band under every cluster.
   const grouped = multi && cluster === 'all' && shown.length > 0
@@ -317,6 +331,12 @@ export default function Jobs() {
           {['running', 'restarting', 'failed', 'finished', 'canceled', 'submitting', 'never'].map((s) =>
             <option key={s} value={s}>{({ never: 'Never run', canceled: 'Cancelled', submitting: 'Starting' })[s] || s[0].toUpperCase() + s.slice(1)}</option>)}
         </select>
+        {(allTags.length > 0 || tag) && (
+          <select className="input w-auto" aria-label="Filter by tag" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <option value="">All tags</option>
+            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
         <span className="text-xs text-slate-500 sm:ml-auto">{shown.length} of {jobs.length} jobs</span>
       </div>
 
@@ -341,12 +361,17 @@ export default function Jobs() {
               {multi && <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('move')}>Move to cluster…</button>}
               <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('stop')}>Stop and save state</button>
               <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('resume')}>Resume</button>
+              <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('tags')}>Tag…</button>
             </span>
           )}
           <button type="button" className="ml-auto link text-[12px]" onClick={() => setSelected(new Set())}>Clear selection</button>
         </div>
       )}
-      {bulk && (
+      {bulk === 'tags' && (
+        <BulkTags jobs={chosen} onClose={() => setBulk(null)}
+                  onDone={async () => { setJobs(await api.jobs()) }} />
+      )}
+      {bulk && bulk !== 'tags' && (
         <BulkPlan key={bulk} mode={bulk} jobs={chosen} targets={targets} defaultName={defaultName}
                   onClose={() => setBulk(null)}
                   onStarted={(b) => { setBatch(b); setBulk(null); setSelected(new Set()) }} />

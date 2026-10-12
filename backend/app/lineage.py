@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from .guards import GROUP_PREFIX, parse_options, strip_noise
 from .models import CatalogEntry, Job
+from .tags import of as tags_of
 
 # INSERT INTO|OVERWRITE [catalog.][db.]name, with or without backticks.
 _INSERT = re.compile(
@@ -269,6 +270,7 @@ def pipeline_graph(db: Session, registry=None) -> dict:
             "id": job_id, "type": "job", "label": job.name,
             "state": latest.state if latest else None,
             "cluster": job.target_name,
+            "tags": tags_of(job),
         })
         u = job_usage(job)
         for name in u.reads & entries.keys():

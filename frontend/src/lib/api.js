@@ -153,6 +153,7 @@ export const api = {
   latestBatch: () => request('/api/batches/latest'),
   batch: (id) => request(`/api/batches/${id}`),
   stopBatch: (id) => request(`/api/batches/${id}/stop`, { method: 'POST' }),
+  tagJobs: (jobs, add = [], remove = []) => request('/api/jobs/tags', { method: 'POST', body: { jobs, add, remove } }),
   moveOptions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/move`),
   moveJob: (name, cluster) => request(`/api/jobs/${encodeURIComponent(name)}/move`, { method: 'POST', body: { cluster } }),
   stopJob: (name, drain = false) =>

@@ -25,6 +25,7 @@ export default function JobEditor() {
   const [target, setTarget] = useState('')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [tagText, setTagText] = useState('') // comma-separated; tags organise, they never change a version
   const [jobType, setJobType] = useState('streaming')
   const [sql, setSql] = useState('')
   const [refs, setRefs] = useState([])
@@ -53,6 +54,7 @@ export default function JobEditor() {
         const j = await api.job(cloneOf)
         setName(`${j.name}_copy`)
         setDescription(j.description || '')
+        setTagText((j.tags || []).join(', '))
         setJobType(j.job_type)
         setSql(j.sql_text)
         setRefs(j.catalog_refs)
@@ -64,6 +66,7 @@ export default function JobEditor() {
         const j = await api.job(editing)
         setName(j.name)
         setDescription(j.description || '')
+        setTagText((j.tags || []).join(', '))
         setJobType(j.job_type)
         setSql(j.sql_text)
         setRefs(j.catalog_refs)
@@ -133,7 +136,7 @@ export default function JobEditor() {
       prev.includes(entryName) ? prev.filter((r) => r !== entryName) : [...prev, entryName],
     )
 
-  const serialized = JSON.stringify({ name, description, jobType, target, sql, refs, note })
+  const serialized = JSON.stringify({ name, description, tagText, jobType, target, sql, refs, note })
   useEffect(() => { if (loaded && initial === null) setInitial(serialized) }, [loaded, initial, serialized])
   const unsaved = initial !== null && initial !== serialized
   const allowNavigation = useUnsavedChanges(unsaved)
@@ -145,6 +148,7 @@ export default function JobEditor() {
       name, description, job_type: jobType, sql_text: sql,
       catalog_refs: refs, note: note || undefined,
       target_name: target || null,
+      tags: tagText.split(/[\s,]+/).map((t) => t.trim().toLowerCase()).filter(Boolean),
     }
     try {
       if (editing) await api.updateJob(editing, body)
@@ -193,6 +197,10 @@ export default function JobEditor() {
             </Field>
             <Field label="Description">
               <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+            <Field label="Tags" hint="Group jobs by what they do, e.g. buoys, ingest. Separate with commas. Changing tags never restarts or re-versions the job.">
+              <input id="job-tags" className="input" value={tagText} placeholder="buoys, ingest"
+                     onChange={(e) => setTagText(e.target.value)} />
             </Field>
             {targets.length > 1 && (
               <Field

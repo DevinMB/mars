@@ -29,6 +29,8 @@ This is a direction of travel, not a release schedule.
   at a time, with each moved job checked healthy before the next.
 - Cluster resources: memory, CPU and slots per TaskManager, and each job's slots,
   state, checkpoint time and busiest operator, heaviest first.
+- Job tags: group jobs by what they do; filter the Jobs page and the pipeline map by
+  tag, and tag many jobs at once from the selection. Tags never re-version a job.
 - Bulk actions on the Jobs page: select jobs and move, stop or resume them; the
   console runs the batch itself, so it survives a closed browser or a restart.
 
@@ -47,12 +49,7 @@ This is a direction of travel, not a release schedule.
 - **Operations, continued:** trends over time (state growth, checkpoint duration, busy
   ratio), and warnings before a cluster runs short of memory or slots.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
-  topic; filter the pipeline map by tag or owner, or to only what is failing.
-- **Job tags:** tags (for example `buoys`, `sits`, `whispers`) to group, filter and
-  bulk-select jobs on the Jobs page and the pipeline map, plus suggested naming
-  conventions. The pipeline map's "filter by tag" under Data flow depends on this.
-  The World of Buoys jobs are the first to use them.
-
+  topic; filter the pipeline map by owner, or to only what is failing.
 ## Later
 
 - A CLI for reviewing and applying definitions in automated workflows.

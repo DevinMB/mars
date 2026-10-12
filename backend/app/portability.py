@@ -31,6 +31,7 @@ import yaml
 from croniter import croniter
 from sqlalchemy.orm import Session
 
+from . import tags
 from .guards import parse_options
 from .models import CatalogEntry, Job, Schedule, Target
 from .secrets import SecretStore
@@ -97,6 +98,10 @@ def _validate_payload(payload: dict[str, Any]) -> None:
                 uses = item.get("uses", [])
                 if not isinstance(uses, list) or any(not isinstance(v, str) for v in uses):
                     raise ValueError("Job 'uses' must be a list of catalog names.")
+                job_tags = item.get("tags", [])
+                if not isinstance(job_tags, list):
+                    raise ValueError("Job 'tags' must be a list.")
+                tags.clean(job_tags)
                 schedule = item.get("schedule")
                 if schedule is not None:
                     if not isinstance(schedule, dict) or schedule.get("mode", "supervisor") not in ("cron", "supervisor"):
@@ -176,6 +181,8 @@ def export_all(db: Session, store: SecretStore) -> dict[str, Any]:
         }
         if job.target_name:
             item["target"] = job.target_name
+        if tags.of(job):
+            item["tags"] = tags.of(job)
         schedule = job.schedule
         if schedule:
             item["schedule"] = {
@@ -355,22 +362,29 @@ def import_all(
                     enabled=bool(item.get("enabled", True)),
                     target_name=item.get("target") or None,
                 )
+                tags.put(job, item.get("tags") or [])
                 db.add(job)
                 db.flush()
                 _apply_schedule(db, job, item.get("schedule"))
         elif not replace:
             outcome.skipped.append(f"job/{name}")
-        elif existing.sql_text == item["sql"] and _refs(existing) == uses:
+        elif (existing.sql_text == item["sql"] and _refs(existing) == uses
+              and tags.of(existing) == tags.clean(item.get("tags") or [])):
             outcome.unchanged.append(f"job/{name}")
         else:
             outcome.updated.append(f"job/{name}")
             if not dry_run:
+                # Only a change to what runs earns a new version, as in the editor;
+                # decided before the fields are overwritten.
+                runs_changed = existing.sql_text != item["sql"] or _refs(existing) != uses
                 existing.description = item.get("description")
                 existing.job_type = item.get("type", existing.job_type)
                 existing.sql_text = item["sql"]
                 existing.catalog_refs = json.dumps(uses)
                 existing.target_name = item.get("target") or None
-                existing.version += 1
+                tags.put(existing, item.get("tags") or [])
+                if runs_changed:
+                    existing.version += 1
                 _apply_schedule(db, existing, item.get("schedule"))
 
     if dry_run or outcome.errors:

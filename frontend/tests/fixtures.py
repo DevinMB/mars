@@ -29,7 +29,7 @@ RUN = {
 JOB = {
     'id': 1, 'name': 'readings_to_output', 'description': 'Send sensor readings to the output.',
     'job_type': 'streaming', 'sql_text': 'INSERT INTO output SELECT * FROM readings;',
-    'catalog_refs': ['readings', 'output'], 'enabled': True, 'version': 1,
+    'catalog_refs': ['readings', 'output'], 'enabled': True, 'version': 1, 'tags': ['sensors'],
     'target_name': None, 'latest_savepoint': None, 'updated_at': STAMP, 'latest_run': RUN,
     'schedule': {'mode': 'supervisor', 'enabled': True}, 'live_state': 'running', 'checkpoint_age_ms': 1000,
 }
@@ -91,7 +91,7 @@ def fixtures():
             'nodes': [
                 {'id': 'job:enrich_events', 'type': 'job', 'label': 'enrich_events', 'state': 'running', 'cluster': 'local'},
                 {'id': 'job:archive_events', 'type': 'job', 'label': 'archive_events', 'state': 'failed', 'cluster': 'local'},
-                {'id': 'job:readings_to_output', 'type': 'job', 'label': 'readings_to_output', 'state': 'running', 'cluster': 'mars-b'},
+                {'id': 'job:readings_to_output', 'type': 'job', 'label': 'readings_to_output', 'state': 'running', 'cluster': 'mars-b', 'tags': ['sensors']},
                 {'id': 'ext:1', 'type': 'external', 'label': 'event-collector', 'direction': 'produces', 'note': None,
                  'endpoint_id': 1, 'resource': 'kafka:broker:9092/raw-events'},
                 {'id': 'res:kafka:broker:9092/raw-events', 'type': 'resource', 'kind': 'kafka topic', 'label': 'raw-events',
