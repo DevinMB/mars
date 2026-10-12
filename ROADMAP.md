@@ -54,6 +54,11 @@ This is a direction of travel, not a release schedule.
 
 - A CLI for reviewing and applying definitions in automated workflows.
 - More connector and format integrations.
+- A Telegram source connector (bot API long polling), so a bot's messages are a Flink
+  table. First use: replace the Python `whisper-consumer` (Telegram to the
+  `whispererer-log` topic), keeping its message shape and key (chat title). Needs the
+  bot token as a MARS secret, and exactly one running copy, since Telegram allows one
+  poller per bot.
 - External identity providers for shared installations.
 - Renaming a job, keeping its history, schedule and saved state. Its automatic Kafka
   consumer group (`mars-<job>`) changes with the name, which only matters for a fresh
