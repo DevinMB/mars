@@ -74,3 +74,6 @@ This is a direction of travel, not a release schedule.
   to find. Adding one is a form inside a topic's details, and removing one is a small
   link next to its name there; neither is visible from the map itself, so it should be
   clearer how to add, edit and remove them.
+- External secret providers: resolve `${secret:...}` from CyberArk (first) or HashiCorp
+  Vault at submission time, instead of only MARS's own encrypted store, so credentials
+  stay in the system an organisation already manages and rotates.
