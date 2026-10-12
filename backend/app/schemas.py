@@ -694,6 +694,7 @@ class MoveOptionOut(BaseModel):
     cluster: str
     ok: bool
     reasons: list[str] = []
+    notes: list[str] = []
     state_bytes: int | None = None
     pause_seconds: float | None = None
     # True when the pause comes from this installation's measured savepoint speed.

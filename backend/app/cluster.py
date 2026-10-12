@@ -273,6 +273,10 @@ class FlinkClusterClient:
             r.raise_for_status()
             return r.json()["request-id"]
 
+    async def checkpoint_health(self, job_id: str) -> CheckpointHealth:
+        async with self._client() as c:
+            return await self._checkpoints(c, job_id)
+
     async def state_size(self, job_id: str) -> int | None:
         """Bytes in the job's latest completed checkpoint: how much a savepoint of
         it will write, and a restore read back."""

@@ -228,6 +228,21 @@ Changing **Runs on** in the editor is refused while a job is running: MARS would
 then ask the new cluster about it, hear that it does not exist, and mark it
 failed while it kept running on the old one.
 
+### Upgrading one cluster at a time
+
+With job moves ready, **Clusters → Upgrade one cluster at a time…** replaces the
+maintenance window: empty one cluster, upgrade it, move every job onto it, then
+upgrade the other. Each job pauses only for its own move. The guide starts with
+whichever cluster has fewer jobs and works out the current step from where the
+jobs are; the upgrades themselves are the usual image change on each machine,
+which MARS shows but cannot run.
+
+Moves in a batch are checked: the next job moves only once the last is running
+and has completed a checkpoint on its new cluster (within three checkpoint
+intervals, at least 90 seconds), and the batch stops at the first that has not.
+A move onto a newer Flink version is allowed and noted; onto an older one it is
+refused, because Flink does not restore a savepoint onto an older version.
+
 ### On an NFS share
 
 1. Create a share every cluster's machine can reach, allowing each one's IP.

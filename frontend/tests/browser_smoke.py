@@ -143,6 +143,19 @@ with sync_playwright() as pw:
     expect(page.get_by_text(f'{job} now runs on mars-b.')).to_be_visible()
     page.get_by_role('status').get_by_role('button',name='Dismiss').click()
     expect(page.get_by_role('heading',name=f'Moving {total} job{"" if total==1 else "s"} to mars-b')).to_have_count(0)
+    # Rolling upgrade: offered once job moves are ready; the empty cluster goes first.
+    fixtures['/api/targets/storage']['moves'][0]['state']='ready'
+    visit('/cluster')
+    page.get_by_role('button',name='Upgrade one cluster at a time…').click()
+    expect(page.get_by_role('heading',name='Upgrade without stopping the pipeline')).to_be_visible()
+    expect(page.get_by_text('No jobs on mars-b.')).to_be_visible()
+    move_all=page.get_by_role('button',name='Move 1 job to mars-b')
+    expect(move_all).to_be_disabled()
+    page.get_by_role('checkbox',name='mars-b runs the new image').check()
+    expect(move_all).to_be_enabled()
+    move_all.click()
+    expect(page.get_by_role('heading',name='Moving 1 job to mars-b')).to_be_visible()
+    fixtures['/api/targets/storage']['moves'][0]['state']='off'
     # Moving a job: from the job's menu, to a cluster MARS says is ready.
     visit('/jobs/'+job)
     page.get_by_role('button',name='More').click()
