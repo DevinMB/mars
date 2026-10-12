@@ -50,6 +50,27 @@ This is a direction of travel, not a release schedule.
   ratio), and warnings before a cluster runs short of memory or slots.
 - **Data flow, continued:** optionally merge catalog entries that describe the same
   topic; filter the pipeline map by owner, or to only what is failing.
+- **Design review follow-ups.** A product and design review was completed on
+  2026-10-12 (12 ranked findings, quick wins, journeys, mock-ups; kept outside the repo
+  on the MARS host in `/root/mars-design-review/`). It is provisional: it used
+  synthetic data, and a pass on the live console with a viewer sign-in is still to
+  do. Its five biggest changes:
+  1. One attention view: a "Needs attention" filter and counts on Jobs (failed jobs,
+     repeated restarts, stalled checkpoints, unreachable clusters), saying when the
+     data was last received and telling unknown apart from healthy.
+  2. Maintenance as a stable plan: the rolling upgrade with fixed cluster order,
+     "You" and "MARS" steps, completion only once observed, and the measured pause
+     per job (the downtime item above).
+  3. Pipeline as the place to maintain the flow: an "Add outside system" action and
+     an editable panel when an outside node is selected, with a list alternative.
+  4. Capacity within reach: Resources becomes a full-width "Resources & jobs"
+     control naming memory, CPU, slots and the JobManager.
+  5. Building a pipeline with an explicit step from saved SQL to a running job.
+  Quick wins: the Resources control; upgrade wording that does not claim success
+  early; export wording that does not promise "safe to commit"; showing selected jobs
+  hidden by a filter; a retry when validation cannot reach Flink; slot wording;
+  "Remove from map" with a confirmation; "clusters" instead of "targets" everywhere.
+
 ## Later
 
 - A CLI for reviewing and applying definitions in automated workflows.
@@ -65,15 +86,6 @@ This is a direction of travel, not a release schedule.
   start; a resume uses the offsets in its savepoint.
 - Renaming a cluster. Jobs refer to a cluster by name, so a rename updates the cluster
   and every job that names it in one change; running jobs are unaffected.
-- Design and product review, by someone thinking as a professional product owner and
-  designer. Two parts: make the cluster card's Resources link clearly a control (a
-  gauge, a button, a hint of what it shows: heap, memory, the JobManager, the jobs on
-  that cluster); and a review of every feature from the user's side, with suggestions
-  for making MARS the one place to run Flink: jobs, pipelines, data movement and
-  operations. The pipeline map in particular: managing systems outside Flink is hard
-  to find. Adding one is a form inside a topic's details, and removing one is a small
-  link next to its name there; neither is visible from the map itself, so it should be
-  clearer how to add, edit and remove them.
 - External secret providers: resolve `${secret:...}` from CyberArk (first) or HashiCorp
   Vault at submission time, instead of only MARS's own encrypted store, so credentials
   stay in the system an organisation already manages and rotates.
