@@ -54,5 +54,11 @@ This is a direction of travel, not a release schedule.
 - A CLI for reviewing and applying definitions in automated workflows.
 - More connector and format integrations.
 - External identity providers for shared installations.
+- Organizing jobs: tags (for example `buoys`, `sits`, `whispers`) to group, filter and
+  bulk-select jobs on the Jobs page and the pipeline map, plus suggested naming
+  conventions. The pipeline map's "filter by tag" under Data flow depends on this.
+- Renaming a job, keeping its history, schedule and saved state. Its automatic Kafka
+  consumer group (`mars-<job>`) changes with the name, which only matters for a fresh
+  start; a resume uses the offsets in its savepoint.
 - Renaming a cluster. Jobs refer to a cluster by name, so a rename updates the cluster
   and every job that names it in one change; running jobs are unaffected.
