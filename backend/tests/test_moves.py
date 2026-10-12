@@ -111,9 +111,17 @@ async def test_nothing_is_stopped_when_the_destination_cannot_take_it(db):
     job = _running(db)
     with pytest.raises(moves.MoveError, match="no free task slot"):
         await moves.move(db, _Registry(log, slots=0), job, "mars-b", "devin")
-    with pytest.raises(moves.MoveError, match="runs Flink 2.3.0"):
-        await moves.move(db, _Registry(log, versions=("2.2.1", "2.3.0")), job, "mars-b", "devin")
+    # Flink cannot restore onto an older version.
+    with pytest.raises(moves.MoveError, match="older than 2.3.0 here"):
+        await moves.move(db, _Registry(log, versions=("2.3.0", "2.2.1")), job, "mars-b", "devin")
     assert log == [] and job.target_name is None
+
+
+@pytest.mark.asyncio
+async def test_moving_onto_a_newer_flink_is_allowed_and_said(db):
+    job = _running(db)
+    opts = await moves.options(db, _Registry([], versions=("2.2.1", "2.3.0")), job)
+    assert opts[0].ok and "cannot move back to default" in opts[0].notes[0]
 
 
 @pytest.mark.asyncio

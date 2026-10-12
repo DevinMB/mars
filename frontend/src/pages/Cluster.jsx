@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import AddClusterGuide from '../components/AddClusterGuide'
 import { JobMovesGuide, JobMovesLine } from '../components/JobMoves'
+import RollingUpgrade from '../components/RollingUpgrade'
 import TargetForm from '../components/TargetForm'
 import { Alert, Badge, PageHeader, Spinner } from '../components/ui'
 
@@ -116,6 +117,7 @@ export default function Cluster() {
   const [added, setAdded] = useState(null)       // name of the cluster just added
   const [storage, setStorage] = useState(null)   // savepoint locations and job moves
   const [guide, setGuide] = useState(null)       // { mode, cluster } of an open job-moves guide
+  const [upgrading, setUpgrading] = useState(false) // the rolling upgrade guide is open
 
   useEffect(() => {
     let alive = true
@@ -228,7 +230,17 @@ export default function Cluster() {
         <Stat label="Connectors" value={connectors.length} />
       </div>
 
-      <h2 className="eyebrow-accent mb-3">Clusters</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="eyebrow-accent">Clusters</h2>
+        {canManage && !upgrading && storage?.moves.some((m) => m.state === 'ready') && (
+          <button type="button" className="link text-[13px]" onClick={() => setUpgrading(true)}>
+            Upgrade one cluster at a time…
+          </button>
+        )}
+      </div>
+      {upgrading && storage && (
+        <RollingUpgrade targets={targets} moves={storage.moves} onClose={() => setUpgrading(false)} />
+      )}
       <div className="grid gap-3 lg:grid-cols-2 mb-8">
         {targets.map((t) => (
           <TargetCard
