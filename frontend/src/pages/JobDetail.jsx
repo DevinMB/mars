@@ -171,6 +171,11 @@ export default function JobDetail() {
           <StatePill state={run?.state} />
           <span>{job.target_name || 'Default cluster'}</span>
           <span>{job.job_type}</span>
+          {job.tags?.length > 0 && (
+            <span className="flex flex-wrap gap-1">{job.tags.map((t) => (
+              <Link key={t} to={`/jobs?tag=${encodeURIComponent(t)}`} className="text-[11px] leading-4 rounded-sm px-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">{t}</Link>
+            ))}</span>
+          )}
         </span>}
         back={{ to: '/jobs', label: 'Jobs' }}
         actions={canWrite && <>

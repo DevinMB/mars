@@ -318,6 +318,9 @@ class Job(Base, TimestampMixin):
     tables_written: Mapped[str | None] = mapped_column(Text)
     tables_from: Mapped[str | None] = mapped_column(String(8))
     tables_key: Mapped[str | None] = mapped_column(String(64))
+    # Labels for grouping jobs by what they do, as a JSON list (see tags.py). Not
+    # part of the job's version: they change nothing about how it runs.
+    tags: Mapped[str] = mapped_column(Text, default="[]")
 
     versions: Mapped[list["JobVersion"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobVersion.version.desc()"

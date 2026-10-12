@@ -2,18 +2,20 @@
 //
 // cluster: keep that cluster's jobs, and the topics, tables and outside systems
 //   connected to them.
+// tag: the same, for the jobs carrying that tag.
 // focus: a node id; keep it and everything upstream and downstream of it, the
 //   pipeline it belongs to. Siblings that only share a source are left out:
 //   another reader of the same topic is not part of this one's flow.
 //
 // Returns { nodes, edges, missing }, missing when the focused node is not in
 // what the cluster filter left.
-export function filterGraph(graph, { cluster = null, focus = null } = {}) {
+export function filterGraph(graph, { cluster = null, tag = null, focus = null } = {}) {
   let nodes = graph.nodes
   let edges = graph.edges
 
-  if (cluster) {
-    const jobs = new Set(nodes.filter((n) => n.type === 'job' && n.cluster === cluster).map((n) => n.id))
+  const keep = (n) => (!cluster || n.cluster === cluster) && (!tag || (n.tags || []).includes(tag))
+  if (cluster || tag) {
+    const jobs = new Set(nodes.filter((n) => n.type === 'job' && keep(n)).map((n) => n.id))
     const near = new Set(jobs)
     for (const e of edges) {
       if (jobs.has(e.from)) near.add(e.to)

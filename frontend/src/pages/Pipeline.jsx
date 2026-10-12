@@ -151,6 +151,7 @@ export default function Pipeline() {
   const [params, setParams] = useSearchParams()
   const focus = params.get('focus')
   const cluster = params.get('cluster')
+  const tag = params.get('tag')
   const setFilter = (key, value) => setParams((prev) => {
     const next = new URLSearchParams(prev)
     if (value) next.set(key, value); else next.delete(key)
@@ -160,7 +161,7 @@ export default function Pipeline() {
   const load = () => api.pipeline().then((g) => { setGraph(g); setError(null) }).catch((e) => setError(e.message))
   useEffect(() => { load() }, [])
 
-  const shown = useMemo(() => graph && filterGraph(graph, { cluster, focus }), [graph, cluster, focus])
+  const shown = useMemo(() => graph && filterGraph(graph, { cluster, tag, focus }), [graph, cluster, tag, focus])
   const layout = useMemo(() => {
     if (!shown) return null
     const types = new Map(shown.nodes.map((n) => [n.id, n.type]))
@@ -173,7 +174,8 @@ export default function Pipeline() {
   const current = selected && shown.nodes.find((n) => n.id === selected)
   const clusters = [...new Set(graph.nodes.filter((n) => n.type === 'job' && n.cluster).map((n) => n.cluster))].sort()
   const byType = (type) => graph.nodes.filter((n) => n.type === type).sort((a, b) => a.label.localeCompare(b.label))
-  const filtered = Boolean(focus || cluster)
+  const tagList = [...new Set(graph.nodes.flatMap((n) => (n.type === 'job' && n.tags) || []))].sort()
+  const filtered = Boolean(focus || cluster || tag)
   const jobCount = (nodes) => nodes.filter((n) => n.type === 'job').length
   const touches = (e) => current && (e.from === current.id || e.to === current.id)
   const select = (node) => {
@@ -201,6 +203,15 @@ export default function Pipeline() {
                 )}
               </select>
             </label>
+            {tagList.length > 0 && (
+              <label className="text-[12px] text-slate-500">
+                <span className="block mb-1">Tag</span>
+                <select className="input w-40" aria-label="Tag" value={tag || ''} onChange={(e) => { setSelected(null); setFilter('tag', e.target.value) }}>
+                  <option value="">All tags</option>
+                  {tagList.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+            )}
             {clusters.length > 1 && (
               <label className="text-[12px] text-slate-500">
                 <span className="block mb-1">Cluster</span>
@@ -236,11 +247,11 @@ export default function Pipeline() {
             <span className="sm:ml-auto">Drag to move around. Select a topic to see and add what reads and writes it.</span>
           </div>
           {shown.missing ? (
-            <EmptyState title="Not on this cluster">What you focused on is not connected to any job on {cluster}.</EmptyState>
+            <EmptyState title="Nothing to show">What you focused on is not connected to any job {tag ? `tagged ${tag}` : ""}{tag && cluster ? " " : ""}{cluster ? `on ${cluster}` : ""}.</EmptyState>
           ) : (
             <div className="card p-0">
               <PanZoom width={layout.width + PAD * 2} height={layout.height + PAD * 2}
-                       fitKey={`${focus}|${cluster}`} label="Pipeline graph">
+                       fitKey={`${focus}|${cluster}|${tag}`} label="Pipeline graph">
                 <defs>
                   <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-slate-300" /></marker>
                   <marker id="arrow-on" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-accent-500" /></marker>

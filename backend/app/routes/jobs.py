@@ -24,7 +24,7 @@ from ..ai import AiClient
 from ..drafting import draft_statement
 from ..gateway import SqlGatewayClient
 from ..preview import preview_statement
-from .. import lineage, moves
+from .. import lineage, moves, tags
 from ..explain import Context as ExplainContext
 from ..explain import explain
 from ..guards import check_job, column_names, columns_of
@@ -47,8 +47,10 @@ from ..schemas import (
     PreviewRequest,
     SampleOut,
     DiagnosticsOut,
+    BulkTagsIn,
     JobIn,
     JobOut,
+    JobTagsOut,
     MoveIn,
     MoveOptionOut,
     MoveOut,
@@ -125,6 +127,7 @@ def _out(job: Job) -> JobOut:
         enabled=job.enabled,
         version=job.version,
         target_name=job.target_name,
+        tags=tags.of(job),
         latest_savepoint=job.latest_savepoint,
         restore_point=_restore_point_out(job),
         updated_at=job.updated_at,
@@ -300,6 +303,7 @@ def create_job(
     # Keep the plan from the editor's check of exactly this SQL, if there was one.
     if (plans := lineage.recall_plans(job)) is not None:
         lineage.record_plan(job, plans)
+    tags.put(job, body.tags)
     db.add(job)
     db.flush()
     db.add(
@@ -342,6 +346,8 @@ def update_job(
             "This job is running, so its cluster cannot be changed here. Use Move to "
             "cluster on the job's page, which keeps its state, or stop it first."))
     job.target_name = new_target
+    # Organisational only: not a change to what runs, so no new version.
+    tags.put(job, body.tags)
     if changed and (plans := lineage.recall_plans(job)) is not None:
         lineage.record_plan(job, plans)
 
@@ -766,6 +772,34 @@ async def stop_job(
             detail=f"{exc.summary} {exc.detail}".strip(),
         ) from exc
     return _run_out(active)  # type: ignore[return-value]
+
+
+@router.post("/tags", response_model=list[JobTagsOut])
+def bulk_tags(
+    body: BulkTagsIn,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> list[JobTagsOut]:
+    """Adds and removes tags on several jobs at once, e.g. from the Jobs page's selection."""
+    try:
+        add, remove = tags.clean(body.add), tags.clean(body.remove)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    found = {j.name: j for j in db.query(Job).filter(Job.name.in_(body.jobs))}
+    missing = [n for n in body.jobs if n not in found]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"No job named {', '.join(missing)}.")
+    out = []
+    for name in body.jobs:
+        job = found[name]
+        new = [t for t in tags.of(job) if t not in remove] + [t for t in add if t not in tags.of(job)]
+        try:
+            tags.put(job, new)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"{name}: {exc}") from exc
+        out.append(JobTagsOut(name=name, tags=tags.of(job)))
+    db.commit()
+    return out
 
 
 @router.get("/{name}/move", response_model=list[MoveOptionOut])

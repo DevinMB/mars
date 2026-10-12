@@ -125,6 +125,23 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Show only what connects to this').click()
     expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    # Tags: chips filter the list, the address keeps the filter, and the selection can be tagged.
+    visit('/jobs')
+    page.get_by_role('button',name='sensors').first.click()
+    expect(page.get_by_role('combobox',name='Filter by tag')).to_have_value('sensors')
+    assert 'tag=sensors' in page.url, 'the tag filter is not kept in the address'
+    page.get_by_role('combobox',name='Filter by tag').select_option('')
+    page.get_by_role('checkbox',name='Select all shown jobs').check()
+    page.get_by_role('button',name='Tag…').click()
+    page.get_by_label('Tags').fill('Demo, phase1')
+    page.get_by_role('button',name='Add',exact=True).click()
+    assert any(m=='POST' and p=='/api/jobs/tags' and '"add":["demo","phase1"]' in (d or '').replace(' ','') for m,p,d in writes), 'tags were not sent'
+    page.get_by_role('button',name='Close').click()
+    page.get_by_role('button',name='Clear selection').click()
+    visit('/pipeline')
+    page.get_by_role('combobox',name='Tag').select_option('sensors')
+    expect(page.get_by_role('button',name='job readings_to_output')).to_be_visible()
+    expect(page.get_by_role('button',name='job enrich_events')).to_have_count(0)
     # Bulk actions: tick jobs (or all shown), then move them one at a time.
     visit('/jobs')
     page.get_by_role('checkbox',name='Select all shown jobs').check()

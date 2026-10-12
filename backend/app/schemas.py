@@ -140,6 +140,13 @@ class JobIn(BaseModel):
     note: str | None = None
     # None means the default target.
     target_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v: list[str]) -> list[str]:
+        from .tags import clean
+        return clean(v)
 
     @field_validator("job_type")
     @classmethod
@@ -258,6 +265,7 @@ class JobOut(BaseModel):
     enabled: bool
     version: int
     target_name: str | None = None
+    tags: list[str] = []
     # The most recent state saved for this job. Its presence is what makes a
     # restart resume where it left off rather than start over with empty state.
     latest_savepoint: str | None = None
@@ -769,3 +777,14 @@ class ClusterResourcesOut(BaseModel):
     taskmanagers: list[TaskManagerOut]
     jobmanager: JobManagerOut
     jobs: list[JobFootprintOut]
+
+
+class BulkTagsIn(BaseModel):
+    jobs: list[str] = Field(min_length=1, max_length=500)
+    add: list[str] = Field(default_factory=list)
+    remove: list[str] = Field(default_factory=list)
+
+
+class JobTagsOut(BaseModel):
+    name: str
+    tags: list[str]
