@@ -93,6 +93,52 @@ This is a direction of travel, not a release schedule.
   - The restore point must never silently become an older run's checkpoint. After
     these failures the job showed `a255cab…/chk-142`, more than three hours old and
     from an earlier run.
+- **Moves in parallel, with all-or-nothing rollback.** A bulk move runs one job at a
+  time and waits for each to complete a checkpoint before the next. On 2026-10-13,
+  12 small jobs took 4 min 53 s each way (batches 8 and 9, about 24 s per job), mostly
+  spent in health-check waits rather than downtime. The console already drives the
+  batch server-side, so it can work on several jobs at once:
+  - Stop-with-savepoint several jobs concurrently (bounded, e.g. 4 at a time, and by
+    the destination's free slots). Submit each on the destination as soon as its
+    savepoint lands, and watch all of them for RUNNING plus a completed checkpoint
+    in parallel.
+  - If any job fails its health check, back it out to the source from the same
+    savepoint. Offer to roll back the rest of the wave, or the whole batch, so a
+    cluster upgrade either completes or leaves everything where it started.
+  - Keep jobs with large state or a slow savepoint (expected time from
+    measured checkpoints, see the move-timeout correction) out of the parallel wave:
+    run them alone, so one slow job doesn't hold up or time out the others.
+  - Report per-job downtime and the batch total, as in the item above.
+- **Backpressure diagnostic names the wrong operator.** On `buoys_hourly` the job page
+  said "Backpressure at Source: buoy_observations_src → MiniBatchAssigner → (Calc,
+  Calc, … Calc)" and "This operator is being held up by whatever it writes to.
+  Throughput for the whole job is limited by it." The first half is right, the second
+  is wrong: the source wasn't the bottleneck. The sink (`buoys_hourly_sink` Writer)
+  was 100% busy and was the one limiting throughput.
+  - Name the bottleneck: the most downstream busy operator that is not itself
+    backpressured (high `busyTimeMsPerSecond`, low `backPressuredTimeMsPerSecond`).
+    Say that it limits the job, and list the backpressured operators as its
+    victims.
+  - For a sink, say what it is waiting on (the external system), and point at the
+    connector's own metrics where it has them (e.g. CouchDB conflicts and
+    `couchdbRevCacheHits`).
+  - Shorten operator chains: collapse repeats ("Calc ×10") instead of listing ten
+    identical names.
+- **`deploy.sh` must work every time, for anyone.** It failed for the user on
+  2026-10-13 (symptom still to be recorded), and it ran cleanly for Claude minutes
+  later on an empty cluster. Make it boring:
+  - It only deploys the cluster on the host it runs on. Say so on the Version &
+    updates page and in its usage text. It is not the way to upgrade `mars-b` (see
+    the per-cluster updates item).
+  - Pre-flight before anything stops: image pullable, `mars.env` writable, console
+    ready, Flink healthy, no batch or savepoint in flight, enough free slots. Then
+    print exactly what it will do (which jobs stop, for how long) and ask for
+    confirmation unless `--yes`.
+  - Fail with one clear line and a next step, never a bare `set -e` exit. Resume is
+    automatic or one command.
+  - Its deploy-history commits are never pushed: `dmb-flink-jobs` was 13 commits
+    ahead of origin. Push them, or say why not.
+  - Add a dry-run mode, and a CI smoke test against a throwaway compose project.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
