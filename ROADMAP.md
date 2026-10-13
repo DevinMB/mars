@@ -52,6 +52,11 @@ This is a direction of travel, not a release schedule.
     unhealthy), and say so instead of asking the user to.
   - "Latest" must never fall back to an earlier run's checkpoint. If the newest
     restore point is gone, stop and say so.
+  - CouchDB sink (mars-connectors): after a `_bulk_docs` conflict it re-reads each
+    document's `_rev` with its own request, so a replay over existing documents costs
+    one round trip per record. Harmless next to CouchDB on .250, but from mars-b
+    (~24 ms away) it ran at ~40 docs/s. Fetch the batch's revisions in one
+    `_all_docs?keys=` request instead.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
