@@ -52,6 +52,30 @@ This is a direction of travel, not a release schedule.
     unhealthy), and say so instead of asking the user to.
   - "Latest" must never fall back to an earlier run's checkpoint. If the newest
     restore point is gone, stop and say so.
+  - It happened again the same night (move to `default` ahead of a `mars-b` image
+    upgrade, savepoint ~2 min late). The supervisor resubmitted on `mars-b` from
+    `chk-126`, older than the savepoint that had just landed and already discarded,
+    so the run failed. A slow, backpressured sink makes every move of that job hit
+    this.
+- **Version & updates, per cluster.** On 2026-10-13 the page did not get a Flink image
+  onto `mars-b`. It shows one Flink version and one command
+  (`deploy.sh flink <commit>`), and that command only replaces the console's own
+  cluster, by a full maintenance window. That contradicts the page's own advice to
+  upgrade one cluster at a time. Nothing told the user what to run on the other host.
+  There, the image digest was pinned in `docker-compose.yml`, not in `.env`
+  (`MARS_FLINK_IMAGE`) as the generated compose expects, and a placeholder `sed`
+  corrupted it. Every attempt after that pulled `…@sha256:<old><NEW_DIGEST><NEW_DIGEST>`.
+  - List every cluster with the Flink image it actually runs (from the cluster, not
+    the console's config), and which ones are behind.
+  - When there is more than one cluster, lead with the guided rolling upgrade and
+    offer the single-cluster window only as the fallback.
+  - For a remote cluster, give the exact, copy-ready commands with the real digest
+    filled in: where the image is pinned, a replacement anchored on the whole image
+    reference, then `docker compose pull && docker compose up -d`. Detect a compose
+    file that pins the digest inline and say so.
+  - Refuse to restart a cluster that still runs jobs. Say which jobs to move first,
+    because without HA a restart drops them.
+  - After the change, confirm from the cluster that the new image is running.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
