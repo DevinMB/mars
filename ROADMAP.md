@@ -36,6 +36,12 @@ This is a direction of travel, not a release schedule.
 
 ## Next
 
+**Order agreed 2026-10-13:** the bugs that hurt a live move or upgrade come first, then World
+of Buoys phase 3 (pairwise correlation, which is outside MARS). In order: (1) a move that times
+out on its savepoint, (2) savepoints in progress visible, one at a time, (3) `deploy.sh`
+reliability, (4) Version & updates per cluster, (5) the backpressure diagnostic, (6) moves in
+parallel.
+
 - **Correction: a move that times out on its savepoint.** On 2026-10-13, moving
   `buoys_hourly` (100 MB of RocksDB state, sink backpressured, checkpoints taking
   100–200 s) gave up waiting for its savepoint. Flink finished the savepoint 268 s
@@ -109,6 +115,10 @@ This is a direction of travel, not a release schedule.
     measured checkpoints, see the move-timeout correction) out of the parallel wave:
     run them alone, so one slow job doesn't hold up or time out the others.
   - Report per-job downtime and the batch total, as in the item above.
+  - Check capacity before starting: a rolling upgrade empties one cluster into the
+    other, so the destination needs a free slot for every job and enough managed memory
+    for the RocksDB ones. Both clusters were sized alike on 2026-10-13 (16 slots, 2 cores,
+    4 GB, 1.37 GB managed) for 14 jobs; say clearly when that stops fitting.
 - **Backpressure diagnostic names the wrong operator.** On `buoys_hourly` the job page
   said "Backpressure at Source: buoy_observations_src → MiniBatchAssigner → (Calc,
   Calc, … Calc)" and "This operator is being held up by whatever it writes to.
