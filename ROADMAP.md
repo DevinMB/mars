@@ -36,6 +36,22 @@ This is a direction of travel, not a release schedule.
 
 ## Next
 
+- **Correction: a move that times out on its savepoint.** On 2026-10-13, moving
+  `buoys_hourly` (100 MB of RocksDB state, sink backpressured, checkpoints taking
+  100–200 s) gave up waiting for its savepoint. Flink finished the savepoint 268 s
+  later and stopped the job, but MARS did not record it, and the supervisor, still on,
+  restarted the job on the old cluster. It tried the "latest" checkpoint, which Flink
+  had already discarded, then fell back to a checkpoint from an earlier run, hours
+  old and on a different state backend, which failed and kept restarting. Recovering
+  it took a manual cancel, a Runs-on edit and a run from the savepoint's path.
+  - Budget the savepoint from the job's recent checkpoint durations, not only its
+    state size, and warn before starting when the job is backpressured.
+  - Pause the job's supervisor for the whole move.
+  - On giving up, keep watching the savepoint; when it lands, record it as the
+    restore point and finish the move (or resume where it was, if the target is
+    unhealthy), and say so instead of asking the user to.
+  - "Latest" must never fall back to an earlier run's checkpoint. If the newest
+    restore point is gone, stop and say so.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
