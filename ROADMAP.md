@@ -76,6 +76,23 @@ This is a direction of travel, not a release schedule.
   - Refuse to restart a cluster that still runs jobs. Say which jobs to move first,
     because without HA a restart drops them.
   - After the change, confirm from the cluster that the new image is running.
+- **A savepoint in progress is visible, and only one at a time.** On 2026-10-13 the user
+  stopped `buoys_hourly` with a savepoint, left the page, came back, and could not
+  tell whether MARS was still saving its state. Meanwhile a second stop-with-savepoint
+  arrived from the API. Flink rejected the overlap ("Checkpoint Coordinator is
+  suspending", then "declined (tasks not ready)" while the job restarted), each failed
+  stop restarted the job, and four savepoints failed in a row.
+  - Show a stop or move in flight on the job and the Jobs page, from Flink's own
+    checkpoint history rather than the browser session: savepoint started, elapsed
+    against the expected time, subtasks acknowledged (e.g. 3 / 4, the sink last), and
+    the outcome. It must survive a reload, another browser, and a console restart.
+  - Refuse a second stop, move or savepoint while one is pending, and say who started
+    the first and when.
+  - When a savepoint fails, say whether the job is still running, and from which
+    restore point it would resume.
+  - The restore point must never silently become an older run's checkpoint. After
+    these failures the job showed `a255cab…/chk-142`, more than three hours old and
+    from an earlier run.
 - **Release readiness:** refine deployment guidance and repeatable installation checks.
 - **Safer changes:** make definition differences and their effects clearer before applying them.
 - **Recovery:** simplify backup, restore, and migration between installations.
