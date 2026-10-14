@@ -119,14 +119,16 @@ function JobRow({ job, showCluster, selectable, checked, onToggle, tag, onTag })
         </td>
       )}
       <td>
-        <Link to={`/jobs/${encodeURIComponent(job.name)}`}
-              className="block max-w-48 sm:max-w-md wrap-break-word font-medium text-slate-900 hover:text-brand-700">
-          {job.name}
-        </Link>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 max-w-48 sm:max-w-md">
+          <Link to={`/jobs/${encodeURIComponent(job.name)}`}
+                className="min-w-0 wrap-break-word font-medium text-slate-900 hover:text-brand-700">
+            {job.name}
+          </Link>
+          <TagChips tags={job.tags} active={tag} onPick={onTag} />
+        </div>
         {job.description && (
           <div className="text-xs text-slate-500 truncate max-w-48 sm:max-w-md">{job.description}</div>
         )}
-        <TagChips tags={job.tags} active={tag} onPick={onTag} className="mt-1" />
         {run?.state === 'restarting' && run.error_summary && (
           <div className="text-xs text-amber-700 truncate max-w-48 sm:max-w-md mt-0.5">
             {run.error_summary}
