@@ -11,6 +11,20 @@ from its definition to its running jobs.
 
 *The Jobs workspace in dark mode. All pipelines and operational data shown are synthetic.*
 
+## Why MARS?
+
+Writing a streaming query is only part of running a pipeline. As pipelines grow,
+table definitions, submission scripts, schedules, and recovery steps can become
+scattered across files and services. Answering everyday questions takes more work:
+Which job writes this topic? Is it making progress? Where is its saved state, and
+how do I resume it after maintenance?
+
+MARS brings that work into one place for people running their own Flink clusters.
+It connects reusable SQL definitions to the jobs executing them, shows how data
+flows between systems, and provides controls for scheduling, monitoring, and
+recovery. The goal is to reduce custom operational scripts and manual bookkeeping
+as a collection of pipelines grows, while keeping Flink responsible for execution.
+
 ## What you can do
 
 | Area | Capabilities |
