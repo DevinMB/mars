@@ -16,6 +16,10 @@ schedule. Last reviewed: **2026-10-14**.
 | Bulk actions | Server-managed move, stop, and resume batches, with progress that survives a closed browser or console restart. Moves currently run sequentially. |
 | Administration | Administrator/editor/viewer roles, API tokens, encrypted secrets, optional update checks, Prometheus metrics, and opt-in restore drills. |
 
+The October 2026 UI improvements also make hidden bulk selections visible and
+clearable, expose cluster capacity through **Resources & jobs**, and confirm
+external connection removal with **Remove from map**.
+
 Stateful moves include pause estimates based on state size and measured savepoint
 speed, optional native savepoints, and recovery to the source if destination
 submission fails. Rolling upgrades check that each moved job is running and has
@@ -62,17 +66,16 @@ Do not treat a timeout as confirmation that a job remained running.
   versus healthy states, and current state size with sorting and move estimates.
 - **More predictable maintenance:** stable upgrade plans with explicit operator
   and MARS steps, observed completion, and measured downtime in history and metrics.
-- **Capacity planning:** more accessible resource details, state and checkpoint
-  trends, and warnings before memory or slots run out.
+- **Capacity planning:** state and checkpoint trends, and warnings before memory
+  or slots run out.
 - **Pipeline editing:** clearer controls for external systems, a list alternative
   to the map, optional merging of equivalent catalog tables, and owner/failure filters.
 - **Safer authoring:** an explicit path from saved SQL to a running job, clearer
   definition differences, and validation retries when Flink is unavailable.
 - **Release readiness and recovery:** repeatable installation checks, deployment
   guidance, and simpler backup, restore, and migration workflows.
-- **Design follow-ups:** consistent cluster terminology, accurate export and
-  upgrade wording, visibility of selected jobs hidden by filters, and clearer
-  confirmations. The 2026-10-12 design review used synthetic data; validation
+- **Design follow-ups:** consistent cluster terminology and accurate export and
+  upgrade wording. The 2026-10-12 design review used synthetic data; validation
   against a live console with viewer access remains open.
 
 ## Later

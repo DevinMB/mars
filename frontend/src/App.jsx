@@ -24,7 +24,11 @@ function Protected({ children, writer = false }) {
   if (loading) return <div className="min-h-screen grid place-items-center"><Spinner label="Starting" /></div>
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />
   if (writer && !['admin', 'editor'].includes(user.role)) return <Navigate to="/jobs" replace />
-  return <Layout><Fragment key={location.pathname + location.search}>{children}</Fragment></Layout>
+  // Job tag filters live in the query string. Keep the list mounted so changing
+  // a filter preserves its selection and can report jobs hidden by that filter.
+  // Editors still remount when query parameters change (for example, cloning).
+  const pageKey = location.pathname === '/jobs' ? location.pathname : location.pathname + location.search
+  return <Layout><Fragment key={pageKey}>{children}</Fragment></Layout>
 }
 
 function Shell() {

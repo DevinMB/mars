@@ -1,7 +1,9 @@
 # Roadmap implementation notes
 
 These notes preserve the operational evidence and acceptance criteria behind the
-[current roadmap](../ROADMAP.md). They describe open work, not shipped guarantees.
+[current roadmap](../ROADMAP.md). They are historical planning notes, not shipped guarantees.
+The roadmap tracks current status; hidden-selection controls, the Resources & jobs
+control, and confirmation of map removal have since been implemented.
 The priority order was agreed on 2026-10-13; reviewed against the code on 2026-10-14.
 
 ## Reliability and operations
