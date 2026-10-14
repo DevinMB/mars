@@ -13,6 +13,13 @@ from its definition to its running jobs.
 
 ## Why MARS?
 
+Flink provides the execution engine, a web dashboard for job monitoring and
+diagnostics, and SQL tools such as the
+[SQL Gateway](https://nightlies.apache.org/flink/flink-docs-release-2.2/docs/dev/table/sql-gateway/overview/).
+Its standard distribution does not bundle a unified web workspace for authoring
+SQL, managing reusable definitions, scheduling jobs, and coordinating operations
+across clusters. That is the application management layer MARS provides.
+
 Writing a streaming query is only part of running a pipeline. As pipelines grow,
 table definitions, submission scripts, schedules, and recovery steps can become
 scattered across files and services. Answering everyday questions takes more work:
@@ -24,6 +31,12 @@ It connects reusable SQL definitions to the jobs executing them, shows how data
 flows between systems, and provides controls for scheduling, monitoring, and
 recovery. The goal is to reduce custom operational scripts and manual bookkeeping
 as a collection of pipelines grows, while keeping Flink responsible for execution.
+
+Other management options exist, including
+[Apache StreamPark](https://streampark.apache.org/docs/get-started/introduction/)
+and the [Flink Kubernetes Operator](https://nightlies.apache.org/flink/flink-kubernetes-operator-docs-stable/).
+MARS focuses on a self-hosted SQL workspace that can run with Docker Compose,
+without requiring Kubernetes.
 
 ## What you can do
 
