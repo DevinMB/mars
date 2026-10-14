@@ -33,10 +33,9 @@ recovery. The goal is to reduce custom operational scripts and manual bookkeepin
 as a collection of pipelines grows, while keeping Flink responsible for execution.
 
 Other management options exist, including
-[Apache StreamPark](https://streampark.apache.org/docs/get-started/introduction/)
-and the [Flink Kubernetes Operator](https://nightlies.apache.org/flink/flink-kubernetes-operator-docs-stable/).
-MARS focuses on a self-hosted SQL workspace that can run with Docker Compose,
-without requiring Kubernetes.
+[Apache StreamPark](https://streampark.apache.org/docs/get-started/introduction/).
+MARS focuses on a self-hosted SQL workspace: start on a single server with Docker
+Compose, and connect additional Flink clusters as your needs grow.
 
 ## What you can do
 
