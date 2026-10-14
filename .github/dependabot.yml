@@ -29,6 +29,9 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # React and its renderer must stay on compatible versions, including majors.
+      react:
+        patterns: ["react", "react-dom"]
       # Build tooling never reaches the browser, so it is batched on its own and
       # a failing tooling update does not hold back a runtime fix.
       build-tooling:
