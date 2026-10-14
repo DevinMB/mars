@@ -62,6 +62,12 @@ Do not treat a timeout as confirmation that a job remained running.
 
 ## Following priorities
 
+- **Release-based update notifications:** make **Settings → Version & updates**
+  announce a newer published release with available deployment images, rather
+  than new commits on `main`. Show the installed and available release versions,
+  release notes, and matching image references. Ignore unpublished tags, drafts,
+  and prereleases by default; report when no release exists. Keep any opt-in
+  development-build tracking clearly separate from release notifications.
 - **Clearer operational status:** a Jobs attention filter, data freshness, unknown
   versus healthy states, and current state size with sorting and move estimates.
 - **More predictable maintenance:** stable upgrade plans with explicit operator

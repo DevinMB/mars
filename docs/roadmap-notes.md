@@ -8,6 +8,36 @@ The priority order was agreed on 2026-10-13; reviewed against the code on 2026-1
 
 ## Reliability and operations
 
+### Release-based update notifications (added 2026-10-14)
+
+The owner wants **Update available** to mean a new published, deployable release,
+not simply a change on the main branch. The current implementation supports both
+`main` and `releases` channels, but even the releases channel falls back to a raw
+Git tag when there is no published release. Availability is then calculated from
+the commits between the installed revision and the selected revision. The image
+workflow also builds and publishes commit-tagged images on every merge to `main`;
+those development builds should not automatically become release announcements.
+
+- Establish versioned releases with matching console/Flink image references and
+  immutable digests. Only announce an update once its relevant images are
+  published and available to deploy.
+- Compare the installed release with the latest eligible published release.
+  Additional commits on `main`, or a tag without a release, must not trigger the
+  standard update banner. Do not treat a different commit alone as a new version.
+- Exclude drafts and prereleases from the normal release channel. If development
+  tracking remains available, make it explicitly opt-in and label its notices as
+  development builds.
+- Show installed and available version names, publication date, release notes,
+  and deployment instructions for those exact artifacts. Apply this alongside
+  the planned per-cluster version reporting.
+- Handle no published releases, an unknown/local build, and a build ahead of the
+  latest release explicitly; do not silently fall back to tags or `main`, or offer
+  a downgrade as an update.
+- Verify that a main-branch merge alone causes no release notification, publishing
+  a newer eligible release does, and installing that release clears the notice.
+
+### Previously agreed priorities
+
 **Order agreed 2026-10-13:** the bugs that hurt a live move or upgrade come first, then World
 of Buoys phase 3 (pairwise correlation, which is outside MARS). In order: (1) a move that times
 out on its savepoint, (2) savepoints in progress visible, one at a time, (3) `deploy.sh`
