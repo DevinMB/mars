@@ -18,7 +18,8 @@ schedule. Last reviewed: **2026-10-14**.
 
 The October 2026 UI improvements also make hidden bulk selections visible and
 clearable, expose cluster capacity through **Resources & jobs**, and confirm
-external connection removal with **Remove from map**.
+external connection removal with **Remove from map**. Job tags sit beside the
+job name, with descriptions underneath and wrapping when space is limited.
 
 Stateful moves include pause estimates based on state size and measured savepoint
 speed, optional native savepoints, and recovery to the source if destination
