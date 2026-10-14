@@ -87,6 +87,12 @@ Do not treat a timeout as confirmation that a job remained running.
 
 ## Later
 
+- **Scheduled buoy ingestion:** add a bounded NOAA NDBC source in the companion
+  connector project, replacing the World of Buoys fetcher with a MARS-managed
+  job every 30 minutes. Preserve Kafka as the handoff to continuous downstream
+  jobs. Include durable progress, safe replay and late-data handling, bounded
+  HTTP concurrency, and visible failures. See the
+  [implementation notes](docs/roadmap-notes.md#scheduled-buoy-ingestion-added-2026-10-14).
 - A CLI for reviewing and applying definitions in automated workflows.
 - More connector and format integrations, including a Telegram long-polling source
   in the companion connector project, with credentials from MARS secrets and a
