@@ -14,6 +14,7 @@ from ..deps import (
     current_principal,
     get_gateway,
     get_cluster,
+    get_registry,
     get_secret_store,
     get_submitter,
     get_targets,
@@ -23,6 +24,7 @@ from ..ai import AiClient
 from ..drafting import draft_statement
 from ..gateway import SqlGatewayClient
 from ..preview import preview_statement
+from .. import lineage, moves, tags
 from ..explain import Context as ExplainContext
 from ..explain import explain
 from ..guards import check_job, column_names, columns_of
@@ -45,8 +47,13 @@ from ..schemas import (
     PreviewRequest,
     SampleOut,
     DiagnosticsOut,
+    BulkTagsIn,
     JobIn,
     JobOut,
+    JobTagsOut,
+    MoveIn,
+    MoveOptionOut,
+    MoveOut,
     RunOut,
     ScheduleIn,
     ScheduleOut,
@@ -90,6 +97,7 @@ def _run_out(run: JobRun | None) -> RunOut | None:
         triggered_by_schedule=run.triggered_by_schedule,
         submitted_by=run.submitted_by,
         savepoint_path=run.savepoint_path,
+        savepoint_removed_at=run.savepoint_removed_at,
         restored_from=run.restored_from,
     )
 
@@ -119,6 +127,7 @@ def _out(job: Job) -> JobOut:
         enabled=job.enabled,
         version=job.version,
         target_name=job.target_name,
+        tags=tags.of(job),
         latest_savepoint=job.latest_savepoint,
         restore_point=_restore_point_out(job),
         updated_at=job.updated_at,
@@ -291,6 +300,10 @@ def create_job(
         target_name=body.target_name or None,
         version=1,
     )
+    # Keep the plan from the editor's check of exactly this SQL, if there was one.
+    if (plans := lineage.recall_plans(job)) is not None:
+        lineage.record_plan(job, plans)
+    tags.put(job, body.tags)
     db.add(job)
     db.flush()
     db.add(
@@ -324,7 +337,19 @@ def update_job(
     job.job_type = body.job_type
     job.sql_text = body.sql_text
     job.catalog_refs = new_refs
-    job.target_name = body.target_name or None
+    new_target = body.target_name or None
+    if new_target != job.target_name and any(r.state in _ACTIVE for r in job.runs):
+        # Re-pointing a running job would make MARS ask the new cluster about it,
+        # hear "no such job", mark it failed while it still runs on the old one,
+        # and let the supervisor start a second copy.
+        raise HTTPException(status_code=409, detail=(
+            "This job is running, so its cluster cannot be changed here. Use Move to "
+            "cluster on the job's page, which keeps its state, or stop it first."))
+    job.target_name = new_target
+    # Organisational only: not a change to what runs, so no new version.
+    tags.put(job, body.tags)
+    if changed and (plans := lineage.recall_plans(job)) is not None:
+        lineage.record_plan(job, plans)
 
     # Only a change to what actually runs earns a new version; renaming the
     # description should not fill the history with noise.
@@ -395,9 +420,12 @@ async def validate_job(
         WarningOut(level=w.level, code=w.code, message=w.message) for w in check_job(db, job)
     ]
     try:
-        await targets.for_job_submitter(db, job).validate(db, job)
+        plans = await targets.for_job_submitter(db, job).validate(db, job)
     except SubmissionError as exc:
         return _validated(db, job.sql_text, _refs(job), warnings, exc)
+    # What Flink's plan says the job reads and writes, for the catalog.
+    lineage.record_plan(job, plans)
+    db.commit()
     return ValidateResponse(ok=True, warnings=warnings)
 
 
@@ -517,9 +545,13 @@ async def validate_draft(
         return ValidateResponse(ok=False, error=str(exc), warnings=warnings)
 
     try:
-        await submitter.validate(db, draft)
+        plans = await submitter.validate(db, draft)
     except SubmissionError as exc:
         return _validated(db, body.sql_text, body.catalog_refs, warnings, exc)
+    lineage.remember_plans(draft, plans)
+    if existing is not None and lineage.fingerprint(existing) == lineage.fingerprint(draft):
+        lineage.record_plan(existing, plans)
+        db.commit()
     return ValidateResponse(ok=True, warnings=warnings)
 
 
@@ -561,7 +593,7 @@ async def draft_job(
     tables = [
         {
             "name": e.name,
-            "kind": e.kind,
+            "kind": lineage.role_hint(e, get_registry()),
             "columns": [{"name": n, "type": t} for n, t in columns_of(e.sql_text)],
             "document_fields": body.document_fields.get(e.name, {}),
         }
@@ -617,13 +649,16 @@ async def preview_statement_route(
     if not body.sql_text.strip():
         raise HTTPException(status_code=400, detail="There is no statement to preview.")
 
+    # Only tables the statement reads, and never one it writes, even if it also
+    # reads it: defining a written table is what would let a preview have an effect.
+    usage = lineage.usage_from_sql(body.sql_text, body.catalog_refs or [])
+    readable = usage.reads - usage.writes
     sources = [
         e
         for e in db.query(CatalogEntry)
-        .filter(CatalogEntry.name.in_(body.catalog_refs))
+        .filter(CatalogEntry.name.in_(readable))
         .all()
-        if e.kind == "source"
-    ] if body.catalog_refs else []
+    ] if readable else []
 
     result = await preview_statement(
         gateway, store, db, sources, body.sql_text,
@@ -739,6 +774,63 @@ async def stop_job(
     return _run_out(active)  # type: ignore[return-value]
 
 
+@router.post("/tags", response_model=list[JobTagsOut])
+def bulk_tags(
+    body: BulkTagsIn,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+) -> list[JobTagsOut]:
+    """Adds and removes tags on several jobs at once, e.g. from the Jobs page's selection."""
+    try:
+        add, remove = tags.clean(body.add), tags.clean(body.remove)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    found = {j.name: j for j in db.query(Job).filter(Job.name.in_(body.jobs))}
+    missing = [n for n in body.jobs if n not in found]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"No job named {', '.join(missing)}.")
+    out = []
+    for name in body.jobs:
+        job = found[name]
+        new = [t for t in tags.of(job) if t not in remove] + [t for t in add if t not in tags.of(job)]
+        try:
+            tags.put(job, new)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"{name}: {exc}") from exc
+        out.append(JobTagsOut(name=name, tags=tags.of(job)))
+    db.commit()
+    return out
+
+
+@router.get("/{name}/move", response_model=list[MoveOptionOut])
+async def move_options(
+    name: str,
+    _: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+) -> list[MoveOptionOut]:
+    """The other clusters, and for each whether this job can move there now."""
+    job = _get(db, name)
+    return [MoveOptionOut(**o.__dict__) for o in await moves.options(db, targets, job)]
+
+
+@router.post("/{name}/move", response_model=MoveOut)
+async def move_job(
+    name: str,
+    body: MoveIn,
+    principal: Principal = Depends(require_writer),
+    db: Session = Depends(get_session),
+    targets: TargetRegistry = Depends(get_targets),
+) -> MoveOut:
+    """Stops the job with a savepoint, and resumes it from there on another cluster."""
+    job = _get(db, name)
+    try:
+        result = await moves.move(db, targets, job, body.cluster, principal.username)
+    except moves.MoveError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return MoveOut(**result.__dict__)
+
+
 @router.get("/{name}/savepoints")
 def list_savepoints(
     name: str,
@@ -752,6 +844,8 @@ def list_savepoints(
             "path": r.savepoint_path,
             "taken_at": r.ended_at,
             "job_version": r.job_version,
+            # Removed by retention: kept here for history, no longer usable.
+            "removed_at": r.savepoint_removed_at,
         }
         for r in job.runs
         if r.savepoint_path

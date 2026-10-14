@@ -89,7 +89,8 @@ def describe_tables(tables: list[dict]) -> str:
     """
     lines: list[str] = []
     for kind, label in (("source", "SOURCES (read from these)"),
-                        ("sink", "SINKS (write to these)")):
+                        ("sink", "SINKS (write to these)"),
+                        ("table", "TABLES (read from or write to, as the request needs)")):
         chosen = [t for t in tables if t.get("kind") == kind]
         if not chosen:
             continue

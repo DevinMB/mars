@@ -20,7 +20,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
+from . import restore_drill, savepoints, updates
 from .db import session_scope
+from .metrics import SUPERVISOR_RESUBMISSIONS
 from .models import Job, RunState, Schedule, ScheduleMode, utcnow
 from .submitter import JobSubmitter, SubmissionError
 from .targets import TargetRegistry, UnknownTargetError
@@ -94,6 +96,21 @@ class Scheduler:
         for job_id, mode in due:
             await self._fire(job_id, mode)
 
+        # Off unless MARS_RESTORE_DRILL is set. In a thread: it reads and copies
+        # files, and the event loop serves the API meanwhile.
+        if restore_drill.is_due(datetime.now(timezone.utc)):
+            await asyncio.to_thread(restore_drill.run)
+
+        # Hourly; off when MARS_SAVEPOINTS_KEEP is 0. Needs the cluster registry
+        # to reach each job's cluster.
+        if self._targets is not None and savepoints.is_due(datetime.now(timezone.utc)):
+            with session_scope() as db:
+                await savepoints.prune(db, self._targets)
+
+        # Off unless MARS_UPDATE_CHECK is set; at most once a day.
+        if updates.is_due(datetime.now(timezone.utc)):
+            await updates.check()
+
     async def _reconcile(self, db) -> None:
         """Asks each cluster about the jobs placed on it.
 
@@ -101,6 +118,7 @@ class Scheduler:
         cluster its job names, and asking the wrong cluster returns "no such job",
         which would mark a healthy run as lost.
         """
+        self._submitter.expire_stale_submissions(db)
         if self._targets is None:
             await self._submitter.refresh_states(db)
             return
@@ -175,6 +193,8 @@ class Scheduler:
                     if mode == ScheduleMode.SUPERVISOR.value
                     else None
                 )
+                if mode == ScheduleMode.SUPERVISOR.value:
+                    SUPERVISOR_RESUBMISSIONS.labels(mars_job=job.name).inc()
                 await submitter.submit(
                     db, job, submitted_by="scheduler", by_schedule=True,
                     savepoint_path=point.path if point else None,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import Response
 
 from .auth import ensure_admin_user
@@ -25,9 +25,11 @@ from .deps import (
 )
 from .ddl import DdlError
 from .routes import ai as ai_routes
+from .routes import batches as batch_routes
 from .routes import auth as auth_routes
 from .routes import catalog as catalog_routes
 from .routes import jobs as job_routes
+from .routes import pipeline as pipeline_routes
 from .routes import portability as portability_routes
 from .routes import schemaregistry as registry_routes
 from .routes import secrets as secret_routes
@@ -37,6 +39,7 @@ from .routes import users as user_routes
 from .scheduler import Scheduler
 from .secrets import SecretError
 from .settings import settings
+from . import metrics as mars_metrics
 from .submitter import SubmissionError
 
 logging.basicConfig(
@@ -45,9 +48,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("mars")
 
-JOBS_RUNNING = Gauge("mars_jobs_running", "Jobs MARS believes are running")
-JOBS_FAILED = Gauge("mars_jobs_failed", "Jobs whose most recent run failed")
-SUBMISSIONS = Counter("mars_job_submissions_total", "Job submissions", ["outcome"])
 
 _scheduler: Scheduler | None = None
 
@@ -93,9 +93,14 @@ async def lifespan(app: FastAPI):
 
     _scheduler = Scheduler(get_submitter(), get_targets())
     _scheduler.start()
+    # Bulk job actions; picks up a batch a restart interrupted.
+    from . import batches
+    batch_worker = batches.worker(get_targets())
+    batch_worker.start()
     try:
         yield
     finally:
+        await batch_worker.stop()
         if _scheduler is not None:
             await _scheduler.stop()
 
@@ -109,6 +114,7 @@ app = FastAPI(
 
 install_browser_security(app)
 app.include_router(auth_routes.router)
+app.include_router(batch_routes.router)
 app.include_router(system_routes.router)
 app.include_router(secret_routes.router)
 app.include_router(catalog_routes.router)
@@ -118,6 +124,7 @@ app.include_router(user_routes.router)
 app.include_router(ai_routes.router)
 app.include_router(portability_routes.router)
 app.include_router(registry_routes.router)
+app.include_router(pipeline_routes.router)
 
 
 @app.exception_handler(SubmissionError)
@@ -151,21 +158,8 @@ async def readyz() -> Response:
 
 @app.get("/metrics", include_in_schema=False)
 async def metrics() -> Response:
-    from .models import Job, RunState
-
     with session_scope() as db:
-        jobs = db.query(Job).all()
-        running = failed = 0
-        for job in jobs:
-            latest = job.runs[0] if job.runs else None
-            if latest is None:
-                continue
-            if latest.state == RunState.RUNNING.value:
-                running += 1
-            elif latest.state == RunState.FAILED.value:
-                failed += 1
-    JOBS_RUNNING.set(running)
-    JOBS_FAILED.set(failed)
+        mars_metrics.refresh(db)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

@@ -87,7 +87,7 @@ export default function RegistryPanel({ secretNames = [] }) {
 
       <label className="flex items-center gap-2 mt-4 text-sm text-slate-700">
         <input type="checkbox" checked={form.enabled}
-               className="rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
+               className="rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30"
                onChange={(e) => set({ enabled: e.target.checked })} />
         Use this registry
       </label>

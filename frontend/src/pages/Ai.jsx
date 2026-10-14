@@ -319,7 +319,7 @@ export default function Ai() {
             </div>
             <label className="flex items-start gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={form.enabled}
-                     className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500/30"
+                     className="mt-0.5 rounded-sm border-slate-300 text-brand-600 focus:ring-brand-500/30"
                      onChange={(e) => set({ enabled: e.target.checked })} />
               <span>
                 Enable AI features

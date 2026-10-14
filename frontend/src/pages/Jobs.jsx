@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import { relativeTime, duration, millis } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
+import { BatchProgress, BulkPlan } from '../components/BulkJobs'
+import BulkTags from '../components/BulkTags'
+import TagChips from '../components/TagChips'
 
 const COLUMNS = 6
 
@@ -23,7 +26,7 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
       onClick={() => onChange(id)}
       className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
         value === id
-          ? 'bg-surface text-slate-900 shadow-sm ring-1 ring-slate-200'
+          ? 'bg-surface text-slate-900 shadow-xs ring-1 ring-slate-200'
           : 'text-slate-600 hover:text-slate-900'
       }`}
     >
@@ -52,14 +55,14 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
 }
 
 /** The band above each cluster's jobs when the list is grouped. */
-function ClusterHeading({ target, jobs }) {
+function ClusterHeading({ target, jobs, cols }) {
   const running = jobs.filter((j) => j.latest_run?.state === 'running').length
   const unhealthy = jobs.filter((j) =>
     ['failed', 'restarting'].includes(j.latest_run?.state)).length
 
   return (
     <tr className="bg-slate-50/80 border-y border-slate-200">
-      <td colSpan={COLUMNS} className="px-4 py-2">
+      <td colSpan={cols} className="px-4 py-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-slate-900">{target.name}</span>
           {target.is_default && <Badge tone="slate">default</Badge>}
@@ -106,15 +109,23 @@ function Staleness({ ms }) {
   )
 }
 
-function JobRow({ job, showCluster }) {
+function JobRow({ job, showCluster, selectable, checked, onToggle, tag, onTag }) {
   const run = job.latest_run
   return (
-    <tr className="hover:bg-slate-50/60">
+    <tr className={checked ? 'bg-accent-50/60' : 'hover:bg-slate-50/60'}>
+      {selectable && (
+        <td className="w-8 pr-0!">
+          <input type="checkbox" aria-label={`Select ${job.name}`} checked={checked} onChange={() => onToggle(job.name)} />
+        </td>
+      )}
       <td>
-        <Link to={`/jobs/${encodeURIComponent(job.name)}`}
-              className="block max-w-48 sm:max-w-md break-words font-medium text-slate-900 hover:text-brand-700">
-          {job.name}
-        </Link>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 max-w-48 sm:max-w-md">
+          <Link to={`/jobs/${encodeURIComponent(job.name)}`}
+                className="min-w-0 wrap-break-word font-medium text-slate-900 hover:text-brand-700">
+            {job.name}
+          </Link>
+          <TagChips tags={job.tags} active={tag} onPick={onTag} />
+        </div>
         {job.description && (
           <div className="text-xs text-slate-500 truncate max-w-48 sm:max-w-md">{job.description}</div>
         )}
@@ -165,6 +176,23 @@ export default function Jobs() {
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
   const [cluster, setCluster] = useState('all')
+  // In the address, so a tag chip elsewhere can link to its jobs.
+  const [params, setParams] = useSearchParams()
+  const tag = params.get('tag') || ''
+  const setTag = (t) => setParams((prev) => {
+    const next = new URLSearchParams(prev)
+    if (t) next.set('tag', t); else next.delete('tag')
+    return next
+  }, { replace: true })
+  // Jobs ticked for a bulk action, by name; and which action's panel is open.
+  const [selected, setSelected] = useState(() => new Set())
+  const [bulk, setBulk] = useState(null)
+  // The bulk action the console is running, or ran last.
+  const [batch, setBatch] = useState(null)
+  const [dismissed, setDismissed] = useState(() => {
+    try { return Number(localStorage.getItem('mars.batch.dismissed')) || 0 } catch { return 0 }
+  })
+  const allBox = useRef(null)
 
   useEffect(() => {
     let alive = true
@@ -183,10 +211,25 @@ export default function Jobs() {
       } catch { /* not fatal */ }
     }
     load()
+    api.latestBatch().then((b) => alive && setBatch(b)).catch(() => {})
     // Jobs change without the user doing anything, so the list refreshes itself.
     const t = setInterval(load, 10000)
     return () => { alive = false; clearInterval(t) }
   }, [reload])
+
+  // While a bulk action runs, follow it closely, and the jobs it changes with it.
+  const batchOpen = ['running', 'stopping'].includes(batch?.status)
+  useEffect(() => {
+    if (!batchOpen) return
+    const t = setInterval(async () => {
+      try {
+        const b = await api.batch(batch.id)
+        setBatch(b)
+        setJobs(await api.jobs())
+      } catch { /* the next tick tries again */ }
+    }, 2000)
+    return () => clearInterval(t)
+  }, [batchOpen, batch?.id])
 
   const defaultName = useMemo(
     () => targets.find((t) => t.is_default)?.name || 'default',
@@ -203,17 +246,19 @@ export default function Jobs() {
     return jobs.filter((j) => {
       if (state !== 'all' && (j.latest_run?.state || 'never') !== state) return false
       if (multi && cluster !== 'all' && clusterOf(j, defaultName) !== cluster) return false
+      if (tag && !(j.tags || []).includes(tag)) return false
       if (!q) return true
       return (
         j.name.toLowerCase().includes(q) ||
         (j.description || '').toLowerCase().includes(q) ||
         (j.latest_run?.state || '').toLowerCase().includes(q) ||
         j.job_type.toLowerCase().includes(q) ||
+        (j.tags || []).some((t) => t.includes(q)) ||
         // So typing a cluster name narrows to it, the same as a state does.
         clusterOf(j, defaultName).toLowerCase().includes(q)
       )
     })
-  }, [jobs, query, cluster, multi, defaultName, state])
+  }, [jobs, query, cluster, multi, defaultName, state, tag])
 
   const counts = useMemo(() => {
     const out = {}
@@ -224,10 +269,36 @@ export default function Jobs() {
     return out
   }, [jobs, defaultName])
 
+  const toggle = (name) => setSelected((prev) => {
+    const next = new Set(prev)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    return next
+  })
+  // Select all means all that is shown: search or filter first, then select.
+  const shownSelected = shown.filter((j) => selected.has(j.name)).length
+  const allShown = shown.length > 0 && shownSelected === shown.length
+  useEffect(() => {
+    if (allBox.current) allBox.current.indeterminate = shownSelected > 0 && !allShown
+  })
+  const toggleAll = () => setSelected((prev) => {
+    const next = new Set(prev)
+    for (const j of shown) { if (allShown) next.delete(j.name); else next.add(j.name) }
+    return next
+  })
+
   if (error && !jobs) return <Alert level="danger" title="Could not load jobs">{error}</Alert>
   if (!jobs) return <Spinner label="Loading jobs" />
 
-  const grouped = multi && cluster === 'all'
+  // Jobs deleted since they were ticked simply drop out.
+  const chosen = jobs.filter((j) => selected.has(j.name))
+  const hiddenSelected = chosen.length - shownSelected
+  const selectable = canWrite
+  const cols = COLUMNS + (selectable ? 1 : 0)
+  const rowProps = (job) => ({ selectable, checked: selected.has(job.name), onToggle: toggle, tag, onTag: setTag })
+  const allTags = [...new Set(jobs.flatMap((j) => j.tags || []))].sort()
+
+  // Nothing matching is one answer, not an empty band under every cluster.
+  const grouped = multi && cluster === 'all' && shown.length > 0
   // Clusters with no jobs are still worth a heading: an empty business unit is a
   // fact about the estate, not a reason to hide the cluster.
   const groups = grouped
@@ -263,6 +334,12 @@ export default function Jobs() {
           {['running', 'restarting', 'failed', 'finished', 'canceled', 'submitting', 'never'].map((s) =>
             <option key={s} value={s}>{({ never: 'Never run', canceled: 'Cancelled', submitting: 'Starting' })[s] || s[0].toUpperCase() + s.slice(1)}</option>)}
         </select>
+        {(allTags.length > 0 || tag) && (
+          <select className="input w-auto" aria-label="Filter by tag" value={tag} onChange={(e) => setTag(e.target.value)}>
+            <option value="">All tags</option>
+            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
         <span className="text-xs text-slate-500 sm:ml-auto">{shown.length} of {jobs.length} jobs</span>
       </div>
 
@@ -270,6 +347,46 @@ export default function Jobs() {
       {multi && (
         <ClusterTabs targets={targets} counts={counts} value={cluster}
                      onChange={setCluster} total={jobs.length} />
+      )}
+
+      {batch && (batchOpen || batch.id !== dismissed) && (
+        <BatchProgress batch={batch} canWrite={canWrite}
+          onStop={async () => { try { await api.stopBatch(batch.id); setBatch(await api.batch(batch.id)) } catch (err) { setError(err.message) } }}
+          onDismiss={() => { setDismissed(batch.id); try { localStorage.setItem('mars.batch.dismissed', String(batch.id)) } catch { /* per-viewer only */ } }} />
+      )}
+      {selectable && chosen.length > 0 && !bulk && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent-200 bg-accent-50 px-3 py-2 text-[13px]">
+          <span className="text-slate-900 font-medium">{chosen.length} selected</span>
+          {hiddenSelected > 0 && (
+            <>
+              <span className="text-amber-800" role="status">· {hiddenSelected} hidden by filters</span>
+              <button type="button" className="link text-[12px]"
+                      onClick={() => setSelected(new Set(shown.filter((j) => selected.has(j.name)).map((j) => j.name)))}>
+                Clear hidden selections
+              </button>
+            </>
+          )}
+          {batchOpen ? (
+            <span className="text-slate-600 ml-1">Another bulk action is running; start the next when it finishes.</span>
+          ) : (
+            <span className="flex flex-wrap gap-2 ml-1">
+              {multi && <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('move')}>Move to cluster…</button>}
+              <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('stop')}>Stop and save state</button>
+              <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('resume')}>Resume</button>
+              <button type="button" className="btn-secondary py-1!" onClick={() => setBulk('tags')}>Tag…</button>
+            </span>
+          )}
+          <button type="button" className="ml-auto link text-[12px]" onClick={() => setSelected(new Set())}>Clear selection</button>
+        </div>
+      )}
+      {bulk === 'tags' && (
+        <BulkTags jobs={chosen} onClose={() => setBulk(null)}
+                  onDone={async () => { setJobs(await api.jobs()) }} />
+      )}
+      {bulk && bulk !== 'tags' && (
+        <BulkPlan key={bulk} mode={bulk} jobs={chosen} targets={targets} defaultName={defaultName}
+                  onClose={() => setBulk(null)}
+                  onStarted={(b) => { setBatch(b); setBulk(null); setSelected(new Set()) }} />
       )}
 
       {jobs.length === 0 ? (
@@ -285,6 +402,12 @@ export default function Jobs() {
           <table className="tbl">
             <thead>
               <tr>
+                {selectable && (
+                  <th className="w-8 pr-0!">
+                    <input ref={allBox} type="checkbox" aria-label="Select all shown jobs"
+                           checked={allShown} onChange={toggleAll} disabled={!shown.length} />
+                  </th>
+                )}
                 <th>Job</th><th>State</th>{!grouped && <th>Cluster</th>}<th>Type</th>
                 <th>Last run</th><th>Duration</th><th>Schedule</th>
               </tr>
@@ -294,15 +417,15 @@ export default function Jobs() {
               <>
                 {groups.map(([target, rows]) => (
                   <tbody key={target.name}>
-                    <ClusterHeading target={target} jobs={rows} />
+                    <ClusterHeading target={target} jobs={rows} cols={cols} />
                     {rows.length === 0 ? (
                       <tr>
-                        <td colSpan={COLUMNS} className="px-4 py-4 text-sm text-slate-500">
+                        <td colSpan={cols} className="px-4 py-4 text-sm text-slate-500">
                           No jobs on this cluster.
                         </td>
                       </tr>
                     ) : (
-                      rows.map((job) => <JobRow key={job.id} job={job} showCluster={false} />)
+                      rows.map((job) => <JobRow key={job.id} job={job} showCluster={false} {...rowProps(job)} />)
                     )}
                   </tbody>
                 ))}
@@ -310,7 +433,7 @@ export default function Jobs() {
                 {orphans.length > 0 && (
                   <tbody>
                     <tr className="bg-amber-50/70 border-y border-amber-200">
-                      <td colSpan={COLUMNS} className="px-4 py-2">
+                      <td colSpan={cols} className="px-4 py-2">
                         <span className="font-medium text-amber-900">Unknown cluster</span>
                         <span className="ml-2 text-xs text-amber-800">
                           These jobs name a cluster that no longer exists, or one you
@@ -320,7 +443,7 @@ export default function Jobs() {
                       </td>
                     </tr>
                     {orphans.map((job) => (
-                      <JobRow key={job.id} job={job} showCluster={false} />
+                      <JobRow key={job.id} job={job} showCluster={false} {...rowProps(job)} />
                     ))}
                   </tbody>
                 )}
@@ -329,13 +452,13 @@ export default function Jobs() {
               <tbody>
                 {shown.length === 0 ? (
                   <tr>
-                    <td colSpan={grouped ? COLUMNS : COLUMNS + 1} className="px-4 py-8 text-sm text-slate-500 text-center">
+                    <td colSpan={cols + 1} className="px-4 py-8 text-sm text-slate-500 text-center">
                       No jobs match.
                     </td>
                   </tr>
                 ) : (
                   shown.map((job) => (
-                    <JobRow key={job.id} job={job} showCluster={!grouped} />
+                    <JobRow key={job.id} job={job} showCluster={!grouped} {...rowProps(job)} />
                   ))
                 )}
               </tbody>

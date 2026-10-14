@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import Admin from './Admin'
 import Ai from './Ai'
 import Secrets from './Secrets'
+import Version from './Version'
 import RegistryPanel from '../components/RegistryPanel'
 import BackupPanel from '../components/BackupPanel'
 import { Alert, PageHeader } from '../components/ui'
@@ -24,6 +25,7 @@ const SECTIONS = [
   ['Access', [['accounts', 'Accounts'], ['secrets', 'Secrets']]],
   ['Integrations', [['ai', 'AI provider'], ['registry', 'Schema registry']]],
   ['Data', [['backup', 'Backup & restore']]],
+  ['System', [['version', 'Version & updates']]],
 ]
 
 export default function Settings() {
@@ -60,6 +62,7 @@ export default function Settings() {
         <Route path="ai" element={<Ai />} />
         <Route path="registry" element={<Registry />} />
         <Route path="backup" element={<><PageHeader title="Backup & restore" subtitle="Export definitions or restore them from a file." /><BackupPanel /></>} />
+        <Route path="version" element={<Version />} />
         <Route path="*" element={<Navigate to="accounts" replace />} />
       </Routes>
     </div>

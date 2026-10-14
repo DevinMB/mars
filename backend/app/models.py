@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -310,6 +311,16 @@ class Job(Base, TimestampMixin):
     # is a nullable column and a dropdown, where retrofitting it later would be a
     # migration plus a decision per job.
     target_name: Mapped[str | None] = mapped_column(String(64), index=True)
+    # The tables this job reads and writes according to Flink's plan, kept when it
+    # is validated, with a fingerprint of the SQL the plan came from. Stale once
+    # the SQL changes; lineage.job_usage then falls back to reading the SQL.
+    tables_read: Mapped[str | None] = mapped_column(Text)
+    tables_written: Mapped[str | None] = mapped_column(Text)
+    tables_from: Mapped[str | None] = mapped_column(String(8))
+    tables_key: Mapped[str | None] = mapped_column(String(64))
+    # Labels for grouping jobs by what they do, as a JSON list (see tags.py). Not
+    # part of the job's version: they change nothing about how it runs.
+    tags: Mapped[str] = mapped_column(Text, default="[]")
 
     versions: Mapped[list["JobVersion"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", order_by="JobVersion.version.desc()"
@@ -328,7 +339,7 @@ class Job(Base, TimestampMixin):
         the wrong way round.
         """
         for run in self.runs:
-            if run.savepoint_path:
+            if run.savepoint_path and not run.savepoint_removed_at:
                 return run.savepoint_path
         return None
 
@@ -357,7 +368,7 @@ class Job(Base, TimestampMixin):
         }
         points: list[RestorePoint] = []
         for run in self.runs:
-            if run.savepoint_path:
+            if run.savepoint_path and not run.savepoint_removed_at:
                 points.append(RestorePoint(
                     run.savepoint_path, "savepoint", _aware(run.ended_at or run.started_at)
                 ))
@@ -411,6 +422,13 @@ class JobRun(Base):
     # empty state: a half-finished session window, a running count, a join buffer
     # are all simply gone. This is what makes a restart safe.
     savepoint_path: Mapped[str | None] = mapped_column(String(1024))
+    # When retention removed that savepoint. The path stays, for history; a
+    # removed savepoint is never offered as somewhere to resume from.
+    savepoint_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How big that savepoint was and how long Flink took to write it: this
+    # installation's measured speed, for estimating the next ones.
+    savepoint_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    savepoint_ms: Mapped[int | None] = mapped_column(Integer)
     # The newest checkpoint Flink completed for this run, recorded on every
     # reconcile while the cluster still knows the job. Flink forgets a job when
     # its JobManager restarts without HA, and with it the only record of where
@@ -448,3 +466,48 @@ class Schedule(Base, TimestampMixin):
     next_fire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     job: Mapped[Job] = relationship(back_populates="schedule")
+
+
+class ExternalEndpoint(Base, TimestampMixin):
+    """Something outside Flink that writes or reads a topic or table.
+
+    MARS sees Flink jobs in their SQL, but not the collector that feeds a topic or
+    the API that reads one. Declared by hand so the pipeline view shows the whole
+    flow. Keyed by resource (what tables point at, see lineage.resource_of), so it
+    stays attached however many catalog entries describe that topic.
+    """
+
+    __tablename__ = "external_endpoints"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    resource_key: Mapped[str] = mapped_column(String(512), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    direction: Mapped[str] = mapped_column(String(8))  # "produces" or "consumes"
+    note: Mapped[str | None] = mapped_column(String(512))
+    created_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class BatchOperation(Base, TimestampMixin):
+    """Several jobs moved, stopped or resumed in turn, by the console itself.
+
+    Run on the server, not driven from a browser, so a maintenance sequence does
+    not depend on the laptop that started it staying awake. Survives a console
+    restart: the worker picks a running batch back up where it was.
+    """
+
+    __tablename__ = "batch_operations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # "move", "stop" or "resume"
+    # For a move, the destination cluster.
+    cluster: Mapped[str | None] = mapped_column(String(64))
+    # "running", "stopping" (asked to stop after the current job), "done",
+    # "failed" (a move stopped at a failure) or "stopped".
+    status: Mapped[str] = mapped_column(String(16), default="running", index=True)
+    # The jobs in order, each {job, was_running, status, note}; small, and
+    # rewritten as a whole on every change.
+    items: Mapped[str] = mapped_column(Text, default="[]")
+    # Settings for the whole batch, e.g. {"native": true} for native savepoints.
+    options: Mapped[str] = mapped_column(Text, default="{}")
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

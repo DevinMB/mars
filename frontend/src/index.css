@@ -1,6 +1,261 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-slate-50: rgb(var(--s-50));
+  --color-slate-100: rgb(var(--s-100));
+  --color-slate-200: rgb(var(--s-200));
+  --color-slate-300: rgb(var(--s-300));
+  --color-slate-400: rgb(var(--s-400));
+  --color-slate-500: rgb(var(--s-500));
+  --color-slate-600: rgb(var(--s-600));
+  --color-slate-700: rgb(var(--s-700));
+  --color-slate-800: rgb(var(--s-800));
+  --color-slate-900: rgb(var(--s-900));
+
+  --color-surface: rgb(var(--surface));
+
+  --color-code-bg: rgb(var(--code-bg));
+  --color-code-fg: rgb(var(--code-fg));
+
+  --color-red-50: rgb(var(--red-50));
+  --color-red-200: rgb(var(--red-200));
+  --color-red-300: rgb(var(--red-300));
+  --color-red-500: #ef4444;
+  --color-red-600: rgb(var(--red-600));
+  --color-red-700: rgb(var(--red-700));
+  --color-red-800: rgb(var(--red-800));
+  --color-red-900: rgb(var(--red-900));
+
+  --color-amber-50: rgb(var(--amber-50));
+  --color-amber-200: rgb(var(--amber-200));
+  --color-amber-500: #f59e0b;
+  --color-amber-700: rgb(var(--amber-700));
+  --color-amber-800: rgb(var(--amber-800));
+  --color-amber-900: rgb(var(--amber-900));
+
+  --color-emerald-50: rgb(var(--emerald-50));
+  --color-emerald-200: rgb(var(--emerald-200));
+  --color-emerald-500: #10b981;
+  --color-emerald-700: rgb(var(--emerald-700));
+  --color-emerald-900: rgb(var(--emerald-900));
+
+  --color-accent-50: rgb(var(--accent-50));
+  --color-accent-100: rgb(var(--brand-100));
+  --color-accent-200: rgb(var(--brand-border));
+  --color-accent-300: #fdba74;
+  --color-accent-400: #fb923c;
+  --color-accent-500: #f97316;
+  --color-accent-600: rgb(var(--brand-ink));
+  --color-accent-700: rgb(var(--brand-ink));
+  --color-accent-800: rgb(var(--brand-strong));
+  --color-accent-900: rgb(var(--brand-strong));
+
+  --color-brand-50: rgb(var(--brand-50));
+  --color-brand-100: rgb(var(--brand-100));
+  --color-brand-200: rgb(var(--brand-border));
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: rgb(var(--brand-ink));
+  --color-brand-700: rgb(var(--brand-ink));
+  --color-brand-800: rgb(var(--brand-strong));
+  --color-brand-900: rgb(var(--brand-strong));
+
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --shadow-card:
+    0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/*
+  More v3 behaviour that Tailwind 4 dropped, kept so the console looks and
+  behaves as it did: buttons show a pointer, placeholders are gray rather than
+  half-strength text color, and a disabled select keeps the browser's faded
+  look (Tailwind 4's reset sets opacity: 1 on every form control).
+*/
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+  select:disabled {
+    opacity: 0.7;
+  }
+}
+
+@utility card {
+  /* Surfaces lean on hairline borders rather than shadow, which keeps dense
+     screens calm when several panels sit next to each other. */
+  @apply bg-surface border border-slate-200 rounded-lg;
+}
+
+@utility btn {
+  @apply inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px]
+          font-medium justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+          focus-visible:ring-2 focus-visible:ring-brand-500/40;
+}
+
+@utility btn-primary {
+  /* The one loud element on a page. Orange because that is the product's
+     colour, not because orange means anything in particular. */
+  @apply btn text-white;
+  background: rgb(var(--action));
+  &:hover {
+    background: rgb(var(--action-hover));
+  }
+  &:active {
+    background: rgb(var(--action-hover));
+  }
+}
+
+@utility btn-secondary {
+  @apply btn bg-surface text-slate-700 border border-slate-300
+                    hover:bg-slate-50 hover:border-slate-400;
+}
+
+@utility btn-danger {
+  @apply btn bg-surface text-red-700 border border-red-300 hover:bg-red-50;
+}
+
+@utility input {
+  @apply w-full px-3 py-2 rounded-md border border-slate-300 bg-surface text-[13px]
+           text-slate-900 placeholder:text-slate-400 transition-shadow
+           focus:ring-2 focus:ring-brand-500/25 focus:border-brand-400;
+}
+
+@utility link {
+  /* Inline links: slate that warms on hover. A coloured link in every table cell
+     would be noise next to an orange button. */
+  @apply text-slate-700 hover:text-brand-700 underline-offset-2 hover:underline
+          transition-colors;
+}
+
+@utility label {
+  @apply block text-[13px] font-medium text-slate-700 mb-1;
+}
+
+@utility hint {
+  @apply text-[12px] text-slate-500 mt-1.5 leading-relaxed;
+}
+
+@utility mono {
+  @apply font-mono text-[12.5px];
+}
+
+@utility eyebrow {
+  /* Quiet section labels; headings and spacing carry the hierarchy. */
+  @apply text-[12px] font-medium text-slate-500;
+}
+
+@utility eyebrow-accent {
+  @apply text-[13px] font-semibold text-slate-700;
+}
+
+@utility tbl {
+  /* Dense list tables. */
+  @apply w-full text-[13px];
+  & thead tr {
+    @apply text-left text-[12px] text-slate-500
+                   bg-slate-50 border-b border-slate-200;
+  }
+  & th {
+    @apply px-4 py-2 font-semibold;
+  }
+  & td {
+    @apply px-4 py-3 align-top;
+  }
+  & tbody tr {
+    @apply border-b border-slate-100 last:border-0 hover:bg-slate-50/60;
+  }
+}
+
+@utility nav-link {
+  @apply flex shrink-0 items-center whitespace-nowrap px-1.5 sm:px-3 border-b-2 border-transparent text-[12px] sm:text-[13px] font-medium text-slate-500 hover:text-slate-900;
+}
+
+@utility nav-link-active {
+  @apply border-brand-500 text-slate-900;
+}
+
+@utility skip-link {
+  @apply fixed -top-20 left-4 z-50 bg-surface px-4 py-2 rounded-md focus:top-3;
+}
+
+@utility action-menu {
+  @apply fixed z-40 w-60 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-surface p-1.5 shadow-lg text-[13px];
+  & > button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  & > a {
+    @apply flex w-full text-left items-center px-3 py-2.5 rounded-md hover:bg-slate-100;
+  }
+  & > button {
+    @apply flex w-full text-left items-center px-3 py-2.5 rounded-md hover:bg-slate-100;
+  }
+}
+
+@utility confirmation {
+  @apply bg-surface text-slate-900 border border-slate-200 rounded-xl p-6 shadow-xl w-md max-w-[calc(100%-2rem)];
+  &::backdrop {
+    background: rgb(0 0 0 / 0.5);
+  }
+}
+
+@utility table-scroll {
+  @apply relative overflow-x-auto rounded-lg border border-slate-200 bg-surface;
+  & table {
+    min-width: 640px;
+  }
+}
+
+@utility form-section {
+  @apply border-b border-slate-200 pb-6;
+}
+
+@utility choice {
+  @apply btn bg-surface border border-slate-300 text-slate-600;
+}
+
+@utility choice-selected {
+  @apply bg-slate-100 text-slate-900 border-slate-500;
+}
+
+@utility editor-grid {
+  @apply grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px];
+  & > * {
+    min-width: 0;
+  }
+}
+
+@utility settings-nav {
+  @apply border-b border-slate-200 pb-5 lg:border-b-0 lg:border-r lg:pr-5;
+}
 
 /*
  * Two palettes, one set of class names.
@@ -109,47 +364,6 @@
   th, td { font-variant-numeric: tabular-nums; }
 }
 
-@layer components {
-  /* Surfaces lean on hairline borders rather than shadow, which keeps dense
-     screens calm when several panels sit next to each other. */
-  .card { @apply bg-surface border border-slate-200 rounded-lg; }
-
-  .btn { @apply inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px]
-          font-medium justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-          focus-visible:ring-2 focus-visible:ring-brand-500/40; }
-  /* The one loud element on a page. Orange because that is the product's
-     colour, not because orange means anything in particular. */
-  .btn-primary { @apply btn text-white; background: rgb(var(--action)); }
-  .btn-primary:hover, .btn-primary:active { background: rgb(var(--action-hover)); }
-  .btn-secondary { @apply btn bg-surface text-slate-700 border border-slate-300
-                    hover:bg-slate-50 hover:border-slate-400; }
-  .btn-danger { @apply btn bg-surface text-red-700 border border-red-300 hover:bg-red-50; }
-
-  .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 bg-surface text-[13px]
-           text-slate-900 placeholder:text-slate-400 transition-shadow
-           focus:ring-2 focus:ring-brand-500/25 focus:border-brand-400; }
-
-  /* Inline links: slate that warms on hover. A coloured link in every table cell
-     would be noise next to an orange button. */
-  .link { @apply text-slate-700 hover:text-brand-700 underline-offset-2 hover:underline
-          transition-colors; }
-  .label { @apply block text-[13px] font-medium text-slate-700 mb-1; }
-  .hint { @apply text-[12px] text-slate-500 mt-1.5 leading-relaxed; }
-  .mono { @apply font-mono text-[12.5px]; }
-
-  /* Quiet section labels; headings and spacing carry the hierarchy. */
-  .eyebrow { @apply text-[12px] font-medium text-slate-500; }
-  .eyebrow-accent { @apply text-[13px] font-semibold text-slate-700; }
-
-  /* Dense list tables. */
-  .tbl { @apply w-full text-[13px]; }
-  .tbl thead tr { @apply text-left text-[12px] text-slate-500
-                   bg-slate-50 border-b border-slate-200; }
-  .tbl th { @apply px-4 py-2 font-semibold; }
-  .tbl td { @apply px-4 py-3 align-top; }
-  .tbl tbody tr { @apply border-b border-slate-100 last:border-0 hover:bg-slate-50/60; }
-}
-
 @layer base {
   :root { color-scheme: light; }
   .dark { color-scheme: dark; }
@@ -159,22 +373,4 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   }
-}
-@layer components {
-  .nav-link { @apply flex items-center px-1.5 sm:px-3 border-b-2 border-transparent text-[12px] sm:text-[13px] font-medium text-slate-500 hover:text-slate-900; }
-  .nav-link-active { @apply border-brand-500 text-slate-900; }
-  .skip-link { @apply fixed -top-20 left-4 z-50 bg-surface px-4 py-2 rounded-md focus:top-3; }
-  .action-menu { @apply fixed z-40 w-60 max-w-[calc(100vw-1.5rem)] max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-surface p-1.5 shadow-lg text-[13px]; }
-  .action-menu > button:disabled { @apply opacity-50 cursor-not-allowed; }
-  .action-menu > a, .action-menu > button { @apply flex w-full text-left items-center px-3 py-2.5 rounded-md hover:bg-slate-100; }
-  .confirmation { @apply bg-surface text-slate-900 border border-slate-200 rounded-xl p-6 shadow-xl w-[28rem] max-w-[calc(100%-2rem)]; }
-  .confirmation::backdrop { background: rgb(0 0 0 / 0.5); }
-  .table-scroll { @apply relative overflow-x-auto rounded-lg border border-slate-200 bg-surface; }
-  .table-scroll table { min-width: 640px; }
-  .form-section { @apply border-b border-slate-200 pb-6; }
-  .choice { @apply btn bg-surface border border-slate-300 text-slate-600; }
-  .choice-selected { @apply bg-slate-100 text-slate-900 border-slate-500; }
-  .editor-grid { @apply grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]; }
-  .editor-grid > * { min-width: 0; }
-  .settings-nav { @apply border-b border-slate-200 pb-5 lg:border-b-0 lg:border-r lg:pr-5; }
 }

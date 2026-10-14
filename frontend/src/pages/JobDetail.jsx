@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import { duration, relativeTime } from '../lib/format'
 import SqlEditor from '../components/SqlEditor'
 import Diagnostics from '../components/Diagnostics'
+import MoveJob from '../components/MoveJob'
 import { Alert, Badge, CodeBlock, Field, PageHeader, Spinner, StatePill } from '../components/ui'
 
 const ACTIVE = ['running', 'submitting', 'restarting']
@@ -101,6 +102,8 @@ export default function JobDetail() {
   const [tab, setTab] = useState('sql')
   const [diag, setDiag] = useState(null)
   const [diagBusy, setDiagBusy] = useState(false)
+  const [moving, setMoving] = useState(false)       // the move panel is open
+  const [clusterCount, setClusterCount] = useState(1)
 
   const load = useCallback(async () => {
     try {
@@ -112,6 +115,10 @@ export default function JobDetail() {
   }, [name])
 
   useEffect(() => { load() }, [load])
+  // Moving needs somewhere to move to; with one cluster the option is noise.
+  useEffect(() => {
+    if (canWrite) api.targets().then((t) => setClusterCount(t.length)).catch(() => {})
+  }, [canWrite])
 
   const loadDiagnostics = useCallback(async () => {
     setDiagBusy(true)
@@ -164,6 +171,11 @@ export default function JobDetail() {
           <StatePill state={run?.state} />
           <span>{job.target_name || 'Default cluster'}</span>
           <span>{job.job_type}</span>
+          {job.tags?.length > 0 && (
+            <span className="flex flex-wrap gap-1">{job.tags.map((t) => (
+              <Link key={t} to={`/jobs?tag=${encodeURIComponent(t)}`} className="text-[11px] leading-4 rounded-sm px-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">{t}</Link>
+            ))}</span>
+          )}
         </span>}
         back={{ to: '/jobs', label: 'Jobs' }}
         actions={canWrite && <>
@@ -179,6 +191,7 @@ export default function JobDetail() {
           <ActionMenu>
             <button onClick={validate} disabled={Boolean(busy)}>{busy === 'validate' ? 'Checking…' : 'Validate SQL'}</button>
             <Link to={`/jobs/new?from=${encodeURIComponent(job.name)}`}>Duplicate</Link>
+            {clusterCount > 1 && <button disabled={Boolean(busy)} onClick={() => setMoving(true)}>Move to cluster…</button>}
             {isActive && <button className="text-red-700" disabled={Boolean(busy)} onClick={async () => {
               if (!await confirm({ title: 'Stop without saving?', message: `Stop “${job.name}” immediately? In-flight state, including unfinished windows and running counts, will be lost. Use “Stop and save state” to resume later.`, confirmLabel: 'Stop without saving' })) return
               act('cancel', () => api.cancelJob(name))
@@ -198,6 +211,10 @@ export default function JobDetail() {
         </>}
       />
       {job.description && <p className="text-sm text-slate-600 -mt-2 mb-6 max-w-3xl">{job.description}</p>}
+      {moving && (
+        <MoveJob job={job} running={Boolean(isActive)} onClose={() => setMoving(false)}
+                 onMoved={async (b) => { setMoving(false); notify(b.items?.[0]?.note || 'Moved.'); await load() }} />
+      )}
 
       {error && <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
 
@@ -340,7 +357,7 @@ export default function JobDetail() {
               {run?.flink_job_id && (
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">Flink job</dt>
-                  <dd className="mono text-xs text-slate-600 truncate max-w-[9rem]">{run.flink_job_id}</dd>
+                  <dd className="mono text-xs text-slate-600 truncate max-w-36">{run.flink_job_id}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-3">
@@ -358,7 +375,7 @@ export default function JobDetail() {
               {run?.restored_from && (
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">Resumed from</dt>
-                  <dd className="text-xs text-slate-600 truncate max-w-[9rem]"
+                  <dd className="text-xs text-slate-600 truncate max-w-36"
                       title={run.restored_from}>
                     {run.restored_from.split('/').pop()}
                   </dd>
