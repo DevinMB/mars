@@ -289,6 +289,7 @@ export default function Jobs() {
 
   // Jobs deleted since they were ticked simply drop out.
   const chosen = jobs.filter((j) => selected.has(j.name))
+  const hiddenSelected = chosen.length - shownSelected
   const selectable = canWrite
   const cols = COLUMNS + (selectable ? 1 : 0)
   const rowProps = (job) => ({ selectable, checked: selected.has(job.name), onToggle: toggle, tag, onTag: setTag })
@@ -354,6 +355,15 @@ export default function Jobs() {
       {selectable && chosen.length > 0 && !bulk && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent-200 bg-accent-50 px-3 py-2 text-[13px]">
           <span className="text-slate-900 font-medium">{chosen.length} selected</span>
+          {hiddenSelected > 0 && (
+            <>
+              <span className="text-amber-800" role="status">· {hiddenSelected} hidden by filters</span>
+              <button type="button" className="link text-[12px]"
+                      onClick={() => setSelected(new Set(shown.filter((j) => selected.has(j.name)).map((j) => j.name)))}>
+                Clear hidden selections
+              </button>
+            </>
+          )}
           {batchOpen ? (
             <span className="text-slate-600 ml-1">Another bulk action is running; start the next when it finishes.</span>
           ) : (

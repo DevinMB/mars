@@ -99,9 +99,14 @@ function TargetCard({ target, defaultVersion, canManage, onEdit, onRemove, moves
       <JobMovesLine moves={moves} canManage={canManage} onOpen={onJobMoves} />
       {target.reachable && (
         <div className="mt-3">
-          <button type="button" className="link text-[12px]" aria-expanded={showResources}
+          <button type="button" className="w-full flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left hover:bg-slate-100"
+                  aria-expanded={showResources}
                   onClick={() => setShowResources(!showResources)}>
-            {showResources ? 'Hide resources' : 'Resources'}
+            <span>
+              <span className="block text-[13px] font-medium text-slate-900">Resources &amp; jobs</span>
+              <span className="block text-[12px] text-slate-500 mt-0.5">CPU, memory, slots, and job usage</span>
+            </span>
+            <span aria-hidden="true" className="text-slate-500">{showResources ? '−' : '+'}</span>
           </button>
           {showResources && <ClusterResources name={target.name} />}
         </div>

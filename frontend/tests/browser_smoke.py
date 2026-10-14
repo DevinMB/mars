@@ -7,6 +7,7 @@
 Set UI_SCREENSHOTS to a directory to include the full responsive screenshot matrix.
 """
 import json, os
+from copy import deepcopy
 from fixtures import fixtures as make_fixtures
 from pathlib import Path
 from urllib.parse import urlsplit, unquote
@@ -92,6 +93,23 @@ with sync_playwright() as pw:
     visit('/pipeline')
     expect(page.get_by_role('button',name='kafka topic example-events')).to_be_visible()
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    # Removing an external connection is explicit and cancellable, and only
+    # touches its map entry after confirmation.
+    visit('/pipeline')
+    page.get_by_role('button',name='kafka topic raw-events').click()
+    deletes_before = len([w for w in writes if w[0] == 'DELETE'])
+    page.get_by_role('button',name='Remove from map',exact=True).click()
+    dialog = page.get_by_role('dialog')
+    expect(dialog).to_be_visible()
+    expect(dialog).to_contain_text('event-collector')
+    expect(dialog).to_contain_text('The actual system and its data are not changed, and no jobs are stopped.')
+    dialog.get_by_role('button',name='Cancel',exact=True).click()
+    assert len([w for w in writes if w[0] == 'DELETE']) == deletes_before
+    page.get_by_role('button',name='Remove from map',exact=True).click()
+    dialog.get_by_role('button',name='Remove from map',exact=True).click()
+    expect(dialog).not_to_be_visible()
+    assert [w[:2] for w in writes if w[0] == 'DELETE'][deletes_before:] == [('DELETE', '/api/pipeline/external/1')]
+    visit('/pipeline')
     page.get_by_role('button',name='kafka topic example-events').click()
     expect(page.get_by_role('heading',name='example-events')).to_be_visible()
     expect(page.get_by_text('Outside Flink, writing it')).to_be_visible()
@@ -125,6 +143,36 @@ with sync_playwright() as pw:
     page.get_by_role('button',name='Show only what connects to this').click()
     expect(page.get_by_role('button',name='job readings_to_output')).to_have_count(0)
     expect(page.get_by_role('button',name='external event-collector')).to_be_visible()
+    # Hidden selections: all filter types report them; clearing hidden selections
+    # preserves the visible selection and excludes hidden jobs from bulk actions.
+    original_jobs = fixtures['/api/jobs']
+    other = deepcopy(original_jobs[0])
+    other.update(id=2, name='archived_orders', description='Archived orders', tags=['commerce'], target_name='mars-b')
+    other['latest_run'].update(id=2, job=other['name'], state='finished')
+    fixtures['/api/jobs'] = [*original_jobs, other]
+    for filter_kind in ['search', 'state', 'tag', 'cluster']:
+        visit('/jobs')
+        page.get_by_role('checkbox',name='Select all shown jobs').check()
+        if filter_kind == 'search': page.get_by_role('textbox',name='Search jobs').fill(job)
+        elif filter_kind == 'state': page.get_by_role('combobox',name='Filter by state').select_option('running')
+        elif filter_kind == 'tag': page.get_by_role('combobox',name='Filter by tag').select_option('sensors')
+        else: page.get_by_role('button',name='default1',exact=True).click()
+        expect(page.get_by_text('2 selected',exact=True)).to_be_visible()
+        expect(page.get_by_text('· 1 hidden by filters',exact=True)).to_be_visible()
+        page.get_by_role('button',name='Clear hidden selections',exact=True).click()
+        expect(page.get_by_text('1 selected',exact=True)).to_be_visible()
+        expect(page.get_by_role('checkbox',name='Select '+job,exact=True)).to_be_checked()
+        expect(page.get_by_role('button',name='Clear hidden selections')).to_have_count(0)
+        if filter_kind == 'search': page.get_by_role('textbox',name='Search jobs').fill('')
+        elif filter_kind == 'state': page.get_by_role('combobox',name='Filter by state').select_option('all')
+        elif filter_kind == 'tag': page.get_by_role('combobox',name='Filter by tag').select_option('')
+        else: page.get_by_role('button',name='All clusters2',exact=True).click()
+        expect(page.get_by_role('checkbox',name='Select archived_orders',exact=True)).not_to_be_checked()
+    page.get_by_role('textbox',name='Search jobs').fill('no matching pipeline')
+    expect(page.get_by_text('· 1 hidden by filters',exact=True)).to_be_visible()
+    page.get_by_role('button',name='Clear hidden selections',exact=True).click()
+    expect(page.get_by_role('button',name='Clear selection',exact=True)).to_have_count(0)
+    fixtures['/api/jobs'] = original_jobs
     # Tags: chips filter the list, the address keeps the filter, and the selection can be tagged.
     visit('/jobs')
     page.get_by_role('button',name='sensors').first.click()
@@ -162,12 +210,17 @@ with sync_playwright() as pw:
     expect(page.get_by_role('heading',name=f'Moving {total} job{"" if total==1 else "s"} to mars-b')).to_have_count(0)
     # Resources: each cluster's machines and the jobs using them, on demand.
     visit('/cluster')
-    page.get_by_role('button',name='Resources').first.click()
+    resources = page.get_by_role('button',name='Resources & jobs CPU, memory, slots, and job usage').first
+    expect(resources).to_have_attribute('aria-expanded', 'false')
+    resources.focus()
+    page.keyboard.press('Enter')
+    expect(resources).to_have_attribute('aria-expanded', 'true')
     expect(page.get_by_text('TaskManager · 4 cores · 1 of 12 slots used · CPU 12%')).to_be_visible()
     expect(page.get_by_text('Managed memory')).to_be_visible()
     expect(page.get_by_role('link',name='readings_to_output')).to_be_visible()
     expect(page.get_by_text('4% busy')).to_be_visible()
-    page.get_by_role('button',name='Hide resources').click()
+    resources.click()
+    expect(resources).to_have_attribute('aria-expanded', 'false')
     # Rolling upgrade: offered once job moves are ready; the empty cluster goes first.
     fixtures['/api/targets/storage']['moves'][0]['state']='ready'
     visit('/cluster')
@@ -307,6 +360,9 @@ with sync_playwright() as pw:
     visit('/jobs/'+job+'/edit')
     expect(page.get_by_text('Draft with AI',exact=True)).to_have_count(0)
     role[0]='viewer'
+    visit('/pipeline')
+    page.get_by_role('button',name='kafka topic raw-events').click()
+    expect(page.get_by_role('button',name='Remove from map',exact=True)).to_have_count(0)
     visit('/jobs');expect(page.get_by_role('link',name='New job',exact=True)).to_have_count(0)
     expect(page.get_by_role('link',name='Settings',exact=True)).to_have_count(0)
     visit('/catalog');expect(page.get_by_role('button',name='New entry')).to_have_count(0)

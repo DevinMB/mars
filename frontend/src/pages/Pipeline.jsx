@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { useConfirm } from '../components/InteractionProvider'
 import { layoutGraph } from '../lib/layout'
 import { filterGraph } from '../lib/pipelineFilter'
 import PanZoom from '../components/PanZoom'
@@ -69,6 +70,7 @@ function Node({ node, p, selected, onSelect }) {
 }
 
 function ResourcePanel({ node, graph, canWrite, onChanged }) {
+  const confirm = useConfirm()
   const [name, setName] = useState('')
   const [direction, setDirection] = useState('produces')
   const [note, setNote] = useState('')
@@ -96,9 +98,14 @@ function ResourcePanel({ node, graph, canWrite, onChanged }) {
     <ul className="space-y-1">{nodes.map((n) => <li key={n.id} className="flex items-center gap-2 text-[13px]">
       <span className="text-slate-800">{n.label}</span>
       {n.note && <span className="text-slate-500 text-[12px]">{n.note}</span>}
-      {canWrite && <button className="ml-auto text-[12px] text-slate-500 hover:text-red-700" onClick={async () => {
+      {canWrite && <button type="button" className="ml-auto shrink-0 text-[12px] text-slate-500 hover:text-red-700" onClick={async () => {
+        if (!await confirm({
+          title: 'Remove from map?',
+          message: `Remove “${n.label}” from this pipeline map? This removes its declared connection to “${node.label}”. The actual system and its data are not changed, and no jobs are stopped.`,
+          confirmLabel: 'Remove from map',
+        })) return
         try { await api.removeExternal(n.endpoint_id); onChanged() } catch (e) { setError(e.message) }
-      }}>Remove</button>}
+      }}>Remove from map</button>}
     </li>)}</ul>
   ) : <span className="text-slate-400 text-[13px]">None declared</span>
 
