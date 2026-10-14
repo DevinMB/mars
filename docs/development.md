@@ -48,7 +48,9 @@ python tests/browser_smoke.py
 
 Set `UI_SCREENSHOTS=/tmp/mars-ui-screenshots` to also check both themes across
 four viewport widths. Set `UI_BASE_URL` for a different frontend address.
-Run `python tests/readme_screenshots.py` to refresh the README image from sample data.
+Run `python tests/readme_screenshots.py` to refresh the README image in dark mode
+from sample data. The capture fixes the clock, timezone, and viewport and checks
+that dark mode is active before saving `docs/images/jobs.png`.
 Never use screenshots of a live installation for public documentation.
 
 Integration tests in `backend/tests/integration/` execute real Flink jobs and require

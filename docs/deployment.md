@@ -127,13 +127,20 @@ What happens when something fails:
   `high-availability.type` (ZooKeeper or Kubernetes) and
   `high-availability.storageDir`.
 
-Resuming from a checkpoint replays up to one checkpoint interval of input. Sinks
-with deterministic keys absorb that; append-only sinks such as Kafka without
-exactly-once delivery write those records twice.
+Resuming replays input after the restored checkpoint. The amount depends on its
+age and how much input was processed afterward. Idempotent sinks or transactional
+exactly-once sinks can prevent duplicate effects; other sinks may write duplicates.
 
-Flink keeps only the newest checkpoint by default. Setting
-`state.checkpoints.num-retained: 2` in `flink/conf/config.yaml` ensures the
-checkpoint MARS last recorded still exists, because MARS checks every 20s.
+The bundled `flink/conf/config.yaml` sets `state.checkpoints.num-retained: 2`.
+Keeping two checkpoints reduces the chance that Flink deletes the location MARS
+last recorded between reconciliation polls; it does not guarantee availability.
+
+**Known limitation:** a slow stop or move can time out while Flink continues
+writing its savepoint. Flink may then stop the job, and supervision can restart it
+using stale recorded state. Overlapping savepoint requests are also not yet
+reliably excluded. Check the actual job state and completed savepoint in Flink
+before retrying. These are the first priorities in the
+[roadmap](../ROADMAP.md#next-operational-reliability).
 
 ### Savepoint retention
 
@@ -193,7 +200,8 @@ needs one free task slot on each cluster for a few seconds, and leaves a few-byt
 
 On a job's page, **More → Move to cluster…** lists the other clusters and, for
 each, whether the job can go there now: job moves ready between the two, the
-destination reachable with a free task slot, and the same Flink version. Nothing
+destination reachable with a free task slot, and a compatible Flink version
+(the same version or a newer destination, never an older one). Nothing
 is stopped until those pass. A running job is then stopped with a savepoint,
 pointed at the destination and resumed there from that savepoint; if the
 destination cannot start it, MARS points it back and resumes it where it was,
@@ -205,8 +213,10 @@ grows with its state. The move panel shows the state size (from the latest
 checkpoint) and the expected pause. Every savepoint MARS takes records its size
 and how long it took, and the median speed of recent large ones becomes the
 estimate; until there are some, 50 MB/s is assumed. How long MARS waits for a
-savepoint scales the same way, up to 12 hours, so a large one is not reported
-failed while Flink is still writing it. For jobs with large RocksDB state, the
+savepoint scales the same way, up to 12 hours. This estimate does not yet account
+for checkpoint delays caused by backpressure, so a savepoint can still outlast
+the wait; see the [recovery limitation](#recovery-and-failover). For jobs with
+large RocksDB state, the
 **native savepoint format** (offered for state over 1 GB, and in bulk actions)
 copies the state files instead of re-serializing every key: much faster, but
 restorable only with the same state backend.
