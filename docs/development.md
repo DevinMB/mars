@@ -1,7 +1,12 @@
 # Development
 
-Use Python 3.12 and Node.js 22. Start a Flink cluster only when exercising submission;
+Use Python 3.12 and Node.js 24 LTS. Start a Flink cluster only when exercising submission;
 unit tests and the fixture-backed browser checks do not need one.
+
+Node is used to build the frontend; the deployed console serves the built files
+from Python. Keep the Node major in `backend/Dockerfile` and
+`.github/workflows/ci.yml` aligned. Dependabot excludes Docker Node major upgrades
+so each future LTS migration is reviewed explicitly.
 
 ```bash
 python3 -m venv .venv
