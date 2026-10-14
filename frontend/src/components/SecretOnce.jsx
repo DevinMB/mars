@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { copyText, selectContents } from '../lib/clipboard'
 
 /**
  * Shows a credential that will never be shown again.
@@ -9,7 +10,9 @@ import { useState } from 'react'
  * letting someone dismiss it and then discover that.
  */
 export default function SecretOnce({ label, value, onDone }) {
-  const [copied, setCopied] = useState(false)
+  // '', 'copied', or 'manual' when the browser refused and the value is selected.
+  const [copied, setCopied] = useState('')
+  const valueRef = useRef(null)
   return (
     <div className="rounded-md border border-accent-300 bg-accent-50 p-4 mb-4">
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -25,23 +28,22 @@ export default function SecretOnce({ label, value, onDone }) {
         </button>
       </div>
       <div className="flex items-center gap-2">
-        <code className="mono flex-1 bg-surface border border-accent-200 rounded-sm px-2.5 py-2
+        <code ref={valueRef} className="mono flex-1 bg-surface border border-accent-200 rounded-sm px-2.5 py-2
                          text-[12.5px] text-slate-800 break-all select-all">
           {value}
         </code>
         <button
           className="btn-secondary shrink-0"
           onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(value)
-              setCopied(true)
-              setTimeout(() => setCopied(false), 1500)
-            } catch {
-              setCopied(false)
-            }
+            // Shown once and never again, so a failed copy must not look like a
+            // success: select it and ask for Ctrl+C instead.
+            const ok = await copyText(value)
+            if (!ok) selectContents(valueRef.current)
+            setCopied(ok ? 'copied' : 'manual')
+            setTimeout(() => setCopied(''), ok ? 1500 : 4000)
           }}
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copied === 'copied' ? 'Copied' : copied === 'manual' ? 'Press Ctrl+C' : 'Copy'}
         </button>
       </div>
     </div>

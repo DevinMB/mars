@@ -4,15 +4,39 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Principal
 from ..db import get_session
 from ..deps import current_principal, get_targets, require_admin
+from ..cluster_setup import (
+    SAME_MACHINE_COMMAND,
+    SAME_MACHINE_GATEWAY,
+    SAME_MACHINE_NAME,
+    SAME_MACHINE_REST,
+)
+from ..cluster_setup import guide as cluster_setup_guide
+from ..cluster_setup import savepoint_override
+from .. import nfs, resources, shared_storage
 from ..models import Job, Target
-from ..schemas import TargetIn, TargetOut, TargetProbeIn, TargetProbeOut
+from ..schemas import (
+    ClusterResourcesOut,
+    ClusterSetupOut,
+    JobMovesOffIn,
+    JobMovesOut,
+    NfsExportOut,
+    StorageCheckIn,
+    StorageCheckOut,
+    StorageLocationOut,
+    StorageOut,
+    StorageSetupOut,
+    TargetIn,
+    TargetOut,
+    TargetProbeIn,
+    TargetProbeOut,
+)
 from ..targets import TargetRegistry, labels_of
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
@@ -63,6 +87,154 @@ async def list_targets(
 
     live = await asyncio.gather(*(probe(t) for t in rows))
     return [_out(db, t, l) for t, l in zip(rows, live)]
+
+
+@router.get("/setup", response_model=ClusterSetupOut)
+def cluster_setup(
+    # Task slots for a cluster on another machine: one per job it will run.
+    slots: int = Query(8, ge=1, le=64),
+    _: Principal = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> ClusterSetupOut:
+    """How to start a new cluster, on this machine or another, matching this one."""
+    g = cluster_setup_guide(slots=slots)
+    registered = db.scalar(
+        select(Target).where(Target.flink_rest_url == SAME_MACHINE_REST)
+    ) is not None
+    return ClusterSetupOut(
+        flink_image=g.flink_image,
+        image_pinned=g.image_pinned,
+        registry=g.registry,
+        same_machine_name=SAME_MACHINE_NAME,
+        same_machine_rest_url=SAME_MACHINE_REST,
+        same_machine_gateway_url=SAME_MACHINE_GATEWAY,
+        same_machine_command=SAME_MACHINE_COMMAND,
+        same_machine_registered=registered,
+        other_machine_compose=g.other_machine_compose,
+    )
+
+
+@router.get("/storage", response_model=StorageOut)
+async def savepoint_storage(
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    registry: TargetRegistry = Depends(get_targets),
+) -> StorageOut:
+    """Where each cluster saves savepoints, and whether jobs can move between them."""
+    rows = registry.all_enabled(db)
+    found = await asyncio.gather(*(shared_storage.location(registry, t) for t in rows))
+    dirs = {t.name: d for t, (d, _) in zip(rows, found)}
+    default = next((t.name for t in rows if t.is_default), None)
+    records = shared_storage.recorded()
+    return StorageOut(
+        clusters=[
+            StorageLocationOut(name=t.name, is_default=t.is_default, savepoint_dir=d, error=e)
+            for t, (d, e) in zip(rows, found)
+        ],
+        moves=[
+            JobMovesOut(**shared_storage.job_moves(default, t.name, dirs, records).__dict__)
+            for t in rows if default and not t.is_default
+        ],
+    )
+
+
+@router.post("/storage/check", response_model=StorageCheckOut)
+async def check_savepoint_storage(
+    body: StorageCheckIn,
+    _: Principal = Depends(require_admin),
+    db: Session = Depends(get_session),
+    registry: TargetRegistry = Depends(get_targets),
+) -> StorageCheckOut:
+    """Proves two clusters share savepoint storage, with a small job on each."""
+    if body.a == body.b:
+        raise HTTPException(status_code=400, detail="Choose two different clusters.")
+    targets = []
+    for name in (body.a, body.b):
+        t = db.scalar(select(Target).where(Target.name == name))
+        if t is None or not t.enabled:
+            raise HTTPException(status_code=404, detail=f"No enabled cluster named '{name}'.")
+        targets.append(t)
+    result = await shared_storage.check(registry, *targets)
+    return StorageCheckOut(**result.__dict__)
+
+
+@router.post("/storage/off", status_code=status.HTTP_204_NO_CONTENT,
+             response_class=Response)
+def job_moves_off(
+    body: JobMovesOffIn,
+    _: Principal = Depends(require_admin),
+    db: Session = Depends(get_session),
+) -> Response:
+    """Records that job moves to and from a cluster are turned off.
+
+    Refused while a job placed there would resume from a savepoint on the shared
+    storage: once the cluster stops mounting it, that job could not resume at all.
+    """
+    default = db.scalar(select(Target).where(Target.is_default.is_(True)))
+    if default is None or body.cluster == default.name:
+        raise HTTPException(status_code=400, detail="Choose a cluster other than the default.")
+    rec = next((r for r in shared_storage.recorded()
+                if set(r.clusters) == {default.name, body.cluster}), None)
+    if rec is not None and rec.shared_dir:
+        jobs = db.query(Job).filter(Job.target_name == body.cluster).all()
+        waiting = shared_storage.depends_on_shared(jobs, rec.shared_dir)
+        if waiting:
+            them = "them" if len(waiting) > 1 else "it"
+            raise HTTPException(status_code=409, detail=(
+                f"{', '.join(waiting)} would resume from a savepoint on the shared storage, "
+                f"which {body.cluster} cannot reach once job moves are off. Move {them} to "
+                f"{default.name} first: stop with state saved, set Runs on to {default.name}, "
+                f"and resume."))
+    shared_storage.forget([default.name, body.cluster])
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/storage/exports", response_model=list[NfsExportOut])
+async def nfs_exports(
+    server: str = Query(..., min_length=1, max_length=253, pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]*$"),
+    _: Principal = Depends(require_admin),
+) -> list[NfsExportOut]:
+    """The folders an NFS server shares, to pick from instead of typing a path."""
+    try:
+        found = await asyncio.to_thread(nfs.exports, server)
+    except nfs.NfsError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not list the shares on {server}: {exc}") from exc
+    return [NfsExportOut(name=e.name, path=e.path, clients=e.clients) for e in found]
+
+
+@router.get("/storage/setup", response_model=StorageSetupOut)
+def savepoint_storage_setup(
+    server: str = Query(..., max_length=253),
+    export: str = Query(..., max_length=1024),
+    _: Principal = Depends(require_admin),
+) -> StorageSetupOut:
+    """The override file that puts a machine's savepoints on an NFS share."""
+    try:
+        return StorageSetupOut(
+            this_machine=savepoint_override(server, export),
+            this_machine_with_second=savepoint_override(
+                server, export, [("jobmanager", "taskmanager"), ("jobmanager-b", "taskmanager-b")]),
+            other_machine=savepoint_override(server, export),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/{name}/resources", response_model=ClusterResourcesOut)
+async def cluster_resources(
+    name: str,
+    _: Principal = Depends(current_principal),
+    db: Session = Depends(get_session),
+    registry: TargetRegistry = Depends(get_targets),
+) -> ClusterResourcesOut:
+    """Memory, CPU and slots on this cluster, and how much each job on it uses."""
+    target = db.scalar(select(Target).where(Target.name == name))
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"No cluster named '{name}'.")
+    try:
+        return ClusterResourcesOut(**await resources.cluster_resources(db, registry, target))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"{name} did not answer: {exc}") from exc
 
 
 @router.post("/probe", response_model=TargetProbeOut)

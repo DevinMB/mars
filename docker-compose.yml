@@ -12,7 +12,7 @@ services:
     build:
       context: ./flink
       dockerfile: Dockerfile
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-jobmanager
     command: jobmanager
     restart: unless-stopped
@@ -34,7 +34,7 @@ services:
     networks: [mars]
 
   taskmanager:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-taskmanager
     command: taskmanager
     restart: unless-stopped
@@ -51,7 +51,7 @@ services:
     networks: [mars]
 
   sql-gateway:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-sql-gateway
     restart: unless-stopped
     depends_on:
@@ -81,8 +81,13 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    image: ${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0
+    image: ${MARS_CONSOLE_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0}
     container_name: mars-console
+    # Picked up by a Prometheus that discovers containers by these labels; ignored
+    # otherwise. /metrics is unauthenticated, like /healthz.
+    labels:
+      prometheus.scrape: "true"
+      prometheus.port: "8080"
     restart: unless-stopped
     depends_on:
       sql-gateway:
@@ -94,6 +99,10 @@ services:
       # Read-only view of the connector JARs, so the console can read the
       # manifests inside them and offer a form per connector.
       - ./flink/jars:/jars:ro,z
+      # Read-only, for the restore drill (off unless MARS_RESTORE_DRILL=true):
+      # Flink's state, to check restore points exist, and the backup archives.
+      - flink-state:/flink-state:ro
+      - ${MARS_RESTORE_DRILL_BACKUPS_DIR:-./backups}:/backups:ro,z
     environment:
       - TZ=${TZ:-UTC}
       - MARS_FLINK_REST_URL=http://jobmanager:8081
@@ -105,6 +114,20 @@ services:
       - MARS_SESSION_COOKIE=${MARS_SESSION_COOKIE:-mars_session}
       - MARS_SESSION_TTL_HOURS=${MARS_SESSION_TTL_HOURS:-12}
       - MARS_SEED_EXAMPLES=${MARS_SEED_EXAMPLES:-true}
+      # Shown when adding a cluster, so a new one runs this exact image.
+      - MARS_FLINK_IMAGE=${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
+      - MARS_CONSOLE_IMAGE=${MARS_CONSOLE_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/console:0.1.0}
+      - MARS_FLINK_REVISION=${MARS_FLINK_REVISION:-}
+      # Versions and updates (docs/deployment.md#versions-and-updates). Off by default.
+      - MARS_UPDATE_CHECK=${MARS_UPDATE_CHECK:-false}
+      - MARS_UPDATE_CHANNEL=${MARS_UPDATE_CHANNEL:-releases}
+      - MARS_UPDATE_TOKEN_SECRET=${MARS_UPDATE_TOKEN_SECRET:-}
+      - MARS_UPDATE_INSTRUCTIONS=${MARS_UPDATE_INSTRUCTIONS:-}
+      # Newest savepoints kept per job; 0 keeps all (docs/deployment.md#savepoint-retention).
+      - MARS_SAVEPOINTS_KEEP=${MARS_SAVEPOINTS_KEEP:-3}
+      # Scheduled check that backups restore; publishes mars_restore_drill_success.
+      - MARS_RESTORE_DRILL=${MARS_RESTORE_DRILL:-false}
+      - MARS_RESTORE_DRILL_SCHEDULE=${MARS_RESTORE_DRILL_SCHEDULE:-0 6 1 1,4,7,10 *}
     mem_limit: 512m
     cpus: 0.5
     healthcheck:
@@ -126,7 +149,7 @@ services:
   # Enable with:  docker compose --profile second-target up -d
   # ---------------------------------------------------------------------------
   jobmanager-b:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-jobmanager-b
     profiles: [second-target]
     command: jobmanager
@@ -146,7 +169,7 @@ services:
     networks: [mars]
 
   taskmanager-b:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-taskmanager-b
     profiles: [second-target]
     command: taskmanager
@@ -162,7 +185,7 @@ services:
     networks: [mars]
 
   sql-gateway-b:
-    image: ${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0
+    image: ${MARS_FLINK_IMAGE:-${COMPOSE_PROJECT_NAME:-mars}/flink:0.1.0}
     container_name: mars-sql-gateway-b
     profiles: [second-target]
     restart: unless-stopped

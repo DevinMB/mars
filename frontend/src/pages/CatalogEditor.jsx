@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import useUnsavedChanges from '../lib/useUnsavedChanges'
 import { useNotify } from '../components/InteractionProvider'
@@ -14,13 +14,14 @@ import { Alert, CodeBlock, Field, PageHeader, Spinner } from '../components/ui'
 
 export default function CatalogEditor() {
   const { name: editing } = useParams()
-  const [params] = useSearchParams()
   const navigate = useNavigate()
   const notify = useNotify()
   const [loaded, setLoaded] = useState(false)
   const [initial, setInitial] = useState(null)
 
-  const [kind, setKind] = useState(params.get('kind') || 'source')
+  // 'table' for anything new: whether jobs read or write it comes from the jobs.
+  // An existing entry keeps its stored role, which the server leaves alone.
+  const [kind, setKind] = useState('table')
   const [connectors, setConnectors] = useState(null)
   const [secretNames, setSecretNames] = useState([])
   const [connectorId, setConnectorId] = useState('')
@@ -43,7 +44,6 @@ export default function CatalogEditor() {
 
       if (!editing && cloneOf) {
         const e = await api.catalogEntry(cloneOf)
-        setKind(e.kind)
         setConnectorId(e.connector)
         setName(`${e.name}_copy`)
         setDescription(e.description || '')
@@ -83,7 +83,7 @@ export default function CatalogEditor() {
       .map((o) => [o.key, o.default])))
   }
 
-  const available = (connectors || []).filter((c) => c.kinds.includes(kind))
+  const available = connectors || []
 
   const serialized = JSON.stringify({ name, description, kind, connectorId, values, columns, note })
   useEffect(() => { if (loaded && initial === null) setInitial(serialized) }, [loaded, initial, serialized])
@@ -114,7 +114,7 @@ export default function CatalogEditor() {
   return (
     <>
       <PageHeader
-        title={editing ? `Edit ${editing}` : cloneOf ? `Copy of ${cloneOf}` : `New ${kind}`}
+        title={editing ? `Edit ${editing}` : cloneOf ? `Copy of ${cloneOf}` : 'New entry'}
         back={{ to: '/catalog', label: 'Catalog' }}
         subtitle={unsaved ? 'Unsaved changes' : null}
         actions={
@@ -129,23 +129,6 @@ export default function CatalogEditor() {
       <div className="editor-grid">
         <div className="space-y-6 min-w-0">
           <div className="form-section grid gap-4 sm:grid-cols-2">
-            {!editing && (
-              <Field label="Kind">
-                <div className="flex gap-2">
-                  {['source', 'sink'].map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => { setKind(k); setConnectorId(''); }}
-                      aria-pressed={kind === k} className={`choice ${kind === k ? 'choice-selected' : ''}`}
-                    >
-                      {k === 'source' ? 'Source' : 'Sink'}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            )}
-
             <Field label="Name" required hint="Used as the table name in SQL, so letters, digits and underscores only.">
               <input className="input mono" value={name} disabled={!!editing}
                      onChange={(e) => setName(e.target.value)} placeholder="events_raw" />
@@ -179,7 +162,7 @@ export default function CatalogEditor() {
 
                 <HealthCheck connector={connectorId} options={values} />
 
-                {kind === 'source' && (
+                {connector.kinds.includes('source') && (
                   <SourcePeek connector={connectorId} options={values}
                               columns={columns} name={name} />
                 )}

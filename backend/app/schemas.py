@@ -63,7 +63,9 @@ class ColumnIn(BaseModel):
 
 class CatalogEntryIn(BaseModel):
     name: str
-    kind: str
+    # "table": whether jobs read or write it comes from the jobs themselves.
+    # "source" and "sink" are accepted from older clients and exports.
+    kind: str = "table"
     connector: str
     description: str | None = None
     options: dict[str, str] = Field(default_factory=dict)
@@ -76,14 +78,20 @@ class CatalogEntryIn(BaseModel):
     @field_validator("kind")
     @classmethod
     def _kind(cls, v: str) -> str:
-        if v not in ("source", "sink"):
-            raise ValueError("kind must be 'source' or 'sink'")
+        if v not in ("table", "source", "sink"):
+            raise ValueError("kind must be 'table', 'source' or 'sink'")
         return v
 
 
 class ColumnOut(BaseModel):
     name: str
     type: str
+
+
+class ResourceOut(BaseModel):
+    key: str
+    kind: str
+    label: str
 
 
 class CatalogEntryOut(BaseModel):
@@ -96,6 +104,11 @@ class CatalogEntryOut(BaseModel):
     options: dict[str, str]
     updated_at: UtcDatetime
     used_by: list[str] = Field(default_factory=list)
+    # Which jobs read and write it, from each job's plan or SQL.
+    read_by: list[str] = Field(default_factory=list)
+    written_by: list[str] = Field(default_factory=list)
+    # What it points at; entries with the same key are the same topic or database.
+    resource: ResourceOut | None = None
     # Declared in the DDL. For a raw-passthrough source this is just the envelope
     # (`record_key`, `doc`); what is inside the document needs a sample.
     columns: list[ColumnOut] = Field(default_factory=list)
@@ -127,6 +140,13 @@ class JobIn(BaseModel):
     note: str | None = None
     # None means the default target.
     target_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v: list[str]) -> list[str]:
+        from .tags import clean
+        return clean(v)
 
     @field_validator("job_type")
     @classmethod
@@ -150,6 +170,8 @@ class RunOut(BaseModel):
     # Where this run's state was saved when it was stopped, and where it resumed
     # from when it started. Both null for a stateless job nobody bothered to save.
     savepoint_path: str | None = None
+    # When retention removed that savepoint; the path is then history only.
+    savepoint_removed_at: UtcDatetime | None = None
     restored_from: str | None = None
 
 
@@ -243,6 +265,7 @@ class JobOut(BaseModel):
     enabled: bool
     version: int
     target_name: str | None = None
+    tags: list[str] = []
     # The most recent state saved for this job. Its presence is what makes a
     # restart resume where it left off rather than start over with empty state.
     latest_savepoint: str | None = None
@@ -346,6 +369,20 @@ class TargetOut(BaseModel):
 class TargetProbeIn(BaseModel):
     flink_rest_url: str
     gateway_url: str
+
+
+class ClusterSetupOut(BaseModel):
+    """What adding a cluster needs: the image to match, and how to start one."""
+
+    flink_image: str
+    image_pinned: bool
+    registry: str | None
+    same_machine_name: str
+    same_machine_rest_url: str
+    same_machine_gateway_url: str
+    same_machine_command: str
+    same_machine_registered: bool
+    other_machine_compose: str
 
 
 class TargetProbeOut(BaseModel):
@@ -604,3 +641,150 @@ class ClusterOut(BaseModel):
     jobs_running: int = 0
     targets_total: int = 0
     targets_reachable: int = 0
+
+
+class StorageLocationOut(BaseModel):
+    name: str
+    is_default: bool
+    savepoint_dir: str | None = None
+    error: str | None = None
+
+
+class StorageCheckOut(BaseModel):
+    clusters: list[str]
+    shared: bool
+    summary: str
+    checked_at: str
+    detail: str | None = None
+    last_shared_at: str | None = None
+    shared_dir: str | None = None
+
+
+class JobMovesOut(BaseModel):
+    cluster: str
+    default: str
+    state: str  # "off", "ready" or "broken"
+    summary: str
+    checked_at: str | None = None
+    shared_dir: str | None = None
+
+
+class StorageOut(BaseModel):
+    clusters: list[StorageLocationOut]
+    # One per cluster other than the default: moves are to and from the default.
+    moves: list[JobMovesOut]
+
+
+class StorageCheckIn(BaseModel):
+    a: str
+    b: str
+
+
+class JobMovesOffIn(BaseModel):
+    cluster: str
+
+
+class StorageSetupOut(BaseModel):
+    # One override file per machine shape: MARS's own machine with or without the
+    # second cluster, and a machine set up from the guide.
+    this_machine: str
+    this_machine_with_second: str
+    other_machine: str
+
+
+class NfsExportOut(BaseModel):
+    name: str
+    path: str
+    clients: list[str]
+
+
+class MoveOptionOut(BaseModel):
+    cluster: str
+    ok: bool
+    reasons: list[str] = []
+    notes: list[str] = []
+    state_bytes: int | None = None
+    pause_seconds: float | None = None
+    # True when the pause comes from this installation's measured savepoint speed.
+    rate_measured: bool = False
+
+
+class MoveIn(BaseModel):
+    cluster: str = Field(min_length=1, max_length=64)
+
+
+class MoveOut(BaseModel):
+    moved: bool
+    summary: str
+    savepoint: str | None = None
+
+
+class BatchIn(BaseModel):
+    kind: str = Field(pattern=r"^(move|stop|resume)$")
+    jobs: list[str] = Field(min_length=1, max_length=500)
+    cluster: str | None = Field(default=None, max_length=64)
+    # Native-format savepoints: faster for large RocksDB state.
+    native: bool = False
+
+
+class BatchItemOut(BaseModel):
+    job: str
+    status: str  # waiting, working, done, skipped, failed, notrun
+    note: str = ""
+
+
+class BatchOut(BaseModel):
+    id: int
+    kind: str
+    cluster: str | None
+    status: str  # running, stopping, done, failed, stopped
+    native: bool = False
+    items: list[BatchItemOut]
+    created_by: str | None
+    created_at: UtcDatetime
+    finished_at: UtcDatetime | None
+
+
+class TaskManagerOut(BaseModel):
+    id: str
+    slots_total: int = 0
+    slots_free: int = 0
+    cpu_cores: int | None = None
+    cpu_load: float | None = None  # 0..1, the JVM's share of the machine's CPU
+    heap_used: int | None = None
+    heap_max: int | None = None
+    managed_used: int | None = None
+    managed_total: int | None = None
+
+
+class JobManagerOut(BaseModel):
+    heap_used: int | None = None
+    heap_max: int | None = None
+
+
+class JobFootprintOut(BaseModel):
+    job: str
+    available: bool = False
+    slots: int | None = None
+    state_bytes: int | None = None
+    checkpoint_ms: int | None = None
+    busiest: str | None = None
+    busy_ratio: float | None = None
+
+
+class ClusterResourcesOut(BaseModel):
+    cluster: str
+    taskmanagers: list[TaskManagerOut]
+    jobmanager: JobManagerOut
+    jobs: list[JobFootprintOut]
+
+
+class BulkTagsIn(BaseModel):
+    jobs: list[str] = Field(min_length=1, max_length=500)
+    add: list[str] = Field(default_factory=list)
+    remove: list[str] = Field(default_factory=list)
+
+
+class JobTagsOut(BaseModel):
+    name: str
+    tags: list[str]

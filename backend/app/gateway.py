@@ -121,14 +121,16 @@ class SqlGatewayClient:
             out.append(await self.execute(session, stmt))
         return out
 
-    async def validate(self, session: str, statement: str) -> None:
-        """Type-checks a statement without running it.
+    async def validate(self, session: str, statement: str) -> str:
+        """Type-checks a statement without running it, and returns Flink's plan.
 
         ``EXPLAIN PLAN FOR`` compiles the query and builds a plan but submits no
         job, which is what makes a Create-job button in the console safe to press.
+        The plan names every table the statement reads and writes.
         """
         stripped = statement.strip().rstrip(";")
-        await self.execute(session, f"EXPLAIN PLAN FOR {stripped}")
+        result = await self.execute(session, f"EXPLAIN PLAN FOR {stripped}")
+        return "\n".join(str(cell) for row in result.rows for cell in row)
 
     async def select_rows(
         self,

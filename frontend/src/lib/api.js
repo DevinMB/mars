@@ -115,7 +115,20 @@ export const api = {
 
   // targets
   targets: () => request('/api/targets'),
+  version: () => request('/api/system/version'),
+  pipeline: () => request('/api/pipeline'),
+  addExternal: (body) => request('/api/pipeline/external', { method: 'POST', body }),
+  removeExternal: (id) => request(`/api/pipeline/external/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  checkForUpdates: () => request('/api/system/version/check', { method: 'POST' }),
+  clusterSetup: (slots = 8) => request(`/api/targets/setup?slots=${encodeURIComponent(slots)}`),
   createTarget: (body) => request('/api/targets', { method: 'POST', body }),
+  clusterResources: (name) => request(`/api/targets/${encodeURIComponent(name)}/resources`),
+  savepointStorage: () => request('/api/targets/storage'),
+  checkSavepointStorage: (a, b) => request('/api/targets/storage/check', { method: 'POST', body: { a, b } }),
+  jobMovesOff: (cluster) => request('/api/targets/storage/off', { method: 'POST', body: { cluster } }),
+  nfsExports: (server) => request(`/api/targets/storage/exports?server=${encodeURIComponent(server)}`),
+  savepointStorageSetup: (server, exportPath) =>
+    request(`/api/targets/storage/setup?server=${encodeURIComponent(server)}&export=${encodeURIComponent(exportPath)}`),
   probeTarget: (flink_rest_url, gateway_url) =>
     request('/api/targets/probe', { method: 'POST', body: { flink_rest_url, gateway_url } }),
   updateTarget: (name, body) => request(`/api/targets/${encodeURIComponent(name)}`, { method: 'PUT', body }),
@@ -136,6 +149,13 @@ export const api = {
     request(`/api/jobs/${encodeURIComponent(name)}/run?from_savepoint=${encodeURIComponent(fromSavepoint)}`,
             { method: 'POST' }),
   cancelJob: (name) => request(`/api/jobs/${encodeURIComponent(name)}/cancel`, { method: 'POST' }),
+  startBatch: (kind, jobs, cluster = null, native = false) => request('/api/batches', { method: 'POST', body: { kind, jobs, cluster, native } }),
+  latestBatch: () => request('/api/batches/latest'),
+  batch: (id) => request(`/api/batches/${id}`),
+  stopBatch: (id) => request(`/api/batches/${id}/stop`, { method: 'POST' }),
+  tagJobs: (jobs, add = [], remove = []) => request('/api/jobs/tags', { method: 'POST', body: { jobs, add, remove } }),
+  moveOptions: (name) => request(`/api/jobs/${encodeURIComponent(name)}/move`),
+  moveJob: (name, cluster) => request(`/api/jobs/${encodeURIComponent(name)}/move`, { method: 'POST', body: { cluster } }),
   stopJob: (name, drain = false) =>
     request(`/api/jobs/${encodeURIComponent(name)}/stop?drain=${drain}`, { method: 'POST' }),
   activity: (limit = 200) => request(`/api/jobs/activity?limit=${limit}`),

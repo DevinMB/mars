@@ -21,6 +21,9 @@ COPY backend/app ./app
 COPY backend/manifests ./manifests
 # Seeded once, on a fresh install, so the first screen is not a dead end.
 COPY examples ./examples
+# The template the console renders when someone adds a cluster on another machine.
+COPY remote-target/docker-compose.yml ./remote-target/docker-compose.yml
+COPY remote-target/conf/config.yaml ./remote-target/conf/config.yaml
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
 COPY --from=frontend /build/dist ./static
@@ -45,3 +48,9 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
   CMD curl -fsS http://localhost:8080/healthz || exit 1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+# Stamped by the release build, last so a new commit reuses every layer above.
+# The console reads them to say what it is running.
+ARG MARS_REVISION=""
+ARG MARS_BUILT_AT=""
+ENV MARS_REVISION=${MARS_REVISION} MARS_BUILT_AT=${MARS_BUILT_AT}

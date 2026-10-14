@@ -21,6 +21,9 @@ services:
       # MARS talks to these two. They must be reachable from wherever the console
       # runs -- which is the only firewall rule this needs.
       - "${TARGET_BIND_ADDRESS:-127.0.0.1}:${TARGET_REST_PORT:-8081}:8081"
+      # Prometheus metrics, for whatever monitors this machine. Optional to scrape;
+      # unauthenticated, like the two above.
+      - "${TARGET_BIND_ADDRESS:-127.0.0.1}:${TARGET_JM_METRICS_PORT:-9249}:9249"
     volumes:
       - ./conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
       - flink-state:/flink-state
@@ -41,6 +44,10 @@ services:
     restart: unless-stopped
     depends_on:
       jobmanager: { condition: service_healthy }
+    ports:
+      # The TaskManager's metrics: job throughput, backpressure, memory. 9250 on the
+      # host, since the JobManager already has 9249.
+      - "${TARGET_BIND_ADDRESS:-127.0.0.1}:${TARGET_TM_METRICS_PORT:-9250}:9249"
     volumes:
       - ./conf/config.yaml:/opt/flink/conf/config.yaml:ro,z
       - flink-state:/flink-state

@@ -10,7 +10,7 @@ import SearchInput from './SearchInput'
 export default function TablePicker({ entries, selected, onToggle }) {
   const [query, setQuery] = useState('')
 
-  const { sources, sinks, total } = useMemo(() => {
+  const { groups, total } = useMemo(() => {
     const q = query.trim().toLowerCase()
     const match = (e) =>
       !q ||
@@ -18,11 +18,22 @@ export default function TablePicker({ entries, selected, onToggle }) {
       e.connector.toLowerCase().includes(q) ||
       (e.description || '').toLowerCase().includes(q)
     const hits = entries.filter(match)
-    return {
-      sources: hits.filter((e) => e.kind === 'source'),
-      sinks: hits.filter((e) => e.kind === 'sink'),
-      total: hits.length,
+    // Grouped by what each table points at, not a source/sink role: whether this
+    // job reads or writes a table is decided by its SQL.
+    const byKind = new Map()
+    for (const e of hits) {
+      const kind = e.resource && !e.resource.key.startsWith('table:') ? e.resource.kind : 'other'
+      if (!byKind.has(kind)) byKind.set(kind, [])
+      byKind.get(kind).push(e)
     }
+    const groups = [...byKind.entries()]
+      .sort(([a], [b]) => (a === 'other') - (b === 'other') || a.localeCompare(b))
+      .map(([kind, rows]) => ({
+        label: kind === 'other' ? 'Other tables' : `${kind[0].toUpperCase()}${kind.slice(1)}s`,
+        rows: rows.sort((x, y) => (x.resource?.label || '').localeCompare(y.resource?.label || '')
+          || x.name.localeCompare(y.name)),
+      }))
+    return { groups, total: hits.length }
   }, [entries, query])
 
   const Group = ({ label, rows }) => {
@@ -53,7 +64,10 @@ export default function TablePicker({ entries, selected, onToggle }) {
                 />
                 <span className="min-w-0 flex-1">
                   <span className="mono text-[13px] text-slate-800 block truncate">{e.name}</span>
-                  <span className="text-[11px] text-slate-500">{e.connector}</span>
+                  <span className="text-[11px] text-slate-500">
+                    {e.connector}
+                    {e.resource && !e.resource.key.startsWith('table:') && <> · <span className="mono">{e.resource.label}</span></>}
+                  </span>
                 </span>
               </label>
             )
@@ -93,14 +107,13 @@ export default function TablePicker({ entries, selected, onToggle }) {
 
       {entries.length === 0 ? (
         <p className="text-xs text-slate-500">
-          Nothing in the catalog yet. Define a source and a sink first.
+          Nothing in the catalog yet. Add the tables this job reads and writes first.
         </p>
       ) : total === 0 ? (
         <p className="text-xs text-slate-500">No table matches “{query}”.</p>
       ) : (
         <>
-          <Group label="Sources" rows={sources} />
-          <Group label="Sinks" rows={sinks} />
+          {groups.map((g) => <Group key={g.label} label={g.label} rows={g.rows} />)}
         </>
       )}
     </div>

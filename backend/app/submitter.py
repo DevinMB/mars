@@ -17,18 +17,25 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from .cluster import FlinkClusterClient
+from . import state_estimates
+from .cluster import FlinkClusterClient, SavepointStillRunning
 from .ddl import split_statements
+from .metrics import SUBMISSIONS
 from .gateway import GatewayError, SqlGatewayClient
-from .guards import strip_noise
+from .guards import add_option, strip_noise
+from .lineage import consumer_groups
 from .models import CatalogEntry, Job, JobRun, RunState, utcnow
 from .secrets import SecretStore
 
 log = logging.getLogger(__name__)
+
+
+_CREATE_TABLE = re.compile(r"\s*CREATE\s+(?:TEMPORARY\s+)?TABLE\b", re.I)
 
 
 def _validation_action(statement: str) -> str:
@@ -49,6 +56,10 @@ def _validation_action(statement: str) -> str:
     if re.match(r"^CREATE\s+(?:TEMPORARY\s+)?(?:VIEW|(?:SYSTEM\s+)?FUNCTION)\b|^(SET|USE)\b", text, re.I):
         return "setup"
     raise SubmissionError("This script contains a statement that cannot safely run during validation.")
+
+
+# A submission takes seconds; one still going after this never will.
+STALE_SUBMISSION = timedelta(minutes=10)
 
 
 class SubmissionError(RuntimeError):
@@ -93,29 +104,36 @@ class JobSubmitter:
                     f"Job '{job.name}' references unknown catalog entries: "
                     f"{', '.join(missing)}. They may have been renamed or deleted."
                 )
+            # Kafka tables that name no consumer group get this job's own, in this
+            # session only; the stored entry is not changed.
+            groups = {n: g.group for n, g in consumer_groups(job, entries).items() if g.automatic}
             # Preserve the order the job declared, so a table that depends on
             # another is created after it.
             for ref in refs:
-                statements.extend(split_statements(entries[ref].sql_text))
+                for statement in split_statements(entries[ref].sql_text):
+                    if ref in groups and _CREATE_TABLE.match(strip_noise(statement)):
+                        statement = add_option(statement, "properties.group.id", groups[ref])
+                    statements.append(statement)
 
         statements.extend(split_statements(job.sql_text))
         if not statements:
             raise SubmissionError(f"Job '{job.name}' has no SQL to run.")
         return statements
 
-    async def validate(self, db: Session, job: Job) -> None:
-        """Compiles the job without submitting it."""
+    async def validate(self, db: Session, job: Job) -> list[str]:
+        """Compiles the job without submitting it; returns Flink's plans."""
         statements = self.build_script(db, job)
         actions = [_validation_action(statement) for statement in statements]
         resolved = [self._store.resolve(db, s) for s in statements]
 
+        plans: list[str] = []
         session = await self._gateway.open_session()
         try:
             for stmt, action in zip(resolved, actions):
                 if action == "setup":
                     await self._gateway.execute(session, stmt)
                 else:
-                    await self._gateway.validate(session, stmt)
+                    plans.append(await self._gateway.validate(session, stmt))
         except GatewayError as exc:
             raise SubmissionError(
                 self._store.redact(db, exc.summary),
@@ -124,6 +142,7 @@ class JobSubmitter:
             ) from exc
         finally:
             await self._gateway.close_session(session)
+        return plans
 
     async def submit(
         self,
@@ -132,6 +151,23 @@ class JobSubmitter:
         submitted_by: str | None = None,
         by_schedule: bool = False,
         savepoint_path: str | None = None,
+    ) -> JobRun:
+        """Submits a job, counting the outcome in mars_job_submissions_total."""
+        try:
+            run = await self._submit(db, job, submitted_by, by_schedule, savepoint_path)
+        except Exception:
+            SUBMISSIONS.labels(outcome="failed").inc()
+            raise
+        SUBMISSIONS.labels(outcome="started").inc()
+        return run
+
+    async def _submit(
+        self,
+        db: Session,
+        job: Job,
+        submitted_by: str | None,
+        by_schedule: bool,
+        savepoint_path: str | None,
     ) -> JobRun:
         statements = self.build_script(db, job)
 
@@ -144,8 +180,32 @@ class JobSubmitter:
             restored_from=savepoint_path or None,
         )
         db.add(run)
-        db.flush()
+        # Committed before anything is awaited. SQLite allows one writer, and a
+        # write held open across the calls to Flink below blocked every other
+        # writer -- the scheduler's reconcile first. Its wait for the lock is a
+        # blocking call on the event loop, so the whole console froze until the
+        # wait timed out, the submission included. The SUBMITTING run also stops a
+        # second click from starting a duplicate meanwhile.
+        db.commit()
 
+        try:
+            return await self._start(db, job, run, statements, savepoint_path)
+        except SubmissionError:
+            raise
+        except Exception as exc:
+            # Anything unexpected, such as the gateway being unreachable: the run
+            # is already recorded, so it has to end failed rather than be left
+            # SUBMITTING, which reads as active and would block running it again.
+            summary = self._store.redact(db, f"Could not start the job: {exc}")
+            db.rollback()
+            _fail(run, summary[:500])
+            db.commit()
+            raise SubmissionError(summary) from exc
+
+    async def _start(
+        self, db: Session, job: Job, run: JobRun, statements: list[str],
+        savepoint_path: str | None,
+    ) -> JobRun:
         # Ask the cluster, not just our own records. MARS refuses to start a job
         # it believes is running, but that belief is a row in a database: if it
         # goes stale -- a cluster briefly unreachable, a reconcile against the
@@ -240,7 +300,7 @@ class JobSubmitter:
 
     async def stop_with_savepoint(
         self, db: Session, run: JobRun, target_dir: str | None = None,
-        drain: bool = False,
+        drain: bool = False, native: bool = False,
     ) -> str:
         """Writes the job's state somewhere durable, then stops it.
 
@@ -249,26 +309,67 @@ class JobSubmitter:
         stateful job whose state was not saved is the outcome this exists to
         prevent, and doing it anyway while reporting an error would be worse than
         not trying.
+
+        How long to wait comes from the job's state size and this installation's
+        measured savepoint speed (state_estimates), and the size and time taken
+        are recorded to refine the next estimate.
         """
         if not run.flink_job_id:
             raise SubmissionError("This run has no job on the cluster to stop.")
 
         try:
+            size = await self._cluster.state_size(run.flink_job_id)
+        except Exception:
+            size = None
+        budget = state_estimates.savepoint_budget(size, state_estimates.rate(db))
+        started = time.monotonic()
+        try:
             request_id = await self._cluster.stop_with_savepoint(
-                run.flink_job_id, target_dir, drain=drain
+                run.flink_job_id, target_dir, drain=drain, native=native
             )
-            location = await self._cluster.await_savepoint(run.flink_job_id, request_id)
+            location = await self._cluster.await_savepoint(run.flink_job_id, request_id, budget=budget)
+        except SavepointStillRunning as exc:
+            # Not "left running": Flink stops the job once its savepoint is done.
+            raise SubmissionError(
+                "Gave up waiting for this job's savepoint, which Flink was still writing. "
+                "When it finishes the job stops; resume it from the job's page then.",
+                detail=str(exc),
+            ) from exc
         except Exception as exc:
             raise SubmissionError(
                 "Could not save this job's state, so it has been left running.",
                 detail=self._store.redact(db, str(exc)),
             ) from exc
 
+        run.savepoint_bytes = size
+        run.savepoint_ms = int((time.monotonic() - started) * 1000)
         run.savepoint_path = location
         run.state = RunState.CANCELED.value
         run.ended_at = utcnow()
         db.commit()
         return location
+
+    @staticmethod
+    def expire_stale_submissions(db: Session, older_than: timedelta = STALE_SUBMISSION) -> int:
+        """Fails runs left SUBMITTING with no Flink job, e.g. by a console restart
+        mid-submission. Left alone, they would read as active forever and keep the
+        supervisor from ever starting the job again."""
+        cutoff = utcnow() - older_than
+        stale = (
+            db.query(JobRun)
+            .filter(JobRun.state == RunState.SUBMITTING.value, JobRun.flink_job_id.is_(None))
+            .all()
+        )
+        n = 0
+        for run in stale:
+            started = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=timezone.utc)
+            if started < cutoff:
+                _fail(run, "The submission never finished; the console was probably restarted "
+                           "while starting this job. Nothing is running for it.")
+                n += 1
+        if n:
+            db.commit()
+        return n
 
     async def refresh_states(self, db: Session, target_name: str | None = ...) -> int:
         """Reconciles MARS's view of runs with what this cluster reports.

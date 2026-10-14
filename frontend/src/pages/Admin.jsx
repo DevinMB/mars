@@ -14,7 +14,7 @@ const ROLES = [
   {
     value: 'admin',
     label: 'Administrator',
-    blurb: 'Everything, including secrets, execution targets and other accounts.',
+    blurb: 'Everything, including secrets, clusters and other accounts.',
   },
   {
     value: 'editor',

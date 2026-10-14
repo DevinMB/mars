@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..auth import Principal
 from ..db import get_session
-from ..deps import current_principal, get_registry, get_targets
+from .. import updates
+from ..deps import current_principal, get_registry, get_targets, require_admin
 from ..registry import ConnectorRegistry
 from ..schemas import ClusterOut
+from ..settings import settings
 from ..targets import TargetRegistry
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -81,3 +83,83 @@ def get_connector(
     if c is None:
         raise HTTPException(status_code=404, detail=f"No connector named '{identifier}'")
     return c.to_json()
+
+
+# --- versions and updates ----------------------------------------------------
+
+
+def _image_repo(image: str) -> str:
+    """ghcr.io/x/mars-console@sha256:... or :tag -> ghcr.io/x/mars-console."""
+    name = image.split("@", 1)[0]
+    head, _, tail = name.rpartition("/")
+    return f"{head}/{tail.split(':', 1)[0]}" if head else tail.split(":", 1)[0]
+
+
+def _how_to_update(component: str, commit: str) -> dict:
+    """The steps for one component, from MARS_UPDATE_INSTRUCTIONS or generic ones.
+
+    The console never runs these. Flink always needs a maintenance window: its
+    jobs stop while the cluster is replaced, which the console cannot do for you.
+    """
+    s = settings()
+    window = component == "flink"
+    if s.update_instructions:
+        command = s.update_instructions.format(component=component, commit=commit, short=commit[:7])
+        return {"needs_window": window, "steps": [f"Run: {command}"], "command": command}
+
+    image = s.console_image if component == "console" else s.flink_image
+    repo = _image_repo(image) if image else f"ghcr.io/devinmb/mars-{component}"
+    pin = "MARS_CONSOLE_IMAGE" if component == "console" else "MARS_FLINK_IMAGE"
+    ref = f"{repo}:sha-{commit}"
+    if not window:
+        steps = [
+            f"docker pull {ref}",
+            f"Set {pin} in .env to the digest that prints (docker image inspect --format "
+            "'{{index .RepoDigests 0}}' " + ref + ")",
+            "docker compose up -d --no-deps console",
+        ]
+    else:
+        steps = [
+            "Plan a short maintenance window: every job on this cluster stops while it is replaced.",
+            "In MARS, stop each running job with Stop and save state.",
+            f"docker pull {ref}, and set {pin} in .env to its digest.",
+            "docker compose up -d --no-deps jobmanager taskmanager sql-gateway",
+            "In MARS, resume each job. It continues from the state saved above.",
+        ]
+    return {"needs_window": window, "steps": steps, "command": None}
+
+
+@router.get("/system/version")
+def version(_: Principal = Depends(current_principal)) -> dict:
+    """What this installation runs, and what the last update check found."""
+    s = settings()
+    last = updates.last_result() if s.update_check else None
+    out = {
+        "console": {"revision": s.revision or None, "built_at": s.built_at or None,
+                    "image": s.console_image or None},
+        "flink": {"revision": s.flink_revision or None, "image": s.flink_image or None},
+        "update_check": {"enabled": s.update_check, "channel": s.update_channel,
+                         "checked_at": last.checked_at if last else None,
+                         "error": last.error if last else None},
+        "latest": last.latest.__dict__ if last and last.latest else None,
+    }
+    for name in ("console", "flink"):
+        status = getattr(last, name) if last else None
+        if status is not None:
+            out[name].update(
+                behind_by=status.behind_by,
+                update_available=status.update_available,
+                commits=[c.__dict__ for c in status.commits],
+                how_to_update=(_how_to_update(name, last.latest.revision)
+                               if status.update_available and last.latest else None),
+            )
+    return out
+
+
+@router.post("/system/version/check")
+async def check_now(_: Principal = Depends(require_admin)) -> dict:
+    """Checks for updates now, if checking is enabled."""
+    if not settings().update_check:
+        raise HTTPException(status_code=409, detail="Update checks are off. Set MARS_UPDATE_CHECK=true to turn them on.")
+    await updates.check()
+    return version(_)

@@ -8,7 +8,17 @@ SOURCE = {
     'updated_at': STAMP, 'used_by': ['readings_to_output'], 'version': 1,
     'columns': [{'name': 'sensor_id', 'type': 'STRING'}, {'name': 'temperature', 'type': 'DOUBLE'}],
 }
-SINK = dict(SOURCE, id=2, name='output', kind='sink', connector='print', description='Console output.', options={})
+SOURCE.update(read_by=['readings_to_output'], written_by=[],
+              resource={'key': 'table:readings', 'kind': 'datagen', 'label': 'readings'})
+SINK = dict(SOURCE, id=2, name='output', kind='sink', connector='print', description='Console output.', options={},
+            read_by=[], written_by=['readings_to_output'],
+            resource={'key': 'table:output', 'kind': 'print', 'label': 'output'})
+# Two entries on one Kafka topic, one written and one read, as the catalog groups them.
+TOPIC = {'key': 'kafka:broker:9092/example-events', 'kind': 'kafka topic', 'label': 'example-events'}
+EVENTS_OUT = dict(SOURCE, id=3, name='events_out', kind='table', connector='kafka', description='Enriched events.',
+                  options={}, used_by=['enrich_events'], read_by=[], written_by=['enrich_events'], resource=TOPIC)
+EVENTS_IN = dict(SOURCE, id=4, name='events_in', kind='table', connector='kafka', description=None,
+                 options={}, used_by=['archive_events'], read_by=['archive_events'], written_by=[], resource=TOPIC)
 RUN = {
     'id': 1, 'run_id': 1, 'job': 'readings_to_output', 'state': 'running',
     'started_at': STAMP, 'ended_at': None, 'restarts': 0, 'error_summary': None,
@@ -19,7 +29,7 @@ RUN = {
 JOB = {
     'id': 1, 'name': 'readings_to_output', 'description': 'Send sensor readings to the output.',
     'job_type': 'streaming', 'sql_text': 'INSERT INTO output SELECT * FROM readings;',
-    'catalog_refs': ['readings', 'output'], 'enabled': True, 'version': 1,
+    'catalog_refs': ['readings', 'output'], 'enabled': True, 'version': 1, 'tags': ['sensors'],
     'target_name': None, 'latest_savepoint': None, 'updated_at': STAMP, 'latest_run': RUN,
     'schedule': {'mode': 'supervisor', 'enabled': True}, 'live_state': 'running', 'checkpoint_age_ms': 1000,
 }
@@ -43,10 +53,83 @@ def fixtures():
         '/api/jobs/readings_to_output/runs': [RUN],
         '/api/jobs/readings_to_output/versions': [{'version': 1, 'note': 'Created', 'created_at': STAMP, 'created_by': 'operator'}],
         '/api/jobs/readings_to_output/script': {'statements': [JOB['sql_text']]},
-        '/api/jobs/activity': [RUN], '/api/catalog': [SOURCE, SINK],
+        '/api/jobs/readings_to_output/move': [{'cluster': 'mars-b', 'ok': True, 'reasons': [],
+                                                'state_bytes': 18385, 'pause_seconds': 5.0, 'rate_measured': False}],
+        '/api/jobs/activity': [RUN], '/api/catalog': [SOURCE, SINK, EVENTS_OUT, EVENTS_IN],
         '/api/catalog/readings': SOURCE, '/api/catalog/output': SINK,
         '/api/catalog/readings/versions': [], '/api/catalog/output/versions': [],
-        '/api/targets': [TARGET], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
+        '/api/targets': [TARGET, dict(TARGET, name='mars-b', description='', is_default=False, job_count=0,
+                                          flink_rest_url='http://192.168.10.13:8081', gateway_url='http://192.168.10.13:8083')], '/api/cluster': dict(TARGET, targets_total=1, targets_reachable=1),
+        '/api/targets/storage': {
+            'clusters': [
+                {'name': 'default', 'is_default': True, 'savepoint_dir': 'file:///flink-savepoints', 'error': None},
+                {'name': 'mars-b', 'is_default': False, 'savepoint_dir': 'file:///flink-state/savepoints', 'error': None},
+            ],
+            'moves': [{'cluster': 'mars-b', 'default': 'default', 'state': 'off', 'checked_at': None, 'shared_dir': None,
+                       'summary': 'Not set up. Jobs on this cluster cannot move to or from default with their state.'}],
+        },
+        '/api/targets/storage/exports': [
+            {'name': 'backups', 'path': '/volume1/backups', 'clients': ['192.168.1.6']},
+            {'name': 'mars.savepoints', 'path': '/volume/u/.srv/.unifi-drive/mars.savepoints/.data',
+             'clients': ['192.168.10.13', '192.168.1.250']},
+        ],
+        '/api/targets/storage/setup': {
+            'this_machine': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager\nservices: {}\n',
+            'this_machine_with_second': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager jobmanager-b taskmanager-b\nservices: {}\n',
+            'other_machine': '# Shared savepoint storage\n#   docker compose up -d jobmanager taskmanager\nservices: {}\n',
+        },
+        '/api/batches/latest': None,
+        '/api/targets/default/resources': {
+            'cluster': 'default',
+            'taskmanagers': [{'id': 'tm:1', 'slots_total': 12, 'slots_free': 11, 'cpu_cores': 4, 'cpu_load': 0.12,
+                              'heap_used': 180_000_000, 'heap_max': 939_524_096, 'managed_used': 0, 'managed_total': 858_993_470}],
+            'jobmanager': {'heap_used': 110_000_000, 'heap_max': 454_164_480},
+            'jobs': [{'job': 'readings_to_output', 'available': True, 'slots': 1, 'state_bytes': 18385,
+                      'checkpoint_ms': 3, 'busiest': 'Source: readings -> output', 'busy_ratio': 0.04}],
+        },
+        '/api/pipeline': {
+            'nodes': [
+                {'id': 'job:enrich_events', 'type': 'job', 'label': 'enrich_events', 'state': 'running', 'cluster': 'local'},
+                {'id': 'job:archive_events', 'type': 'job', 'label': 'archive_events', 'state': 'failed', 'cluster': 'local'},
+                {'id': 'job:readings_to_output', 'type': 'job', 'label': 'readings_to_output', 'state': 'running', 'cluster': 'mars-b', 'tags': ['sensors']},
+                {'id': 'ext:1', 'type': 'external', 'label': 'event-collector', 'direction': 'produces', 'note': None,
+                 'endpoint_id': 1, 'resource': 'kafka:broker:9092/raw-events'},
+                {'id': 'res:kafka:broker:9092/raw-events', 'type': 'resource', 'kind': 'kafka topic', 'label': 'raw-events',
+                 'key': 'kafka:broker:9092/raw-events', 'entries': ['raw_events']},
+                {'id': 'res:' + TOPIC['key'], 'type': 'resource', 'kind': 'kafka topic', 'label': 'example-events',
+                 'key': TOPIC['key'], 'entries': ['events_in', 'events_out']},
+                {'id': 'res:table:readings', 'type': 'resource', 'kind': 'datagen', 'label': 'readings',
+                 'key': 'table:readings', 'entries': ['readings']},
+                {'id': 'res:table:output', 'type': 'resource', 'kind': 'print', 'label': 'output',
+                 'key': 'table:output', 'entries': ['output']},
+            ],
+            'edges': [
+                {'from': 'ext:1', 'to': 'res:kafka:broker:9092/raw-events'},
+                {'from': 'res:kafka:broker:9092/raw-events', 'to': 'job:enrich_events'},
+                {'from': 'job:enrich_events', 'to': 'res:' + TOPIC['key']},
+                {'from': 'res:' + TOPIC['key'], 'to': 'job:archive_events'},
+                {'from': 'res:table:readings', 'to': 'job:readings_to_output'},
+                {'from': 'job:readings_to_output', 'to': 'res:table:output'},
+            ],
+            'unused': ['old_events_sample'],
+        },
+        '/api/system/version': {
+            'console': {'revision': 'a' * 40, 'built_at': STAMP, 'image': 'ghcr.io/example/mars-console@sha256:' + '1' * 64,
+                        'behind_by': 2, 'update_available': True,
+                        'commits': [{'sha': 'c1' + '0' * 38, 'title': 'Example change one', 'date': STAMP},
+                                    {'sha': 'c2' + '0' * 38, 'title': 'Example change two', 'date': STAMP}],
+                        'how_to_update': {'needs_window': False, 'steps': ['docker pull example'], 'command': 'deploy.sh console bbbbbbb'}},
+            'flink': {'revision': None, 'image': 'ghcr.io/example/mars-flink@sha256:' + '2' * 64},
+            'update_check': {'enabled': True, 'channel': 'main', 'checked_at': STAMP, 'error': None},
+            'latest': {'revision': 'b' * 40, 'label': 'bbbbbbb', 'published_at': STAMP, 'url': 'https://github.com/example/mars'}},
+        '/api/targets/setup': {
+            'flink_image': 'ghcr.io/example/mars-flink@sha256:' + '0' * 64, 'image_pinned': True,
+            'registry': 'ghcr.io', 'same_machine_name': 'mars-b',
+            'same_machine_rest_url': 'http://jobmanager-b:8081',
+            'same_machine_gateway_url': 'http://sql-gateway-b:8083',
+            'same_machine_command': 'docker compose --profile second-target up -d',
+            'same_machine_registered': False,
+            'other_machine_compose': '# A MARS cluster for another machine\nname: mars-target\nservices: {}\n'},
         '/api/connectors': CONNECTORS, '/api/secrets': [],
         '/api/users': [{'username': 'operator', 'role': 'admin', 'disabled': False, 'must_change_password': False,
                         'last_login_at': STAMP, 'created_at': STAMP, 'token_count': 0, 'is_self': True}],
