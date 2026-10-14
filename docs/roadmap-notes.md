@@ -6,6 +6,46 @@ The roadmap tracks current status; hidden-selection controls, the Resources & jo
 control, and confirmation of map removal have since been implemented.
 The priority order was agreed on 2026-10-13; reviewed against the code on 2026-10-14.
 
+## Pipeline integrations
+
+### Scheduled buoy ingestion (added 2026-10-14)
+
+Move the NOAA NDBC fetcher from
+[`bouy-lab`](https://github.com/DevinMB/bouy-lab/blob/main/backend/buoys/ingest.py)
+into a bounded Flink source in the companion connector project, exposed through
+MARS as a scheduled batch job (`*/30 * * * *`). Each run fetches a finite set of
+station files, parses observations, publishes to the existing Kafka topics, and
+finishes. Keep the downstream Kafka consumers, including hourly and daily
+aggregations, running continuously with supervision. This is planned connector
+work, not a change to the deployed ingestion service or the reliability priority
+order above it in the roadmap.
+
+The current Python fetcher sleeps for 1,800 seconds after each cycle, refreshes
+station metadata daily, and keeps per-station/per-stream observation high-water
+marks in memory. A fresh process backfills up to 120 rows per stream by default.
+Simply starting that logic anew every half hour would repeatedly replay history.
+
+Acceptance criteria:
+
+- Persist progress across separate scheduled runs; advance it only after Kafka
+  acknowledges successful publication. Do not assume Flink batch state carries
+  over to the next submission.
+- Define replay and correction semantics using station, stream, and observation
+  timestamp as the observation identity. A Kafka message key alone does not
+  deduplicate records; verify downstream aggregates remain correct on retries.
+- Use an overlapping lookback to pick up late or corrected observations, with
+  explicit catch-up/backfill behavior after an outage and handling for data no
+  longer available from NDBC.
+- Preserve the existing topic payload contracts and daily metadata refresh
+  behavior. Bound HTTP concurrency across all source tasks, use timeouts and
+  bounded retries, and distinguish missing station streams from fetch failures.
+- Prevent overlapping scheduled runs. Expose fetched, published, skipped, and
+  failed counts plus freshness in MARS; incomplete fetches and Kafka delivery
+  failures must not appear as an unqualified successful run.
+- Validate repeated runs, interrupted publication, restart recovery, late data,
+  corrections, and downstream parity using isolated topics before switching
+  producers. Keep a rollback path and avoid two active production fetchers.
+
 ## Reliability and operations
 
 ### Release-based update notifications (added 2026-10-14)
