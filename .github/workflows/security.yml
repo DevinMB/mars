@@ -24,7 +24,7 @@ jobs:
     name: Secrets in git history
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: gitleaks
@@ -36,7 +36,7 @@ jobs:
     name: Code analysis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Semgrep
         run: >
           docker run --rm -v "$PWD:/src:ro" -w /src semgrep/semgrep:1.179.0
@@ -46,7 +46,7 @@ jobs:
     name: Console image vulnerabilities
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # --pull so the scan sees today's base image, which is what a release ships.
       - name: Build
         run: docker build --pull -f backend/Dockerfile -t mars-console:scan .
@@ -62,7 +62,7 @@ jobs:
     name: Flink image vulnerabilities
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Base image plus the Kafka connector and client JARs. The MARS connectors
       # are build output from another repo and are scanned there.
       - name: Build
