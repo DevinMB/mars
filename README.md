@@ -52,6 +52,30 @@ Guided rolling upgrades, savepoint retention, Prometheus metrics, optional updat
 checks, and opt-in backup restore drills support ongoing operation. See the
 [roadmap](ROADMAP.md) for current capabilities and the reliability work still open.
 
+### A closer look
+
+**Each job shows its run history and saved state.** The strip under the title
+shows how long the job has been running, how fresh its last checkpoint is, and
+what it would resume from. Runs that saved state are marked with the acorn, and
+a run that resumed from a savepoint links back to the run that took it.
+
+![A job page in dark mode: the vitals strip, the SQL statement, and a run timeline with savepoints marked](docs/images/job.png)
+
+**The pipeline map follows data across jobs.** Topics and tables sit between the
+jobs that write and read them, along with the outside services that feed them.
+Edges touching a running job are animated in the console; a stopped or failed
+job's edges stay still.
+
+![The pipeline map in dark mode: Kafka topics, database tables and five jobs across two clusters](docs/images/pipeline.png)
+
+**SQL is checked as you write it.** The editor reports whether the statement
+compiles, lists the columns of the tables it uses, and can preview output without
+attaching a sink.
+
+![The job editor in dark mode: a Flink SQL statement that compiles, with the columns of its tables beside it](docs/images/editor.png)
+
+*All screenshots use synthetic data.*
+
 ## Quick start
 
 Requires **Git**, **Docker with Compose v2**, and roughly **6 GB of available RAM**
