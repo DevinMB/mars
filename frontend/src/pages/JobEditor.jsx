@@ -4,11 +4,11 @@ import { api } from '../lib/api'
 import useUnsavedChanges from '../lib/useUnsavedChanges'
 import { useNotify } from '../components/InteractionProvider'
 import SqlEditor from '../components/SqlEditor'
-import ValidationPanel from '../components/ValidationPanel'
+import ValidationPanel, { ValidationStatus } from '../components/ValidationPanel'
 import TablePicker from '../components/TablePicker'
 import SchemaPanel from '../components/SchemaPanel'
 import PromptPanel from '../components/PromptPanel'
-import OutputPreview from '../components/OutputPreview'
+import { useOutputPreview } from '../components/OutputPreview'
 import { buildCompletions } from '../components/Completion'
 import { Alert, Field, PageHeader, Spinner } from '../components/ui'
 
@@ -34,6 +34,7 @@ export default function JobEditor() {
   const [saving, setSaving] = useState(false)
   const [check, setCheck] = useState(null)
   const [checking, setChecking] = useState(false)
+  const preview = useOutputPreview({ sql, refs, targetName: target })
   const [dirty, setDirty] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(true)
   const [docFields, setDocFields] = useState({})
@@ -268,14 +269,21 @@ export default function JobEditor() {
               ref={sqlRef}
               value={sql}
               onChange={setSql}
-              rows={18}
+              rows={28}
+              minRows={10}
+              title="SQL"
+              actions={preview.controls}
+              status={<span className="flex flex-wrap gap-x-3">
+                <ValidationStatus result={check} checking={checking} dirty={dirty} />
+                <span className="text-slate-400">Preview runs with no sink, so it cannot write anything.</span>
+              </span>}
               marker={check && !check.ok && check.line
                 ? { line: check.line, message: check.error }
                 : null}
               completions={completions}
             />
             <ValidationPanel result={check} checking={checking} dirty={dirty} />
-            <OutputPreview sql={sql} refs={refs} targetName={target} />
+            {preview.panel}
           </div>
 
           {editing && (

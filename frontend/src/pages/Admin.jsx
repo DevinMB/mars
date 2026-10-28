@@ -272,7 +272,7 @@ export default function Admin() {
                   </td>
                   <td className="text-slate-500 tabular-nums">{u.token_count}</td>
                   <td className="text-right whitespace-nowrap">
-                    <ActionMenu label={<><span className="sr-only">Actions for {u.username}</span><span aria-hidden="true">More</span></>}>
+                    <ActionMenu icon label={`Actions for ${u.username}`}>
                     <button
                       className="link text-[12px] mr-3"
                       onClick={() => setExpanded(expanded === u.username ? null : u.username)}

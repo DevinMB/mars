@@ -51,7 +51,7 @@ function ResourceGroup({ group, cols, canWrite, busy, remove }) {
       <td className="text-slate-600 text-xs max-w-xs"><Jobs names={e.written_by} /></td>
       <td className="text-slate-600 text-xs max-w-xs"><Jobs names={e.read_by} /></td>
       {canWrite && <td className="text-right">
-        {busy === e.name ? <span role="status">Deleting…</span> : <ActionMenu label={<><span className="sr-only">Actions for {e.name}</span><span aria-hidden="true">More</span></>}>
+        {busy === e.name ? <span role="status">Deleting…</span> : <ActionMenu icon label={`Actions for ${e.name}`}>
           <Link to={`/catalog/${encodeURIComponent(e.name)}/edit`}>Edit entry</Link>
           <Link to={`/catalog/new?from=${encodeURIComponent(e.name)}`}>Duplicate</Link>
           <button className="text-red-700" onClick={() => remove(e.name)}>Delete entry</button>
@@ -100,7 +100,7 @@ export default function Catalog() {
     {error && <div className="mb-4"><Alert level="danger" onDismiss={() => setError(null)}>{error}</Alert></div>}
     <div className="flex flex-wrap gap-3 items-center mb-5">
       <div className="w-full sm:w-72"><SearchInput value={query} onChange={setQuery} placeholder="Search catalog…" count={shown.length} /></div>
-      <select className="input w-auto" aria-label="Show" value={view} onChange={(e) => setView(e.target.value)}>
+      <select className="input input-compact w-auto" aria-label="Show" value={view} onChange={(e) => setView(e.target.value)}>
         <option value="all">Everything</option><option value="kafka">Kafka topics</option><option value="unused">Not used by any job</option>
       </select>
       <span className="text-xs text-slate-500 sm:ml-auto">{shown.length} of {entries.length} entries</span>

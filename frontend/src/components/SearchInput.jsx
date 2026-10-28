@@ -12,7 +12,7 @@ export default function SearchInput({ value, onChange, placeholder = 'Filter…'
         <path d="M14 14l4 4" strokeLinecap="round" />
       </svg>
       <input
-        className="input pl-8 pr-14 py-1.5 text-[13px]"
+        className="input input-compact pl-8 pr-14"
         value={value}
         placeholder={placeholder}
         aria-label={placeholder.replace(/…$/, '')}

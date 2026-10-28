@@ -7,7 +7,8 @@ import { Alert, Spinner } from './ui'
 // Only the source tables are created to run this; the sink is never defined, so
 // a preview cannot write to Kafka, a database or a light switch. Worth saying in
 // the UI, because "run my job and show me" is otherwise a frightening button.
-export default function OutputPreview({ sql, refs, targetName }) {
+// `controls` goes on the editor's bar; `panel` (progress and rows) below it.
+export function useOutputPreview({ sql, refs, targetName }) {
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -23,22 +24,23 @@ export default function OutputPreview({ sql, refs, targetName }) {
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
 
-  return (
-    <div className="mt-4 border-t border-slate-200 pt-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <button className="btn-secondary text-sm" onClick={run}
-                disabled={busy || !sql.trim() || refs.length === 0}>
-          {busy ? 'Running…' : 'Preview output'}
-        </button>
-        <select aria-label="Preview starting position" className="input w-auto text-sm" value={start}
-                onChange={(e) => setStart(e.target.value)} disabled={busy}>
-          <option value="earliest">from the start of the topic</option>
-          <option value="latest">only new records</option>
-        </select>
-        <span className="text-xs text-slate-500">
-          Runs the query with no sink attached, so it cannot write anything.
-        </span>
-      </div>
+  const controls = (
+    <>
+      <select aria-label="Preview starting position" className="input input-compact w-auto" value={start}
+              onChange={(e) => setStart(e.target.value)} disabled={busy}>
+        <option value="earliest">from the start of the topic</option>
+        <option value="latest">only new records</option>
+      </select>
+      <button type="button" className="btn-secondary py-1!" onClick={run}
+              disabled={busy || !sql.trim() || refs.length === 0}
+              title="Runs the query with no sink attached, so it cannot write anything.">
+        {busy ? 'Running…' : 'Preview output'}
+      </button>
+    </>
+  )
+
+  const panel = (busy || error || result) && (
+    <div className="mt-3">
 
       {busy && (
         <div className="mt-3">
@@ -86,6 +88,18 @@ export default function OutputPreview({ sql, refs, targetName }) {
           </div>
         </div>
       )}
+    </div>
+  )
+
+  return { controls, panel }
+}
+
+export default function OutputPreview(props) {
+  const { controls, panel } = useOutputPreview(props)
+  return (
+    <div className="mt-4 border-t border-slate-200 pt-4">
+      <div className="flex items-center gap-3 flex-wrap">{controls}</div>
+      {panel}
     </div>
   )
 }
