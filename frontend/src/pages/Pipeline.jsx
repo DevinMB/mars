@@ -19,14 +19,20 @@ const STATE_DOT = {
   failed: 'fill-red-500',
 }
 
-function Edge({ a, b, active }) {
+// An edge touching a running job carries the mark's stream lines: slow dashes
+// moving toward the reader. A stopped or failed job's edges stay still and grey,
+// so a broken path reads as a gap in the flow. Still under reduced motion.
+function Edge({ a, b, active, flowing }) {
   const x1 = a.x + a.w, y1 = a.y + a.h / 2
   const x2 = b.x, y2 = b.y + b.h / 2
   const dx = Math.max(30, (x2 - x1) / 2)
+  const d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2 - 6} ${y2}`
   return (
-    <path d={`M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2 - 6} ${y2}`}
-          className={`fill-none ${active ? 'stroke-accent-500' : 'stroke-slate-300'}`}
-          strokeWidth={active ? 2 : 1.4} markerEnd={`url(#${active ? 'arrow-on' : 'arrow'})`} />
+    <>
+      <path d={d} className={`fill-none ${active ? 'stroke-accent-500' : 'stroke-slate-300'}`}
+            strokeWidth={active ? 2 : 1.4} markerEnd={`url(#${active ? 'arrow-on' : 'arrow'})`} />
+      {flowing && !active && <path d={d} className="edge-flow fill-none stroke-accent-400" aria-hidden="true" />}
+    </>
   )
 }
 
@@ -42,9 +48,10 @@ function Node({ node, p, selected, onSelect }) {
     return (
       <g {...common} transform={`translate(${p.x} ${p.y})`}>
         <title>{node.label}{node.state ? ` (${node.state})` : ''}</title>
-        <rect width={p.w} height={p.h} rx="6" className={`fill-surface ${ring || 'stroke-slate-600'}`} strokeWidth={selected ? 2.2 : 1.4} />
+        {/* Jobs are what you operate, so they carry the weight: a filled card. */}
+        <rect width={p.w} height={p.h} rx="6" className={`fill-slate-100 ${ring || 'stroke-slate-400'}`} strokeWidth={selected ? 2.2 : 1.2} />
         <circle cx="14" cy={p.h / 2} r="4" className={STATE_DOT[node.state] || 'fill-slate-300'} />
-        <text x="26" y={p.h / 2 + 4} className="fill-slate-900 text-[12.5px]">{clip(node.label, 22)}</text>
+        <text x="26" y={p.h / 2 + 4} className="fill-slate-900 text-[12.5px] font-medium">{clip(node.label, 22)}</text>
       </g>
     )
   }
@@ -52,8 +59,9 @@ function Node({ node, p, selected, onSelect }) {
     return (
       <g {...common} transform={`translate(${p.x} ${p.y})`}>
         <title>{node.kind}: {node.label}</title>
-        <rect width={p.w} height={p.h} rx={p.h / 2} className={`fill-accent-50 ${ring || 'stroke-accent-400'}`} strokeWidth={selected ? 2.2 : 1.4} />
-        <text x={p.w / 2} y={p.h / 2 - 2} textAnchor="middle" className="fill-slate-900 text-[12px] font-mono">{clip(node.label, 22)}</text>
+        {/* Topics and tables are what the jobs move between: quiet outlines. */}
+        <rect width={p.w} height={p.h} rx={p.h / 2} className={`fill-surface ${ring || 'stroke-slate-300'}`} strokeWidth={selected ? 2.2 : 1.2} />
+        <text x={p.w / 2} y={p.h / 2 - 2} textAnchor="middle" className="fill-slate-700 text-[12px] font-mono">{clip(node.label, 22)}</text>
         <text x={p.w / 2} y={p.h / 2 + 11} textAnchor="middle" className="fill-slate-500 text-[10px]">
           {node.kind}{node.entries.length > 1 ? ` · ${node.entries.length} entries` : ''}
         </text>
@@ -185,6 +193,7 @@ export default function Pipeline() {
   const filtered = Boolean(focus || cluster || tag)
   const jobCount = (nodes) => nodes.filter((n) => n.type === 'job').length
   const touches = (e) => current && (e.from === current.id || e.to === current.id)
+  const running = new Set(shown?.nodes?.filter((n) => n.type === 'job' && n.state === 'running').map((n) => n.id) || [])
   const select = (node) => {
     if (node.type === 'job' && selected === node.id) navigate(`/jobs/${encodeURIComponent(node.label)}`)
     else setSelected(node.id === selected ? null : node.id)
@@ -248,8 +257,9 @@ export default function Pipeline() {
             </div>
           )}
           <div className="flex flex-wrap gap-4 text-[12px] text-slate-500 mb-2">
-            <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-full bg-accent-50 border border-accent-400" />Topic or table</span>
-            <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm border border-slate-600" />Flink job</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-full bg-surface border border-slate-300" />Topic or table</span>
+            <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm bg-slate-100 border border-slate-400" />Flink job</span>
+            <span className="flex items-center gap-1.5"><svg width="20" height="4" aria-hidden="true"><path d="M1 2H19" className="stroke-accent-400" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 5" /></svg>Data flowing</span>
             <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded-sm border border-dashed border-slate-400" />Outside Flink</span>
             <span className="sm:ml-auto">Drag to move around. Select a topic to see and add what reads and writes it.</span>
           </div>
@@ -266,7 +276,8 @@ export default function Pipeline() {
                 <g transform={`translate(${PAD} ${PAD})`}>
                   {shown.edges.map((e) => {
                     const a = layout.positions.get(e.from), b = layout.positions.get(e.to)
-                    return a && b ? <Edge key={`${e.from}>${e.to}`} a={a} b={b} active={touches(e)} /> : null
+                    const flowing = running.has(e.from) || running.has(e.to)
+                    return a && b ? <Edge key={`${e.from}>${e.to}`} a={a} b={b} active={touches(e)} flowing={flowing} /> : null
                   })}
                   {shown.nodes.map((n) => <Node key={n.id} node={n} p={layout.positions.get(n.id)}
                                                 selected={n.id === selected} onSelect={select} />)}

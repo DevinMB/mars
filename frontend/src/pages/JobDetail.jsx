@@ -4,13 +4,120 @@ import { useAuth } from '../lib/auth'
 import ActionMenu from '../components/ActionMenu'
 import { useConfirm, useNotify } from '../components/InteractionProvider'
 import { api } from '../lib/api'
-import { duration, relativeTime } from '../lib/format'
+import { cronText, duration, millis, relativeTime } from '../lib/format'
 import SqlEditor from '../components/SqlEditor'
 import Diagnostics from '../components/Diagnostics'
 import MoveJob from '../components/MoveJob'
+import MarsMark from '../components/MarsMark'
 import { Alert, Badge, CodeBlock, Field, PageHeader, Spinner, StatePill } from '../components/ui'
 
 const ACTIVE = ['running', 'submitting', 'restarting']
+
+// The last path segment names a savepoint or checkpoint well enough to tell
+// them apart; the full path is in the tooltip.
+const pointName = (path) => path?.replace(/\/+$/, '').split('/').pop() || path
+const isCheckpoint = (path) => /\/chk-\d+\/?$/.test(path || '')
+
+// The facts an operator checks first, in one row under the title, instead of
+// spread between the header, the sidebar and the runs table.
+function Vitals({ job, run, isActive }) {
+  const age = job.checkpoint_age_ms
+  const stale = age != null && age >= 120000
+  const point = job.restore_point
+  const cell = (label, value, extra = '') => (
+    <div className={`bg-surface px-4 py-2.5 min-w-0 ${extra}`}>
+      <dt className="text-[12px] text-slate-500">{label}</dt>
+      <dd className="text-[13px] text-slate-900 flex items-center gap-1.5 min-w-0">{value}</dd>
+    </div>
+  )
+  return (
+    // Hairline separators come from the gap showing the border colour through,
+    // so they stay right however many columns the width allows.
+    <dl className="card overflow-hidden mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-slate-200">
+      {cell('State', <>
+        <StatePill state={run?.state} />
+        {isActive && run?.started_at && <span className="text-slate-500 tabular-nums">for {duration(run.started_at)}</span>}
+      </>)}
+      {cell('Last checkpoint', job.job_type !== 'streaming' || !isActive
+        ? <span className="text-slate-400">n/a</span>
+        : age == null
+          ? <span className="text-slate-400">none yet</span>
+          : <span className={`tabular-nums ${stale ? (age >= 600000 ? 'text-red-700 font-medium' : 'text-amber-700') : ''}`}
+                  title={stale ? 'A job that is running but no longer checkpointing is not making progress.' : undefined}>
+              {millis(age)} ago
+            </span>)}
+      {cell('Saved state', point
+        ? <span className="flex items-center gap-1.5 min-w-0" title={point.path}>
+            {point.kind === 'savepoint' && <MarsMark size={14} />}
+            <span className="truncate">{point.kind}, {relativeTime(point.taken_at)}</span>
+          </span>
+        : <span className="text-slate-400">none</span>)}
+      {cell('Cluster', <span className="truncate">{job.target_name || 'default'}</span>)}
+      {cell('Version', <span>v{job.version} <span className="text-slate-400">· {job.job_type}</span></span>)}
+    </dl>
+  )
+}
+
+// Runs as a timeline. Every run that saved its state wears the acorn -- the
+// mark is "something stored, kept, and found again", which is what a savepoint
+// is -- and a run that resumed from one links back to the run that saved it.
+function RunTimeline({ runs }) {
+  const savedBy = new Map(runs.filter((r) => r.savepoint_path).map((r) => [r.savepoint_path, r.id]))
+  return (
+    <ol className="px-4 py-2">
+      {runs.map((r, i) => {
+        const saved = Boolean(r.savepoint_path)
+        const from = r.restored_from
+        const fromRun = from && savedBy.get(from)
+        return (
+          <li key={r.id} id={`run-${r.id}`} className="relative grid grid-cols-[20px_minmax(0,1fr)_auto] gap-3 py-2.5 scroll-mt-20">
+            {i < runs.length - 1 && <span aria-hidden="true" className="absolute left-[9.5px] top-8 -bottom-2.5 w-px bg-slate-200" />}
+            <span className="h-5 grid place-items-center" aria-hidden="true">
+              {saved
+                ? <span className={r.savepoint_removed_at ? 'opacity-40 grayscale' : ''}><MarsMark size={16} /></span>
+                // A plain node: the state's own dot is in the pill beside it.
+                : <span className="w-2 h-2 rounded-full border border-slate-400 bg-surface" />}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-slate-900">
+                <StatePill state={r.state} />
+                {saved && (
+                  <span className="text-slate-600">
+                    state saved as <span className="mono text-[12px] text-slate-800" title={r.savepoint_path}>{pointName(r.savepoint_path)}</span>
+                    {r.savepoint_removed_at && <span className="text-slate-400"> (removed by retention)</span>}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-1.5">
+                <span>Run {r.id}</span>
+                <span>· {duration(r.started_at, r.ended_at)}</span>
+                <span>· {r.triggered_by_schedule ? 'scheduled' : r.submitted_by || 'unknown'}</span>
+                {r.restarts > 0 && <span className="text-amber-700">· {r.restarts} restart{r.restarts === 1 ? '' : 's'}</span>}
+                {from && (
+                  <span title={from}>
+                    · resumed from{' '}
+                    {isCheckpoint(from)
+                      ? <>checkpoint <span className="mono text-[11.5px]">{pointName(from)}</span></>
+                      : fromRun
+                        ? <a href={`#run-${fromRun}`} className="link inline-flex items-center gap-1 align-bottom"><MarsMark size={12} /><span className="mono text-[11.5px]">{pointName(from)}</span></a>
+                        : <span className="inline-flex items-center gap-1 align-bottom"><MarsMark size={12} /><span className="mono text-[11.5px]">{pointName(from)}</span></span>}
+                  </span>
+                )}
+              </div>
+              {r.error_summary && (
+                <div className="text-xs text-red-700 mt-1 truncate" title={r.error_summary}>{r.error_summary}</div>
+              )}
+            </div>
+            <time className="text-xs text-slate-500 whitespace-nowrap tabular-nums" dateTime={r.started_at}
+                  title={new Date(r.started_at).toLocaleString()}>
+              {relativeTime(r.started_at)}
+            </time>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
 
 function Warnings({ warnings }) {
   if (!warnings?.length) return null
@@ -167,20 +274,17 @@ export default function JobDetail() {
     <>
       <PageHeader
         title={job.name}
-        subtitle={<span className="flex flex-wrap items-center gap-3 mt-2">
-          <StatePill state={run?.state} />
-          <span>{job.target_name || 'Default cluster'}</span>
-          <span>{job.job_type}</span>
-          {job.tags?.length > 0 && (
-            <span className="flex flex-wrap gap-1">{job.tags.map((t) => (
-              <Link key={t} to={`/jobs?tag=${encodeURIComponent(t)}`} className="text-[11px] leading-4 rounded-sm px-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">{t}</Link>
-            ))}</span>
-          )}
-        </span>}
+        subtitle={job.tags?.length > 0 && (
+          <span className="flex flex-wrap gap-1 mt-1">{job.tags.map((t) => (
+            <Link key={t} to={`/jobs?tag=${encodeURIComponent(t)}`} className="text-[11px] leading-4 rounded-sm px-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">{t}</Link>
+          ))}</span>
+        )}
         back={{ to: '/jobs', label: 'Jobs' }}
         actions={canWrite && <>
           <Link to={`/jobs/${encodeURIComponent(job.name)}/edit`} className="btn-secondary">Edit</Link>
-          {isActive ? <button className="btn-primary" disabled={Boolean(busy)}
+          {/* Orange is for the constructive action. A running job has none, so
+              stopping it is an ordinary button; Run and Resume take the colour. */}
+          {isActive ? <button className="btn-secondary" disabled={Boolean(busy)}
             title="Save a checkpoint of the job's state before stopping."
             onClick={() => act('stop', () => api.stopJob(name))}>
             {busy === 'stop' ? 'Saving state…' : 'Stop and save state'}
@@ -210,7 +314,8 @@ export default function JobDetail() {
           </ActionMenu>
         </>}
       />
-      {job.description && <p className="text-sm text-slate-600 -mt-2 mb-6 max-w-3xl">{job.description}</p>}
+      {job.description && <p className="text-sm text-slate-600 -mt-2 mb-4 max-w-3xl">{job.description}</p>}
+      <Vitals job={job} run={run} isActive={isActive} />
       {moving && (
         <MoveJob job={job} running={Boolean(isActive)} onClose={() => setMoving(false)}
                  onMoved={async (b) => { setMoving(false); notify(b.items?.[0]?.note || 'Moved.'); await load() }} />
@@ -274,7 +379,7 @@ export default function JobDetail() {
             </div>
 
             <div className="p-4">
-              {tab === 'sql' && <SqlEditor value={job.sql_text} onChange={() => {}} readOnly rows={12} />}
+              {tab === 'sql' && <SqlEditor value={job.sql_text} onChange={() => {}} readOnly rows={20} minRows={4} />}
 
               {tab === 'diagnostics' && (
                 <Diagnostics data={diag} loading={diagBusy} onRefresh={loadDiagnostics} />
@@ -317,79 +422,28 @@ export default function JobDetail() {
             {runs.length === 0 ? (
               <p className="px-4 py-8 text-sm text-slate-500 text-center">This job has never run.</p>
             ) : (
-              <div className="overflow-x-auto"><table className="tbl min-w-[580px]">
-                <thead><tr><th>State</th><th>Started</th><th>Duration</th><th>Triggered by</th><th>Details</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {runs.map((r) => (
-                    <tr key={r.id}>
-                      <td className="px-4 py-3"><StatePill state={r.state} /></td>
-                      <td className="px-4 py-3 text-slate-600">{relativeTime(r.started_at)}</td>
-                      <td className="px-4 py-3 text-slate-600">{duration(r.started_at, r.ended_at)}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">
-                        {r.triggered_by_schedule ? 'scheduled' : r.submitted_by || '—'}
-                        {r.restarts > 0 && <span className="text-amber-700 ml-2">{r.restarts} restarts</span>}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">
-                        {r.error_summary || ''}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table></div>
+              <RunTimeline runs={runs} />
             )}
           </div>
         </div>
 
         <aside className="space-y-4">
-          <div className="border-b border-slate-200 pb-5">
-            <h3 className="text-sm font-medium text-slate-900 mb-3">Details</h3>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">State</dt>
-                <dd><StatePill state={run?.state} /></dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Type</dt><dd className="text-slate-800">{job.job_type}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Version</dt><dd className="text-slate-800">v{job.version}</dd>
-              </div>
+          {(run?.flink_job_id || (job.job_type === 'streaming' && !job.restore_point)) && (
+            <div className="border-b border-slate-200 pb-5">
               {run?.flink_job_id && (
-                <div className="flex justify-between gap-3">
+                <dl className="flex justify-between gap-3 text-sm">
                   <dt className="text-slate-500">Flink job</dt>
-                  <dd className="mono text-xs text-slate-600 truncate max-w-36">{run.flink_job_id}</dd>
-                </div>
+                  <dd className="mono text-xs text-slate-600 truncate max-w-36" title={run.flink_job_id}>{run.flink_job_id}</dd>
+                </dl>
               )}
-              <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Saved state</dt>
-                <dd className="text-slate-800 text-right">
-                  {job.restore_point ? (
-                    <span className="text-emerald-700" title={job.restore_point.path}>
-                      {job.restore_point.kind}, {relativeTime(job.restore_point.taken_at)}
-                    </span>
-                  ) : (
-                    <span className="text-slate-400">none</span>
-                  )}
-                </dd>
-              </div>
-              {run?.restored_from && (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-slate-500">Resumed from</dt>
-                  <dd className="text-xs text-slate-600 truncate max-w-36"
-                      title={run.restored_from}>
-                    {run.restored_from.split('/').pop()}
-                  </dd>
-                </div>
+              {job.job_type === 'streaming' && !job.restore_point && (
+                <p className={`text-xs text-slate-500 ${run?.flink_job_id ? 'mt-3' : ''}`}>
+                  No state has been saved. Stopping with "Stop and save state" writes
+                  one, so the job can resume instead of starting over.
+                </p>
               )}
-            </dl>
-
-            {job.job_type === 'streaming' && !job.restore_point && (
-              <p className="text-xs text-slate-500 mt-3">
-                No state has been saved. Stopping with "Stop and save state" writes
-                one, so the job can resume instead of starting over.
-              </p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="border-b border-slate-200 pb-5">
             <h3 className="text-sm font-medium text-slate-900 mb-2">Tables used</h3>
@@ -408,7 +462,7 @@ export default function JobDetail() {
 
           {canWrite ? <ScheduleCard job={job} onChange={load} /> : <div className="text-sm">
             <h3 className="font-medium mb-2">Schedule</h3>
-            <p className="text-slate-600">{job.schedule ? job.schedule.mode === 'cron' ? job.schedule.cron_expr : 'Keep running' : 'No schedule'}</p>
+            <p className="text-slate-600" title={job.schedule?.cron_expr}>{job.schedule ? job.schedule.mode === 'cron' ? cronText(job.schedule.cron_expr) : 'Keep running' : 'No schedule'}</p>
           </div>}
 
         </aside>

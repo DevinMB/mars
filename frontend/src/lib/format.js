@@ -80,3 +80,23 @@ export function percent(ratio) {
   if (ratio === null || ratio === undefined) return '—'
   return `${Math.round(ratio * 100)}%`
 }
+
+// The common cron shapes in words, so a list reads "Hourly" rather than
+// `0 * * * *`. Anything unusual comes back as the expression itself: a wrong
+// paraphrase of a schedule is worse than the raw one.
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+export function cronText(expr) {
+  const parts = (expr || '').trim().split(/\s+/)
+  if (parts.length !== 5) return expr || ''
+  const [min, hour, dom, mon, dow] = parts
+  const num = (v, max) => /^\d+$/.test(v) && Number(v) <= max
+  const at = () => `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (dom !== '*' || mon !== '*') return expr
+  if (min === '*' && hour === '*' && dow === '*') return 'Every minute'
+  const step = /^\*\/(\d+)$/.exec(min)
+  if (step && hour === '*' && dow === '*') return `Every ${step[1]} minutes`
+  if (num(min, 59) && hour === '*' && dow === '*') return min === '0' ? 'Hourly' : `Hourly at :${min.padStart(2, '0')}`
+  if (num(min, 59) && num(hour, 23) && dow === '*') return `Daily at ${at()}`
+  if (num(min, 59) && num(hour, 23) && num(dow, 7)) return `${DAYS[Number(dow) % 7]}s at ${at()}`
+  return expr
+}

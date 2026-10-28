@@ -1,12 +1,34 @@
-import { Alert, Spinner } from './ui'
+import { Alert } from './ui'
+
+// The one-line verdict for the editor's status line. Details, when there is
+// something to read, are in the panel below.
+export function ValidationStatus({ result, checking, dirty }) {
+  if (checking && !result) return <span role="status">Checking…</span>
+  if (!result) return <span>Checked as you type</span>
+  const stale = dirty || checking
+  if (result.ok) {
+    return (
+      <span role="status" className={`inline-flex items-center gap-1.5 ${stale ? 'opacity-60' : 'text-emerald-700'}`}>
+        <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        {stale ? 'Rechecking…' : 'Compiles'}
+        {!stale && result.warnings?.length > 0 && <span className="text-amber-700">· {result.warnings.length} to check below</span>}
+      </span>
+    )
+  }
+  return (
+    <span role="status" className={`inline-flex items-center gap-1.5 ${stale ? 'opacity-60' : 'text-red-700'}`}>
+      <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      {stale ? 'Rechecking…' : `Will not compile${result.line ? `: line ${result.line}` : ''}`}
+    </span>
+  )
+}
 
 // Shown under the editor while a statement is being written. The goal is that a
 // mistake is visible before the job is saved, not after it has been deployed.
+// A clean result says so in the editor's status line and needs no panel.
 export default function ValidationPanel({ result, checking, dirty }) {
-  if (checking && !result) {
-    return <div className="mt-3"><Spinner label="Checking" /></div>
-  }
   if (!result) return null
+  if (result.ok && !(result.warnings || []).length) return null
 
   // The result belongs to text that has since changed; saying "valid" about SQL
   // the user has already edited would be a lie with a short shelf life.
@@ -14,12 +36,7 @@ export default function ValidationPanel({ result, checking, dirty }) {
 
   return (
     <div className={`mt-3 space-y-2 ${stale ? 'opacity-50' : ''}`}>
-      {result.ok ? (
-        <Alert level="success">
-          This statement compiles.
-          {stale && ' Rechecking…'}
-        </Alert>
-      ) : (
+      {result.ok ? null : (
         <Alert
           level="danger"
           title={

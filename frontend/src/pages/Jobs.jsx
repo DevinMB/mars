@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
-import { relativeTime, duration, millis } from '../lib/format'
+import { relativeTime, duration, millis, cronText } from '../lib/format'
 import { Alert, Badge, EmptyState, PageHeader, Spinner, StatePill } from '../components/ui'
 import SearchInput from '../components/SearchInput'
 import { BatchProgress, BulkPlan } from '../components/BulkJobs'
 import BulkTags from '../components/BulkTags'
 import TagChips from '../components/TagChips'
 
-const COLUMNS = 6
+const COLUMNS = 5
 
 // A job with no target named runs on the default cluster. Resolving that here
 // rather than showing a blank keeps every job attributable to exactly one
@@ -24,10 +24,11 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
     <button
       key={id}
       onClick={() => onChange(id)}
-      className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+      aria-pressed={value === id}
+      className={`h-7 px-2.5 text-[13px] font-medium rounded-md transition-colors ${
         value === id
-          ? 'bg-surface text-slate-900 shadow-xs ring-1 ring-slate-200'
-          : 'text-slate-600 hover:text-slate-900'
+          ? 'bg-surface text-slate-900 ring-1 ring-slate-200'
+          : 'text-slate-500 hover:text-slate-900'
       }`}
     >
       {label}
@@ -37,7 +38,7 @@ function ClusterTabs({ targets, counts, value, onChange, total }) {
   )
 
   return (
-    <div className="mb-4 flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-fit">
+    <div role="group" aria-label="Cluster" className="flex items-center gap-0.5 p-0.5 bg-slate-100 border border-slate-200 rounded-lg w-fit">
       {tab('all', 'All clusters', total)}
       {targets.map((t) =>
         tab(
@@ -65,7 +66,8 @@ function ClusterHeading({ target, jobs, cols }) {
       <td colSpan={cols} className="px-4 py-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-slate-900">{target.name}</span>
-          {target.is_default && <Badge tone="slate">default</Badge>}
+          {/* The name already says it when the default cluster is called "default". */}
+          {target.is_default && target.name !== 'default' && <Badge tone="slate">default</Badge>}
           {target.reachable === false && <Badge tone="amber">not answering</Badge>}
           {target.description && (
             <span className="text-xs text-slate-500">{target.description}</span>
@@ -76,16 +78,46 @@ function ClusterHeading({ target, jobs, cols }) {
             {unhealthy > 0 && (
               <span className="text-red-700 font-medium">{unhealthy} need attention</span>
             )}
-            {target.slots_total != null && (
-              <span>
-                {target.slots_total - (target.slots_available ?? 0)}/{target.slots_total} slots
-              </span>
-            )}
+            {target.slots_total != null && <SlotMeter target={target} />}
           </span>
         </div>
       </td>
     </tr>
   )
+}
+
+// Slot use as a bar beside the number, so a full cluster is visible without
+// reading figures. Neutral until it is actually full.
+function SlotMeter({ target }) {
+  const total = target.slots_total
+  const used = total - (target.slots_available ?? 0)
+  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0
+  return (
+    <span className="flex items-center gap-2" title={`${used} of ${total} slots in use`}>
+      <span aria-hidden="true" className="w-16 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+        <span className={`block h-full rounded-full ${pct >= 100 ? 'bg-red-500' : 'bg-slate-500'}`}
+              style={{ width: `${pct}%` }} />
+      </span>
+      <span>{used}/{total} slots</span>
+    </span>
+  )
+}
+
+// What starts the job, with its type when that is not already implied: a kept-
+// running job is streaming, so only batch, or an unscheduled job, says which.
+function RunsText({ job }) {
+  const s = job.schedule
+  if (s?.mode === 'cron') {
+    const words = cronText(s.cron_expr)
+    return (
+      <span title={`${s.cron_expr}${s.timezone_name ? ` (${s.timezone_name})` : ''}`}>
+        {words === s.cron_expr ? <code className="mono text-xs">{words}</code> : words}
+        {job.job_type !== 'batch' && <span className="text-slate-400"> · {job.job_type}</span>}
+      </span>
+    )
+  }
+  if (s) return job.job_type === 'streaming' ? 'Keep running' : <>Keep running <span className="text-slate-400">· {job.job_type}</span></>
+  return <span className="text-slate-500">By hand <span className="text-slate-400">· {job.job_type}</span></span>
 }
 
 // Says when a job has stopped checkpointing, and says nothing otherwise.
@@ -152,16 +184,9 @@ function JobRow({ job, showCluster, selectable, checked, onToggle, tag, onTag })
             : <span className="text-slate-400">default</span>
         ) : null}
       </td>}
-      <td className="text-slate-600">{job.job_type}</td>
       <td className="text-slate-600">{relativeTime(run?.started_at)}</td>
       <td className="text-slate-600">{run ? duration(run.started_at, run.ended_at) : '—'}</td>
-      <td className="text-slate-600">
-        {job.schedule
-          ? job.schedule.mode === 'cron'
-            ? <code className="mono text-xs">{job.schedule.cron_expr}</code>
-            : 'Keep running'
-          : '—'}
-      </td>
+      <td className="text-slate-600"><RunsText job={job} /></td>
     </tr>
   )
 }
@@ -327,27 +352,28 @@ export default function Jobs() {
         Showing the last loaded jobs. {error}
         <button className="link ml-2" onClick={() => setReload((n) => n + 1)}>Retry</button>
       </Alert></div>}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="w-full sm:w-72"><SearchInput value={query} onChange={setQuery} placeholder="Search jobs…" count={shown.length} /></div>
-        <select className="input w-auto" aria-label="Filter by state" value={state} onChange={(e) => setState(e.target.value)}>
+      {/* One row: search, filters, and the cluster scope, all one control height. */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="w-full sm:w-64"><SearchInput value={query} onChange={setQuery} placeholder="Search jobs…" count={shown.length} /></div>
+        <select className="input input-compact w-auto" aria-label="Filter by state" value={state} onChange={(e) => setState(e.target.value)}>
           <option value="all">All states</option>
           {['running', 'restarting', 'failed', 'finished', 'canceled', 'submitting', 'never'].map((s) =>
             <option key={s} value={s}>{({ never: 'Never run', canceled: 'Cancelled', submitting: 'Starting' })[s] || s[0].toUpperCase() + s.slice(1)}</option>)}
         </select>
         {(allTags.length > 0 || tag) && (
-          <select className="input w-auto" aria-label="Filter by tag" value={tag} onChange={(e) => setTag(e.target.value)}>
+          <select className="input input-compact w-auto" aria-label="Filter by tag" value={tag} onChange={(e) => setTag(e.target.value)}>
             <option value="">All tags</option>
             {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+        )}
+        {multi && (
+          <ClusterTabs targets={targets} counts={counts} value={cluster}
+                       onChange={setCluster} total={jobs.length} />
         )}
         <span className="text-xs text-slate-500 sm:ml-auto">{shown.length} of {jobs.length} jobs</span>
       </div>
 
       <p className="sm:hidden text-xs text-slate-500 mb-3">Scroll the table to see all columns.</p>
-      {multi && (
-        <ClusterTabs targets={targets} counts={counts} value={cluster}
-                     onChange={setCluster} total={jobs.length} />
-      )}
 
       {batch && (batchOpen || batch.id !== dismissed) && (
         <BatchProgress batch={batch} canWrite={canWrite}
@@ -408,8 +434,8 @@ export default function Jobs() {
                            checked={allShown} onChange={toggleAll} disabled={!shown.length} />
                   </th>
                 )}
-                <th>Job</th><th>State</th>{!grouped && <th>Cluster</th>}<th>Type</th>
-                <th>Last run</th><th>Duration</th><th>Schedule</th>
+                <th>Job</th><th>State</th>{!grouped && <th>Cluster</th>}
+                <th>Last run</th><th>Duration</th><th>Runs</th>
               </tr>
             </thead>
 

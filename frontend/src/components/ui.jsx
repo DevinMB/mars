@@ -22,15 +22,22 @@ export function PageHeader({ title, subtitle, actions, back }) {
 }
 
 // State is carried by colour *and* by the label, so it reads correctly without
-// relying on colour perception.
-const STATE_STYLES = {
-  running:     'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  finished:    'bg-slate-100 text-slate-600 ring-slate-500/20',
-  restarting:  'bg-amber-50 text-amber-800 ring-amber-600/30',
-  failed:      'bg-red-50 text-red-700 ring-red-600/20',
-  canceled:    'bg-slate-100 text-slate-500 ring-slate-400/20',
-  submitting:  'bg-brand-50 text-brand-700 ring-brand-600/20',
-  never:       'bg-surface text-slate-400 ring-slate-300',
+// relying on colour perception. Healthy and settled states are a dot and a word;
+// only states that need someone get a tinted pill, so in a list of healthy jobs
+// the failed one is the only shape that stands out.
+const STATE_DOTS = {
+  running:    'bg-emerald-500',
+  finished:   'bg-slate-400',
+  restarting: 'bg-amber-500',
+  failed:     'bg-red-500',
+  canceled:   'bg-slate-400',
+  submitting: 'bg-brand-500',
+  never:      'border border-slate-400',
+}
+
+const STATE_TINTS = {
+  restarting: 'bg-amber-50 text-amber-800 px-2',
+  failed:     'bg-red-50 text-red-700 px-2',
 }
 
 const STATE_LABELS = {
@@ -45,11 +52,10 @@ const STATE_LABELS = {
 
 export function StatePill({ state }) {
   const key = state || 'never'
+  const tint = STATE_TINTS[key] || 'text-slate-700'
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs
-                      font-medium ring-1 ring-inset ${STATE_STYLES[key] || STATE_STYLES.never}`}>
-      {key === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-      {key === 'restarting' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+    <span className={`inline-flex items-center gap-1.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${tint}`}>
+      <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOTS[key] || STATE_DOTS.never}`} />
       {STATE_LABELS[key] || key}
     </span>
   )
@@ -89,9 +95,23 @@ export function Alert({ level = 'info', title, children, onDismiss }) {
   )
 }
 
+// The mark in a single outline weight: gives an empty page a face without
+// adding a second loud colour next to the orange button.
+export function AcornOutline({ size = 34, className = '' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true" className={className}>
+      <path
+        d="M16.7 2.5v3.6M6.7 15.2c0-5.6 4.5-9.6 10-9.6s10 4 10 9.6ZM16.7 30.2C11.7 27 7.9 22 7.9 16.9c0-1.3 1-2.2 2.3-2.2h13c1.3 0 2.3.9 2.3 2.2 0 5.1-3.8 10.1-8.8 13.3Z"
+        stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 export function EmptyState({ title, children, action }) {
   return (
     <div className="card p-12 text-center">
+      <AcornOutline className="mx-auto mb-3 text-slate-400" />
       <h3 className="text-base font-medium text-slate-900">{title}</h3>
       <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">{children}</p>
       {action && <div className="mt-5">{action}</div>}

@@ -2,7 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 // A disclosure of ordinary links and buttons, retaining native Tab navigation.
-export default function ActionMenu({ label = 'More', children, primary = false }) {
+// `icon` draws a compact ⋯ trigger for table rows, where a labelled button would
+// be the tallest thing in the row; `label` then becomes its accessible name.
+export default function ActionMenu({ label = 'More', children, primary = false, icon = false }) {
   const [position, setPosition] = useState(null)
   const trigger = useRef(null)
   const panel = useRef(null)
@@ -32,7 +34,9 @@ export default function ActionMenu({ label = 'More', children, primary = false }
     }
   }, [position])
   return <>
-    <button ref={trigger} type="button" className={primary ? 'btn-primary' : 'btn-secondary'}
+    <button ref={trigger} type="button"
+      className={icon ? 'btn-icon' : primary ? 'btn-primary' : 'btn-secondary'}
+      aria-label={icon ? (typeof label === 'string' ? label : 'More actions') : undefined}
       aria-expanded={Boolean(position)} aria-controls={position ? id : undefined}
       onClick={() => {
         if (position) { close(); return }
@@ -41,7 +45,9 @@ export default function ActionMenu({ label = 'More', children, primary = false }
           ...(r.bottom + 250 > window.innerHeight && r.top > 250
             ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }) })
       }}>
-      {label}<span aria-hidden="true" className="opacity-60 text-[10px]">▾</span>
+      {icon
+        ? <span aria-hidden="true" className="text-[15px] leading-none tracking-[0.08em]">⋯</span>
+        : <>{label}<span aria-hidden="true" className="opacity-60 text-[10px]">▾</span></>}
     </button>
     {position && createPortal(
       <div id={id} ref={panel} className="action-menu" style={position}
