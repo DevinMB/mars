@@ -194,6 +194,13 @@ class Scheduler:
                     else None
                 )
                 if mode == ScheduleMode.SUPERVISOR.value:
+                    # A cluster that is down (a reboot, an image update) cannot
+                    # take the job; trying anyway records a failed run per tick and
+                    # counts each as a restart, which paged during routine
+                    # maintenance. Wait for it to answer; the next tick tries again.
+                    if not await submitter.cluster_reachable():
+                        log.info("Supervisor is waiting for the cluster to answer before restarting '%s'", job.name)
+                        return
                     SUPERVISOR_RESUBMISSIONS.labels(mars_job=job.name).inc()
                 await submitter.submit(
                     db, job, submitted_by="scheduler", by_schedule=True,

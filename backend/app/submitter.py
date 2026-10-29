@@ -291,6 +291,10 @@ class JobSubmitter:
             )
         return None
 
+    async def cluster_reachable(self) -> bool:
+        """Whether this submitter's cluster answers at all."""
+        return await self._cluster.reachable()
+
     async def cancel(self, db: Session, run: JobRun) -> None:
         if run.flink_job_id:
             await self._cluster.cancel(run.flink_job_id)
@@ -323,6 +327,10 @@ class JobSubmitter:
             size = None
         budget = state_estimates.savepoint_budget(size, state_estimates.rate(db))
         started = time.monotonic()
+        # Committed before Flink is asked, so a reconcile in another session or
+        # process sees it the moment the job starts to wind down.
+        run.stop_requested_at = utcnow()
+        db.commit()
         try:
             request_id = await self._cluster.stop_with_savepoint(
                 run.flink_job_id, target_dir, drain=drain, native=native
@@ -330,12 +338,16 @@ class JobSubmitter:
             location = await self._cluster.await_savepoint(run.flink_job_id, request_id, budget=budget)
         except SavepointStillRunning as exc:
             # Not "left running": Flink stops the job once its savepoint is done.
+            # The mark stays, so that stop is not mistaken for a finish and undone.
             raise SubmissionError(
                 "Gave up waiting for this job's savepoint, which Flink was still writing. "
                 "When it finishes the job stops; resume it from the job's page then.",
                 detail=str(exc),
             ) from exc
         except Exception as exc:
+            # Still running: whatever happens to it next is not this stop.
+            run.stop_requested_at = None
+            db.commit()
             raise SubmissionError(
                 "Could not save this job's state, so it has been left running.",
                 detail=self._store.redact(db, str(exc)),
@@ -433,6 +445,16 @@ class JobSubmitter:
                 changed += 1
 
             o = overviews.get(run.flink_job_id or "")
+            if run.stop_requested_at is not None and (o is None or _map_state(o.state) in (
+                    RunState.FINISHED.value, RunState.CANCELED.value)):
+                # Ending because someone asked it to: the stop that asked records
+                # the savepoint when Flink confirms it. Called a finish (or a loss,
+                # if the cluster restarted meanwhile), the supervisor would restart
+                # it from a checkpoint Flink has already deleted.
+                run.state = RunState.CANCELED.value
+                run.ended_at = run.ended_at or utcnow()
+                changed += 1
+                continue
             if o is None:
                 # The cluster has forgotten it -- a restart with no HA storage, or
                 # history expiry. Do not claim it is still running.

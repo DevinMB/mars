@@ -99,6 +99,9 @@ async def test_supervisor_resubmissions_are_counted_per_job(db, monkeypatch):
         async def submit(self, db, job, **kw):
             pass
 
+        async def cluster_reachable(self):
+            return True
+
     before = value("mars_supervisor_resubmissions_total", mars_job="flaky") or 0
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
