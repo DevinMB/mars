@@ -429,6 +429,13 @@ class JobRun(Base):
     # installation's measured speed, for estimating the next ones.
     savepoint_bytes: Mapped[int | None] = mapped_column(BigInteger)
     savepoint_ms: Mapped[int | None] = mapped_column(Integer)
+    # Set while a stop with a savepoint is in flight. Flink reports the job
+    # FINISHED a moment before the savepoint is confirmed; without this, reconcile
+    # recorded that as an ordinary finish and the supervisor restarted the job from
+    # its checkpoint, which Flink had just deleted, while the stop was still
+    # completing (three times in maintenance windows, 27-28 Oct 2026). In the
+    # database, not in memory: the maintenance window stops jobs from its own process.
+    stop_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The newest checkpoint Flink completed for this run, recorded on every
     # reconcile while the cluster still knows the job. Flink forgets a job when
     # its JobManager restarts without HA, and with it the only record of where

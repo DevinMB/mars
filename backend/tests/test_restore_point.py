@@ -192,6 +192,9 @@ async def test_supervisor_resumes_a_lost_job_from_its_checkpoint(db, monkeypatch
         async def submit(self, db, job, savepoint_path=None, **kw):
             submitted.append(savepoint_path)
 
+        async def cluster_reachable(self):
+            return True
+
     await mod.Scheduler(Recorder())._fire(job.id, ScheduleMode.SUPERVISOR.value)
     assert submitted == [CHECKPOINT]
 
