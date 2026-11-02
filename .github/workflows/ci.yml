@@ -75,3 +75,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build
         run: docker build -f backend/Dockerfile -t mars-console:ci .
+
+  security:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/security.yml
+
+  # Shared gate (github.com/DevinMB/workflows): merges Dependabot's patch and
+  # minor updates once everything above passes, then starts the release, which
+  # mars-sync deploys. Majors get waits-for-devin.
+  gate:
+    needs: [backend, frontend, image, security]
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    uses: DevinMB/workflows/.github/workflows/dependabot-gate.yml@main
+    with:
+      caller-workflow: release.yml
