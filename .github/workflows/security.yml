@@ -7,7 +7,8 @@ name: Security
 on:
   push:
     branches: [main]
-  pull_request:
+  # Pull requests run this from ci.yml, so the Dependabot gate can wait for it.
+  workflow_call:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
