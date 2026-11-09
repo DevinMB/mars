@@ -10,7 +10,10 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY LICENSE ./LICENSE
 
+# Debian security fixes land between base image releases; the Trivy gate fails
+# on fixable HIGH and CRITICAL findings, so pick them up at build time.
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
