@@ -10,6 +10,12 @@ ARG MAVEN_CENTRAL=https://repo1.maven.org/maven2
 
 USER root
 
+# Ubuntu security fixes land between Flink image releases; the Trivy gate fails
+# on fixable HIGH and CRITICAL findings, so pick them up at build time.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+
 # Kafka connector + its client. Fetched at build time, verified non-empty.
 RUN set -eux; \
     curl -fsSL -o /opt/flink/lib/flink-connector-kafka.jar \
