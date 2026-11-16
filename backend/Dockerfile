@@ -18,7 +18,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# pip is only needed to build the image. Removing it keeps its bundled copies of
+# urllib3, msgpack and setuptools out of the runtime image and out of Trivy's
+# findings (pip 26 lists them, so newer Python bases failed the gate).
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip uninstall -y pip
 
 COPY backend/app ./app
 COPY backend/manifests ./manifests
